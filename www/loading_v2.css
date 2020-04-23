@@ -1,0 +1,28 @@
+#loadmessage {
+	position: fixed;
+	height: 41px;
+	left: 5px;
+	padding-top: 8px;
+	text-align: center;
+	font-weight: bold;
+	font-size: 100%;
+	color: #FFFFFF;
+	background-color: #802245;
+	border: 3px solid #802245;
+	border-bottom-left-radius: 25px;
+	border-bottom-right-radius: 25px;
+	animation: slideDown 0.5s linear 0.2s forwards alternate;
+  z-index: 10000;
+  visibility: hidden;
+}
+
+@keyframes slideDown {
+  0% {
+    visibility: visible;
+    top: -41px;
+  }
+  100% {
+    visibility: visible;
+    top: 0;
+  }
+}

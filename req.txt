@@ -1,0 +1,17 @@
+shiny
+shinyjs
+shinydashboard
+shinyWidgets
+plyr
+tidyverse
+ggrepel
+gridExtra
+plotly
+RColorBrewer
+data.table
+RODBC
+DT
+leaflet
+sp
+mapview
+clipr

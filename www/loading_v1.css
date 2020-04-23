@@ -1,0 +1,27 @@
+#loadmessage {
+	position: fixed;
+	top: 50px;
+	left: 0;
+	width: 100%;
+	padding: 5px 0 5px 0;
+	text-align: center;
+	font-weight: bold;
+	font-size: 100%;
+	color: #FFFFFF;
+	background-color: rgb(128, 34, 69);
+	background-color: rgba(128, 34, 69, 0.75);
+	z-index: 10000;
+  animation: 5s fadeIn;
+  animation-fill-mode: forwards;
+  visibility: hidden;
+}
+
+@keyframes fadeIn {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    visibility: visible;
+    opacity: 1;
+  }
+}
