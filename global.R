@@ -1,14 +1,10 @@
-# Clear global environment
-rm(list = ls())
-
-# Load packages
 source("packages.R", local = T)
 
-# Load general settings
-source("defaults.R", local = T)
-
-# Load general functions
-source("functions.R", local = T)
-
-# Load database connection
-source("database.R", local = T)
+headerButton <- function(id, icon) {
+  ns <- NS(id)
+  tags$li(
+    class = "dropdown header_button",
+    id = ns("header_button"),
+    icon(icon)
+  )
+}
