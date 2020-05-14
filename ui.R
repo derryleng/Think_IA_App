@@ -47,4 +47,4 @@ body <- dashboardBody(
   
 )
 
-ui <- dashboardPage(skin = "red", header, sidebar, body)
+ui <- dashboardPage(title = "Think IA App", skin = "red", header, sidebar, body)

@@ -45,12 +45,6 @@ db_explorer_ui <- function(id) {
             )
         ),
         box(
-            title = "Lookup Flight Statistics",
-            width = NULL,
-            collapsible = T,
-            collapsed = T
-        ),
-        box(
             title = "Flight Plan Statistics",
             width = NULL,
             collapsible = T,

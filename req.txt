@@ -3,8 +3,6 @@ shinyjs
 shinydashboard
 shinyWidgets
 tidyverse
-ggrepel
-gridExtra
 plotly
 RColorBrewer
 data.table
@@ -14,8 +12,3 @@ leaflet
 sp
 mapview
 clipr
-MASS
-BMS
-zoo
-pastecs
-xlsx

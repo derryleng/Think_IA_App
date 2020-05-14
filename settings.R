@@ -36,6 +36,6 @@ sidebarWidth <- "190px"
 #       > Use "" for icon_str to specify no icon
 sidebarNameIcon <- list(
   example_1 = c("Example 1", "car"),
-  db_explorer = c("Database Explorer", "database")
-  # track_visualiser = "Track Visualiser",
+  db_explorer = c("Database Explorer", "database"),
+  track_visualiser = c("Track Visualiser", "plane")
 )
