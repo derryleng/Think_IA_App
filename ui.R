@@ -1,5 +1,5 @@
 header <- dashboardHeader(
-  title = imageOutput("think_logo"),
+  title = htmltools::HTML('<img src="Think_Logo_White.png" width="100" height="37">'),
   titleWidth = sidebarWidth,
   headerButtonUI("db_button", "database")
 )
@@ -32,17 +32,18 @@ body <- dashboardBody(
   # Apply all module UI content defined in mod_ui.R files
   evalParse(
     "tabItems(", paste0(
-      sapply(list.files("modules"), function(x) {
+      sapply(names(sidebarNameIcon), function(x) {
         paste0("tabItem(\"", x, "\",", x, "_ui(\"", x ,"\")", ")", collapse = ",")
       }),
       collapse = ","
     ), ")"
   ),
   
-  # Loading spinner dialogue
+  # Loading spinner
   conditionalPanel(
     condition="$('html').hasClass('shiny-busy')",
-    div(id = "loading_spinner", uiOutput("spinner"))
+    id = "spinner_wrapper",
+    htmltools::HTML('<div class="spinner"></div>')
   )
   
 )

@@ -1,16 +1,8 @@
 server <- function(input, output, session) {
   
-  output$think_logo <- renderImage({
-    list(
-      src = "www/Think_Logo_White.png",
-      contentType = "image/png",
-      height = 37,
-      width = 100
-    )
-  }, deleteFile = F)
-  
-  output$spinner <- renderUI({
-    htmltools::HTML('<div class="loader"></div>')
+  # Stop app on session end
+  session$onSessionEnded(function() {
+    stopApp()
   })
   
   # ----------------------------------------------------------------------- #
@@ -23,14 +15,14 @@ server <- function(input, output, session) {
   # Show database connection dialogue on button click
   onclick("db_button", showModal(connection_dialogue()))
   
-  db_connect_clicked <- reactiveVal(0)
+  db_connect_click <- reactiveVal(0)
   
   observeEvent(input$db_connect, {
-    db_connect_clicked(db_connect_clicked() + 1)
+    db_connect_click(db_connect_click() + 1)
   })
   
-  con <- eventReactive(db_connect_clicked(), {
-    if (db_connect_clicked()) {
+  con <- eventReactive(db_connect_click(), {
+    if (db_connect_click()) {
       get_db_connection(input$db_driver, input$db_server, input$db_database, input$db_username, input$db_password)
     }
   })
@@ -74,11 +66,6 @@ server <- function(input, output, session) {
       })
     }
     
-  })
-  
-  # Stop app on session end
-  session$onSessionEnded(function() {
-    stopApp()
   })
   
 }

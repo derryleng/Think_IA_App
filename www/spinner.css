@@ -1,4 +1,4 @@
-.loader {
+.spinner {
   color: #ffffff;
   font-size: 90px;
   text-indent: -9999em;
@@ -80,7 +80,7 @@
   }
 }
 
-#loading_spinner {
+#spinner_wrapper {
   position: fixed;
   left: 0;
   top: 0;

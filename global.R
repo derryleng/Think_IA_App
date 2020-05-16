@@ -5,8 +5,7 @@ source("packages.R", local = T)
 source("settings.R", local = T)
 
 # Import mod_ui.R and mod_server.R files
-mod_files <- list.files(path = "modules", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T)
-invisible(lapply(mod_files, source))
+invisible(lapply(list.files(path = "modules", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T), source))
 
 # ----------------------------------------------------------------------- #
 # General Functions -------------------------------------------------------
@@ -29,13 +28,29 @@ connection_dialogue <- function() {
   modalDialog(
     div(
       class = "centered",
+      style = "margin: -6px",
       h4("Connect to Database")
     ),
-    selectizeInput("db_driver", "Driver Name", db_defaults$driver, options = list(create = T), width="100%"),
-    selectizeInput("db_server", "Server Name", db_defaults$server, options = list(create = T), width="100%"),
-    selectizeInput("db_database", "Database Name", db_defaults$database, options = list(create = T), width="100%"),
-    textInput("db_username", "Username", db_defaults$username, width="100%"),
-    passwordInput("db_password", "Password", db_defaults$password, width="100%"),
+    div(
+      style = "margin-bottom: -15px",
+      selectizeInput("db_driver", "Driver Name", db_defaults$driver, options = list(create = T), width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -15px",
+      selectizeInput("db_server", "Server Name", db_defaults$server, options = list(create = T), width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -15px",
+      selectizeInput("db_database", "Database Name", db_defaults$database, options = list(create = T), width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -10px",
+      textInput("db_username", "Username", db_defaults$username, width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -5px",
+      passwordInput("db_password", "Password", db_defaults$password, width = "100%")
+    ),
     div(
       class = "centered",
       actionButton("db_connect", "Connect", icon("database"))
