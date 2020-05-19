@@ -1,0 +1,8 @@
+Leader_ICAO_WTC,Follower_ICAO_WTC,Reference_Wake_Separation_Distance
+S,H,6
+S,M,7
+S,L,8
+H,H,4
+H,M,5
+H,L,6
+M,L,5

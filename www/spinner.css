@@ -92,7 +92,7 @@
   text-align: center;
 	color: #FFFFFF;
 	background-color: #555759;
-	animation: fadeIn 0.5s linear 0.2s forwards alternate;
+	animation: fadeIn 0.5s linear 0.5s forwards alternate;
   z-index: 10000;
   visibility: hidden;
 }

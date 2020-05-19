@@ -25,7 +25,7 @@ db_defaults <- list(
 # Sidebar Settings --------------------------------------------------------
 # ----------------------------------------------------------------------- #
 
-sidebarWidth <- "190px"
+sidebarWidth <- "160px"
 
 # Define names for sidebar tabs, e.g. Module_Name = c(name_str, icon_str):
 #    Module_Name - corresponds to a folder name in the "modules" folder
@@ -34,8 +34,9 @@ sidebarWidth <- "190px"
 # NOTE: > Module will not be displayed unless specified here
 #       > Order corresponds to order of appearance in app sidebar
 #       > Use "" for icon_str to specify no icon
-sidebarNameIcon <- list(
+sidebarSettings <- list(
   example_1 = c("Example 1", "car"),
   db_explorer = c("Database Explorer", "database"),
-  track_visualiser = c("Track Visualiser", "plane")
+  track_visualiser = c("Track Visualiser", "globe"),
+  optimised_runway_delivery = c("ORD", "plane-arrival")
 )

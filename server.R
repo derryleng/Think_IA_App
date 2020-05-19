@@ -50,14 +50,14 @@ server <- function(input, output, session) {
   # ----------------------------------------------------------------------- #
   
   observeEvent(con(), {
-    
+
     # Keep track of modules that haven't been loaded
-    unloaded_tabs <- reactiveVal(names(sidebarNameIcon))
-    
+    unloaded_tabs <- reactiveVal(names(sidebarSettings))
+
     # While database is connected, call unloaded modules when selected
     if (con() != -1L) {
       observeEvent(input$tabs, {
-        for (x in names(sidebarNameIcon)) {
+        for (x in names(sidebarSettings)) {
           if (input$tabs == x & x %in% unloaded_tabs() & exists(paste0(x, "_server"))) {
             unloaded_tabs(unloaded_tabs() %>% .[. != x])
             callModule(evalParse(x, "_server"), x, con())
@@ -65,7 +65,7 @@ server <- function(input, output, session) {
         }
       })
     }
-    
+
   })
   
 }

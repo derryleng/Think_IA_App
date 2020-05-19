@@ -8,9 +8,9 @@ sidebar <- dashboardSidebar(
   width = sidebarWidth,
   sidebarMenu(
     id = "tabs",
-    lapply(names(sidebarNameIcon), function(x) {
-      tab_title <- sidebarNameIcon[[x]][1]
-      tab_icon <- sidebarNameIcon[[x]][2]
+    lapply(names(sidebarSettings), function(x) {
+      tab_title <- sidebarSettings[[x]][1]
+      tab_icon <- sidebarSettings[[x]][2]
       sidebarTabUI(x, tab_title, tab_icon)
     })
   )
@@ -32,7 +32,7 @@ body <- dashboardBody(
   # Apply all module UI content defined in mod_ui.R files
   evalParse(
     "tabItems(", paste0(
-      sapply(names(sidebarNameIcon), function(x) {
+      sapply(names(sidebarSettings), function(x) {
         paste0("tabItem(\"", x, "\",", x, "_ui(\"", x ,"\")", ")", collapse = ",")
       }),
       collapse = ","
