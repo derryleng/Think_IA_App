@@ -76,7 +76,15 @@ query_ffpid_tracks <- function(ffpid, con) {
   return(x)
 }
 
-process_tracks_for_nls <- function(tracks, minRTT = 0, maxRTT = 6, speed_type = "Mode_S_IAS", airport_alt = 0) {
+process_tracks_for_nls <- function(tracks, minRTT = 0, maxRTT = 6, speed_type = "Mode S IAS", airport_alt = 0) {
+  
+  # NB: Used when speed_type == "Calculated_Speed"
+  # For each flight, filters out calculated speeds which are not within
+  #   [max(min(Track_Speed)*(speed_filter_perc/100), speed_filter_limit_low), 
+  #    min(max(Track_Speed)*(1+speed_filter_perc/100), speed_filter_limit_high)]
+  speed_filter_perc <- 50
+  speed_filter_limit_low <- 50
+  speed_filter_limit_high <- 200
   
   tracks <- tracks[Follower_Range_To_Threshold >= minRTT & Follower_Range_To_Threshold <= maxRTT][order(Track_Time)]
   
@@ -337,7 +345,7 @@ optimised_runway_delivery_server <- function(input, output, session, con) {
     req(input$cali_single_run)
     isolate({
       tracks <- query_ffpid_tracks(input$cali_single_ffpid, con)
-      nls_input <- process_tracks_for_nls(tracks, speed_type = input$cali_speed_type, airport_alt = ifelse(is.null(input$cali_apt_alt), 0, input$cali_apt_alt))
+      nls_input <- process_tracks_for_nls(tracks, speed_type = input$cali_speed_type, airport_alt = as.numeric(input$cali_apt_alt))
       model <- generate_nls_model(x = nls_input$x, y = nls_input$y)
       return(model)
     })

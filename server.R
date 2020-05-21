@@ -37,6 +37,7 @@ server <- function(input, output, session) {
             style = "text-align: center;",
             "Connected", icon("check-circle")
           ),
+          div(style = "height: 3px"),
           renderPrint(con())
         )
       } else {

@@ -524,7 +524,7 @@ track_visualiser_server <- function(input, output, session, con) {
     click <- input$pltmap_click
     clat <- click$lat
     clon <- click$lng
-    write_clip(paste(clat, clon))
+    write_clip(paste(clat, clon), allow_non_interactive = T)
     lab <- sprintf("<b>Latitude</b>: %s<br/><b>Longitude</b>: %s", clat, clon) %>% lapply(htmltools::HTML)
     leafletProxy("pltmap") %>%
       addMarkers(
