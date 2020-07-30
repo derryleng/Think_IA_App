@@ -272,7 +272,23 @@ track_visualiser_server <- function(input, output, session, con) {
       do.call(
         sprintf, c(
           list(paste(paste0("<b>", names(tracks()), "</b>: %s"), collapse = "<br/>")),
-          lapply(names(tracks()), function(x) tracks()[[x]])
+          lapply(names(tracks()), function(x) {
+            if (grepl("Lat", x) | grepl("Lon", x)) {
+              paste0(round(tracks()[[x]] * 180 / pi, 5), " (Cartesian)")
+            } else if (grepl("HDG", x) | grepl("Angle", x)) {
+              paste0(round(tracks()[[x]] * 180 / pi, 2), " (deg)")
+            } else if (grepl("SPD", x) | grepl("IAS", x) | grepl("TAS", x)) {
+              paste0(round(tracks()[[x]] / 1852 * 3600, 2), " (kts)")
+            } else if (grepl("Range", x)) {
+              paste0(round(tracks()[[x]] / 1852, 2), " (NM)")
+            } else if (grepl("Mode_C", x)) {
+              paste0(round(tracks()[[x]] / 0.3048, 2), " (ft)")
+            } else if (grepl("X_Pos", x) | grepl("Y_Pos", x)) {
+              paste0(round(tracks()[[x]], 2), " (m)")
+            } else {
+              tracks()[[x]]
+            }
+          })
         )
       ) %>% lapply(htmltools::HTML)
     } else {

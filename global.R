@@ -14,7 +14,7 @@ invisible(lapply(list.files(path = "modules", pattern = "mod_ui.R|mod_server.R",
 # Usage: x %!in% y; this is equivalent to !(x %in% y)
 '%!in%' <- function(x, y) !('%in%'(x, y))
 
-# Evaulate a string (or multiple comma-separated strings) as R code
+# Evaluate a string (or multiple comma-separated strings) as R code
 evalParse <- function(...) {
   return(eval(parse(text = paste0(..., collapse = ","))))
 }

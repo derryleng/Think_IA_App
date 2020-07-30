@@ -35,8 +35,8 @@ sidebarWidth <- "160px"
 #       > Order corresponds to order of appearance in app sidebar
 #       > Use "" for icon_str to specify no icon
 sidebarSettings <- list(
-  example_1 = c("Example 1", "car"),
-  db_explorer = c("Database Explorer", "database"),
+  # example_1 = c("Example 1", "car"),
   track_visualiser = c("Track Visualiser", "globe"),
+  db_explorer = c("Database Explorer", "database"),
   optimised_runway_delivery = c("ORD", "plane-arrival")
 )
