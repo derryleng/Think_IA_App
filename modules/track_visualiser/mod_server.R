@@ -76,25 +76,25 @@ track_visualiser_server <- function(input, output, session, con) {
     leafletProxy("pltmap") %>% setView(lng = map_centre()$Lon, lat = map_centre()$Lat, zoom = 10)
   })
   
-  observeEvent(input$pltmap_fpid, {
-    time_range <- sprintf(
-      " SELECT MIN(Track_Time) AS Min_Time, MAX(Track_Time) AS Max_Time FROM tbl_Radar_Track_Point
-        LEFT JOIN (
-          SELECT Radar_Track_Point_ID AS Radar_Track_Point_ID_2, Corrected_Mode_C, Range_To_Threshold, Range_To_ILS, Path_Leg
-          FROM tbl_Radar_Track_Point_Derived
-        ) AS t ON Radar_Track_Point_ID = Radar_Track_Point_ID_2
+  time_range <- reactive({
+    sprintf(
+      " SELECT MIN(Track_Time) AS Min_Time, MAX(Track_Time) AS Max_Time
+        FROM tbl_Radar_Track_Point
         WHERE Flight_Plan_ID IN ('%s')
       ",
       paste(input$pltmap_fpid, collapse = "','")
     ) %>%
       sqlQuery(con,.) %>%
       as.data.table()
+  })
+  
+  observe({
     updateSliderInput(
       session,
-      "pltmap_time_range",
-      min = time_range$Min_Time,
-      max = time_range$Max_Time,
-      value = c(time_range$Min_Time, time_range$Max_Time)
+      ns("pltmap_time_range"),
+      min = time_range()$Min_Time,
+      max = time_range()$Max_Time,
+      value = c(time_range()$Min_Time, time_range()$Max_Time)
     )
   })
   
