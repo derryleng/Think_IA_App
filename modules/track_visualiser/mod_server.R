@@ -48,7 +48,7 @@ track_visualiser_server <- function(input, output, session, con) {
   # Render PLT map tiles
   output$pltmap <- renderLeaflet({
     x <- leaflet(options = leafletOptions(zoomControl = F, preferCanvas = T)) %>%
-      setView(lng = 0, lat = 0, zoom = 3)
+      setView(lng = map_centre()$Lon, lat = map_centre()$Lat, zoom = 10)
     tile_providers <- list(
       `Esri Satellite` = "Esri.WorldImagery",
       `CartoDB Light` = "CartoDB.Positron",
@@ -70,10 +70,6 @@ track_visualiser_server <- function(input, output, session, con) {
       	Grid_Projection_Origin_Lon/PI()*180 AS Lon
       FROM tbl_Adaptation_Data
     " %>% sqlQuery(con,.) %>% as.data.table()
-  })
-  
-  observeEvent(map_centre(), {
-    leafletProxy("pltmap") %>% setView(lng = map_centre()$Lon, lat = map_centre()$Lat, zoom = 10)
   })
   
   time_range <- reactive({

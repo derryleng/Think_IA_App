@@ -46,6 +46,22 @@ server <- function(input, output, session) {
     })
   })
   
+  # Refresh database list
+  observeEvent(input$db_refresh_list, {
+    con <- odbcDriverConnect(connection=sprintf(
+      "Driver={%s};Server={%s};Uid={%s};Pwd={%s};",
+      input$db_driver, input$db_server, input$db_username, input$db_password
+    ))
+    db_list <- "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name" %>%
+      sqlQuery(con,. ) %>% as.data.table()
+    fwrite(db_list, "data/db_names.csv", col.names = F)
+    updateSelectizeInput(
+      session,
+      "db_database",
+      choices = fread("data/db_names.csv", header = F)$V1
+    )
+  })
+  
   # ----------------------------------------------------------------------- #
   # Call Modules ------------------------------------------------------------
   # ----------------------------------------------------------------------- #

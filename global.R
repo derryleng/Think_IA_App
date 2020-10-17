@@ -41,6 +41,10 @@ connection_dialogue <- function() {
     ),
     div(
       style = "margin-bottom: -15px",
+      div(
+        style = "position: relative; float: right; height: 0",
+        actionButton("db_refresh_list", NULL, icon("sync"), style = "background: none; border: none; font-size: 12px; padding: 0")
+      ),
       selectizeInput("db_database", "Database Name", db_defaults$database, options = list(create = T), width = "100%")
     ),
     div(
