@@ -29,21 +29,27 @@ server <- function(input, output, session) {
   
   # Database connection status feedback
   observeEvent(con(), {
-    output$db_status <- renderUI({
-      if (con() != -1L) {
+    if (con() != -1L) {
+      output$db_status <- renderUI({
         div(
           style="margin: 7px 0 0 6px;",
           div(
             style = "text-align: center;",
             "Connected", icon("check-circle")
           ),
-          div(style = "height: 3px"),
-          renderPrint(con())
+          div(style = "height: 5px"),
+          div(
+            style = "margin-left: -7px;",
+            renderPrint(con())
+          )
         )
-      } else {
+      })
+      removeModal()
+    } else {
+      output$db_status <- renderUI({
         div(style="margin: 7px 0 0 6px; text-align: center;", "Connection Error", icon("times-circle"))
-      }
-    })
+      })
+    }
   })
   
   # Refresh database list
@@ -54,11 +60,11 @@ server <- function(input, output, session) {
     ))
     db_list <- "SELECT name FROM sys.databases WHERE database_id > 4 ORDER BY name" %>%
       sqlQuery(con,. ) %>% as.data.table()
-    fwrite(db_list, "data/db_names.csv", col.names = F)
+    fwrite(db_list, "temp/db_names.csv", col.names = F)
     updateSelectizeInput(
       session,
       "db_database",
-      choices = fread("data/db_names.csv", header = F)$V1
+      choices = fread("temp/db_names.csv", header = F)$V1
     )
   })
   

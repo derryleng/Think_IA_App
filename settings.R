@@ -6,12 +6,10 @@
 db_defaults <- list(
   driver = "SQL Server",
   server = c(
-    "192.168.1.39",
-    "DESKTOP-U2P5V4F",
-    "192.168.1.23",
-    "THINK-MAVERICK"
+    "Goose (192.168.1.39)" = "192.168.1.39",
+    "Maverick (192.168.1.23)" = "192.168.1.23"
   ),
-  database = if (file.exists("data/db_names.csv")) fread("data/db_names.csv", header = F)$V1,
+  database = if (file.exists("temp/db_names.csv")) fread("temp/db_names.csv", header = F)$V1,
   username = "ruser",
   password = "Th!nkruser"
 )

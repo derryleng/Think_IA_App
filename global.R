@@ -1,10 +1,10 @@
-# Import required R packages
+# Import packages
 source("packages.R", local = T)
 
 # Import settings
 source("settings.R", local = T)
 
-# Import mod_ui.R and mod_server.R files
+# Import modules
 invisible(lapply(list.files(path = "modules", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T), source))
 
 # ----------------------------------------------------------------------- #
@@ -29,10 +29,11 @@ connection_dialogue <- function() {
     div(
       class = "centered",
       style = "margin: -6px",
-      h4("Connect to Database")
+      h4("Connect to a Database")
     ),
+    div(style = "height: 5px"),
     div(
-      style = "margin-bottom: -15px",
+      style = "margin-bottom: -15px; display: none;",
       selectizeInput("db_driver", "Driver Name", db_defaults$driver, options = list(create = T), width = "100%")
     ),
     div(
@@ -41,10 +42,6 @@ connection_dialogue <- function() {
     ),
     div(
       style = "margin-bottom: -15px",
-      div(
-        style = "position: relative; float: right; height: 0",
-        actionButton("db_refresh_list", NULL, icon("sync"), style = "background: none; border: none; font-size: 12px; padding: 0")
-      ),
       selectizeInput("db_database", "Database Name", db_defaults$database, options = list(create = T), width = "100%")
     ),
     div(
@@ -57,8 +54,11 @@ connection_dialogue <- function() {
     ),
     div(
       class = "centered",
+      actionButton("db_refresh_list", "Refresh Database List", icon("sync")),
+      div(style = "width: 15px"),
       actionButton("db_connect", "Connect", icon("database"))
     ),
+    div(style = "height: 5px"),
     uiOutput("db_status"),
     size = "s",
     footer = NULL,
