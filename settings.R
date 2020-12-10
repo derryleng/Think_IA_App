@@ -6,8 +6,10 @@
 db_defaults <- list(
   driver = "SQL Server",
   server = c(
+    "192.168.1.39",
     "DESKTOP-U2P5V4F",
-    "192.168.1.11"
+    "192.168.1.23",
+    "THINK-MAVERICK"
   ),
   database = if (file.exists("data/db_names.csv")) fread("data/db_names.csv", header = F)$V1,
   username = "ruser",
@@ -29,9 +31,9 @@ sidebarWidth <- "160px"
 #       > Use "" for icon_str to specify no icon
 sidebarSettings <- list(
   # example_1 = c("Example 1", "car"),
-  track_visualiser = c("Track Visualiser", "search-location"),
-  db_explorer = c("Database Explorer", "list-alt"),
+  # user_guide = c("User Guide", "question-circle"),
   data_loader = c("Data Loader", "database"),
-  optimised_runway_delivery = c("ORD", "plane-arrival"),
-  user_guide = c("User Guide", "question-circle")
+  db_explorer = c("Database Explorer", "list-alt"),
+  track_visualiser = c("Track Visualiser", "search-location"),
+  optimised_runway_delivery = c("ORD", "plane-arrival")
 )

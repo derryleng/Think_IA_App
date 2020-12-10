@@ -10,33 +10,36 @@ optimised_runway_delivery_ui <- function(id) {
   
   div(
     
-    box(
-      title = "Calibrate Speed Profile",
+    tabBox(
       width = NULL,
-      collapsible  = T,
-      collapsed = T,
-      tabBox(
-        width = NULL,
-        tabPanel(
-          title = "Single Aircraft",
-          radioGroupButtons(
-            inputId = ns("cali_speed_type"),
-            label = "Speed Type", 
-            choices = names(speed_types),
-            selected = "Mode S IAS"
-          ),
-          uiOutput(ns("cali_more_options")),
-          div(
-            style = "centered",
-            textInput(ns("cali_single_ffpid"), "Follower Flight Plan ID", 215163),
-            actionButton(ns("cali_single_run"), "Calibrate"),
-            uiOutput(ns("cali_single_outputs"))
-          )
+      tabPanel(
+        title = "Speed Profile (Single Aircraft)",
+        radioGroupButtons(
+          inputId = ns("cali_speed_type"),
+          label = "Speed Type", 
+          choices = names(speed_types),
+          selected = "Mode S IAS"
         ),
-        tabPanel(
-          title = "Batch Processing",
-          "WIP"
+        uiOutput(ns("cali_more_options")),
+        div(
+          style = "centered",
+          textInput(ns("cali_single_ffpid"), "Follower Flight Plan ID", 215163),
+          actionButton(ns("cali_single_run"), "Calibrate"),
+          uiOutput(ns("cali_single_outputs"))
         )
+      ),
+      tabPanel(
+        title = "Pair Comparison Plot",
+        radioGroupButtons(
+          inputId = ns("cali_comp_col"),
+          label = "Data Type", 
+          choices = c("Mode_S_GSPD", "Mode_S_IAS", "Mode_S_TAS", "Corrected_Mode_C"),
+          selected = "Mode_S_TAS"
+        ),
+        textInput(ns("cali_comp_lfpid"), "Leader Flight Plan ID", 246644),
+        textInput(ns("cali_comp_ffpid"), "Follower Flight Plan ID", 246621),
+        actionButton(ns("cali_comp_run"), "Compare"),
+        plotlyOutput(ns("cali_comp_outputs"))
       )
     )
     

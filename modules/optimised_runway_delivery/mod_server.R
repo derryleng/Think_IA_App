@@ -384,4 +384,86 @@ optimised_runway_delivery_server <- function(input, output, session, con) {
     }, server = F)
   })
   
+  # ----------------------------------------------------------------------- #
+  # Aircraft Pair Comparison Plots ------------------------------------------
+  # ----------------------------------------------------------------------- #
+  
+  observeEvent(input$cali_comp_run, {
+    
+    tracks_comp <- sprintf(
+      " SELECT * FROM tbl_Radar_Track_Point
+        LEFT JOIN (
+          SELECT Radar_Track_Point_ID AS Radar_Track_Point_ID_2, Corrected_Mode_C, Range_To_Threshold, Range_To_ILS, Path_Leg
+          FROM tbl_Radar_Track_Point_Derived
+        ) AS t ON Radar_Track_Point_ID = Radar_Track_Point_ID_2
+        WHERE Flight_Plan_ID IN ('%s', '%s')
+      ",
+      input$cali_comp_lfpid, input$cali_comp_ffpid
+    ) %>%
+      sqlQuery(con,.) %>%
+      as.data.table()
+    
+    tracks_comp$Timestamp <- as.POSIXct(paste(tracks_comp$Track_Date, "00:00:00"), format = "%d/%m/%Y %H:%M:%S") + tracks_comp$Track_Time
+    
+    tracks_comp_l <- tracks_comp[Flight_Plan_ID == input$cali_comp_lfpid]
+    tracks_comp_f <- tracks_comp[Flight_Plan_ID == input$cali_comp_ffpid]
+    
+    loess_l <- loess(tracks_comp_l$Track_Time~tracks_comp_l[[input$cali_comp_col]], span=0.1)
+    loess_f <- loess(tracks_comp_f$Track_Time~tracks_comp_f[[input$cali_comp_col]], span=0.1)
+    
+    output$cali_comp_outputs <- renderPlotly({
+      p <- plot_ly() %>%
+        add_markers( # Leader markers
+          data = tracks_comp_l,
+          x = ~Timestamp,
+          y = evalParse("~", input$cali_comp_col),
+          name = "Leader",
+          marker = list(color = "rgb(128,34,69)")
+        ) %>%
+        add_segments( # Leader 1NM
+          data = tracks_comp_l[which(abs(Range_To_Threshold-1)==min(abs(Range_To_Threshold-1)))],
+          x = ~Timestamp, xend = ~Timestamp,
+          y = min(tracks_comp[[input$cali_comp_col]], na.rm = T), yend = max(tracks_comp[[input$cali_comp_col]], na.rm = T),
+          line = list(color = "rgb(128,34,69)")
+        ) %>%
+        add_markers( # Follower markers
+          data = tracks_comp_f,
+          x = ~Timestamp,
+          y = evalParse("~", input$cali_comp_col),
+          name = "Follower",
+          marker = list(color = "rgb(138,138,141)")
+        ) %>%
+        add_segments( # Follower 1NM
+          data = tracks_comp_f[which(abs(Range_To_Threshold-1)==min(abs(Range_To_Threshold-1)))],
+          x = ~Timestamp, xend = ~Timestamp,
+          y = min(tracks_comp[[input$cali_comp_col]], na.rm = T), yend = max(tracks_comp[[input$cali_comp_col]], na.rm = T),
+          line = list(color = "rgb(138,138,141)")
+        ) %>%
+        # add_lines(
+        #   data = tracks_comp_l,
+        #   x = ~Timestamp,
+        #   y = predict(loess_l),
+        #   line = list(color = "rgb(213,16,103)"),
+        #   name = "Leader Fit"
+        # ) %>%
+        # add_lines(
+        #   data = tracks_comp_f,
+        #   x = ~Timestamp,
+        #   y = predict(loess_f),
+        #   line = list(color = "rgb(85,87,89)"),
+        #   name = "Follower Fit"
+        # ) %>%
+        layout(
+          hovermode = "compare",
+          xaxis = list(title = "Time"),
+          yaxis = list(title = gsub("_", " ", input$cali_comp_col))
+        ) %>%
+        config(
+          displaylogo = F
+        )
+      ggplotly(p, width = session$clientData$output_cali_comp_outputs_width)
+    })
+  })
+  
+  
 }
