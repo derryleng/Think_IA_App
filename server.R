@@ -23,7 +23,21 @@ server <- function(input, output, session) {
   
   con <- eventReactive(db_connect_click(), {
     if (db_connect_click()) {
-      get_db_connection(input$db_driver, input$db_server, input$db_database, input$db_username, input$db_password)
+      connection_string <- sprintf(
+        "Driver={%s};Server={%s};Database={%s};Uid={%s};Pwd={%s};",
+        input$db_driver, input$db_server, input$db_database, input$db_username, input$db_password
+      )
+      return(odbcDriverConnect(connection=connection_string))
+    }
+  })
+  
+  dbi_con <- eventReactive(db_connect_click(), {
+    if (db_connect_click()) {
+      connection_string <- sprintf(
+        "Driver={%s};Server={%s};Database={%s};Uid={%s};Pwd={%s};",
+        input$db_driver, input$db_server, input$db_database, input$db_username, input$db_password
+      )
+      return(dbConnect(odbc::odbc(), .connection_string=connection_string))
     }
   })
   

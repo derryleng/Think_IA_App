@@ -31,26 +31,25 @@ connection_dialogue <- function() {
       style = "margin: -6px",
       h4("Connect to a Database")
     ),
-    div(style = "height: 5px"),
     div(
-      style = "margin-bottom: -15px; display: none;",
-      selectizeInput("db_driver", "Driver Name", db_defaults$driver, options = list(create = T), width = "100%")
+      style = "display: none;",
+      selectizeInput("db_driver", "Driver", db_defaults$driver, options = list(create = T), width = "100%")
     ),
     div(
       style = "margin-bottom: -15px",
-      selectizeInput("db_server", "Server Name", db_defaults$server, options = list(create = T), width = "100%")
-    ),
-    div(
-      style = "margin-bottom: -15px",
-      selectizeInput("db_database", "Database Name", db_defaults$database, options = list(create = T), width = "100%")
+      selectizeInput("db_server", "Server", db_defaults$server, options = list(create = T), width = "100%")
     ),
     div(
       style = "margin-bottom: -10px",
       textInput("db_username", "Username", db_defaults$username, width = "100%")
     ),
     div(
-      style = "margin-bottom: -5px",
+      style = "margin-bottom: -10px",
       passwordInput("db_password", "Password", db_defaults$password, width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -5px",
+      selectizeInput("db_database", "Database", db_defaults$database, options = list(create = T), width = "100%")
     ),
     div(
       class = "centered",
@@ -64,15 +63,6 @@ connection_dialogue <- function() {
     footer = NULL,
     easyClose = T
   )
-}
-
-# Fetch database connection
-get_db_connection <- function(str_driver, str_server, str_database, str_uid, str_pwd) {
-  connection_string <- sprintf(
-    "Driver={%s};Server={%s};Database={%s};Uid={%s};Pwd={%s};",
-    str_driver, str_server, str_database, str_uid, str_pwd
-  )
-  return(odbcDriverConnect(connection=connection_string))
 }
 
 # ----------------------------------------------------------------------- #
