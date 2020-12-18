@@ -12,3 +12,5 @@ leaflet
 sp
 mapview
 clipr
+odbc
+DBI

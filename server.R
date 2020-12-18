@@ -97,7 +97,7 @@ server <- function(input, output, session) {
         for (x in names(sidebarSettings)) {
           if (input$tabs == x & x %in% unloaded_tabs() & exists(paste0(x, "_server"))) {
             unloaded_tabs(unloaded_tabs() %>% .[. != x])
-            callModule(evalParse(x, "_server"), x, con())
+            callModule(evalParse(x, "_server"), x, con(), dbi_con())
           }
         }
       })

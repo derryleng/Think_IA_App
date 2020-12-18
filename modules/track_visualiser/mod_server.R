@@ -1,4 +1,4 @@
-track_visualiser_server <- function(input, output, session, con) {
+track_visualiser_server <- function(input, output, session, con, dbi_con) {
   
   ns <- session$ns
   

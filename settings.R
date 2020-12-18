@@ -14,6 +14,9 @@ db_defaults <- list(
   password = "Th!nkruser"
 )
 
+# con <- odbcDriverConnect(connection="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+# dbi_con <- dbConnect(odbc::odbc(), .connection_string="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+
 # ----------------------------------------------------------------------- #
 # Sidebar Settings --------------------------------------------------------
 # ----------------------------------------------------------------------- #

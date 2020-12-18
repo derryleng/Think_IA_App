@@ -308,7 +308,7 @@ density_area <- function(den, min, max, min_include = T, max_include = T) {
 # Server ------------------------------------------------------------------
 # ----------------------------------------------------------------------- #
 
-optimised_runway_delivery_server <- function(input, output, session, con) {
+optimised_runway_delivery_server <- function(input, output, session, con, dbi_con) {
   
   ns <- session$ns
   

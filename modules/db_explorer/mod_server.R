@@ -1,4 +1,4 @@
-db_explorer_server <- function(input, output, session, con) {
+db_explorer_server <- function(input, output, session, con, dbi_con) {
   
   # Get custom query
   query <- eventReactive(input$db_execute, {

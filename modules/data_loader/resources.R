@@ -1,0 +1,254 @@
+pi <- 3.1415926535897931
+
+FeetToMetres <- 0.3048
+NmToMetres <- 1852.0
+DegreesToRadians <- pi / 180.0
+KnotsToMetresPerSecond <- NmToMetres / 3600
+MbarToPa <- 100.0
+FtPerMinToMetresPerSecond <- FeetToMetres / 60
+
+# Convert time string(s) (hh:mm:ss.sss OR hh:mm.mmm) to seconds after midnight.
+Time_String_To_Seconds <- function(Time_String) {
+  return(sapply(1:length(Time_String), function(i) {
+    x_i <- unlist(strsplit(Time_String[i], ":"))
+    return(sum(as.numeric(x_i) * c(3600, 60, 1)[1:length(x_i)]))
+  }))
+}
+
+# Convert seconds to days, hours, minutes, seconds
+dhms <- function(t) {
+  t_days <- t %/% (60*60*24)
+  t_hours <- formatC(t %/% (60*60) %% 24, width = 2, format = "d", flag = "0")
+  t_minutes <- formatC(t %/% 60 %% 60, width = 2, format = "d", flag = "0")
+  t_seconds <- formatC(t %% 60, width = 2, format = "d", flag = "0")
+  if (t_days > 0) {
+    return(paste0(t_days, " ", t_hours, ":", t_minutes, ":", t_seconds))
+  } else {
+    return(paste0(t_hours, ":", t_minutes, ":", t_seconds))
+  }
+}
+
+# Calculate the angle component of vector from its X/Y cartesian representation.
+To_Vector_Angle <- function(Vector_X, Vector_Y) {
+  return(ifelse(
+    Vector_Y == 0 & Vector_X == 0, 0, ifelse(
+      Vector_Y == 0 & Vector_X > 0, 0.5 * pi, ifelse(
+        Vector_Y == 0 & Vector_X < 0, 1.5 * pi, ifelse(
+          Vector_Y > 0 & Vector_X == 0, 0, ifelse(
+            Vector_Y < 0 & Vector_X == 0, pi, ifelse(
+              Vector_Y > 0 & Vector_X > 0, atan(abs(Vector_X/Vector_Y)), ifelse(
+                Vector_Y < 0 & Vector_X > 0, atan(abs(Vector_Y/Vector_X)) + 0.5 * pi, ifelse(
+                  Vector_Y < 0 & Vector_X < 0, atan(abs(Vector_X/Vector_Y))  + pi, ifelse(
+                    Vector_Y > 0 & Vector_X < 0, atan(abs(Vector_Y/Vector_X)) + 1.5 * pi, NA
+                  )
+                )
+              )
+            )
+          )
+        )
+      )
+    )
+  ))
+}
+
+# Latlong_From_XY and Latlong_To_XY
+#
+# Synopsis:
+#   For a position supplied in cartesian representation relative to an
+# origin latitude and longitude position, this procedure calculates
+# the position as a latitude and longitude.
+# 
+#   Stereographic from OGP (International Association og Oil and Gas Producers)
+# using local grid origin and WGS84 Earth.
+# Stereographic relates to a projection from the centre of the sphere onto a 
+# planar surface tangential at the origin.
+# The calculations first calculate the conformal lat/long of the origin and the
+# point, from the supplied geodetic lat/long using WGS84 Earth spheroid parameters.
+# The reverse formula to compute the geodetic coordinates from the grid coordinates
+# involves computing the conformal values, then the isomeric latitude and finally the
+# geodetic values.
+# Details of the maths and reference are included at the bottom of the file.
+#
+# REF: http://ftp.stu.edu.tw/BSD/NetBSD/pkgsrc/distfiles/epsg-6.11/G7-2.pdf
+# (OGP Surveying and Positioning Guidance Note Number 7, Part 2 - August 2006
+#   Coordinate Conversion and Transformations including Formulas, Page 42)
+
+Latlong_From_XY <- function(Position_X, Position_Y, tbl_Adaptation_Data) {
+  
+  # False Easting / Northings and scaling
+  FN <- tbl_Adaptation_Data$Grid_Offset_Y[1]
+  FE <- tbl_Adaptation_Data$Grid_Offset_X[1]
+  K_0 <- 1.0
+  
+  # Geodetic origin latitude / longitude
+  Phi_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lat[1]
+  Lamda_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lon[1]
+  
+  # Semi_Major_Axis (metres)
+  a <- 6378137.0
+  
+  # Semi_Minor_Axis (metres)
+  b <- 6356752.0
+  
+  # Flattening
+  f <- (a - b) / a
+  
+  # Eccentricity
+  e2 <- 2 * f - f^2
+  e <- sqrt(e2)
+  
+  # Radius of curvature in the meridian
+  Rho_0 <- a * (1 - e2) / (1 - e2 * sin(Phi_0)^2)^1.5
+  
+  # Radius of curvature in the prime vertical
+  Nu_0 <- a / (1 - e2 * sin(Phi_0)^2)^0.5
+  
+  # Conformal sphere parameters
+  R <- (Rho_0 * Nu_0)^0.5
+  n <- (1 + (e2 * cos(Phi_0)^4 / (1 - e2)))^0.5
+  
+  # Intermediates for conformal origin
+  S1 <- (1 + sin(Phi_0)) / (1 - sin(Phi_0))
+  S2 <- (1 - e * sin(Phi_0)) / (1 + e * sin(Phi_0))
+  w1 <- (S1 * S2^e)^n
+  c <- (n + sin(Phi_0)) * (1 - (w1 - 1) / (w1 + 1)) / ((n - sin(Phi_0)) * (1 + (w1 - 1) / (w1 + 1)))
+  w2 <- c * w1
+  
+  # Conformal origin latitude / longitude
+  Chi_0 <- asin((w2 - 1) / (w2 + 1))
+  Delta_0 = Lamda_0
+  
+  # Intermediates
+  g <- 2 * R * K_0 * tan(pi / 4 - Chi_0 / 2)
+  h <- 4 * R * K_0 * tan(Chi_0) + g
+  i <- atan((Position_X - FE) / (h + (Position_Y - FN)))
+  j <- atan((Position_X - FE) / (g - (Position_Y - FN))) - i
+  
+  # Conformal point latitude.
+  Chi <- Chi_0 + 2 * atan( ((Position_Y - FN) - (Position_X - FE) * tan(j / 2)) / (2 * R * K_0) )
+  
+  # Conformal point longitude.
+  Delta <- j + (2 * i) + Delta_0
+  
+  # Geodetic longitude.
+  Lamda <- (Delta - Delta_0) / n + Delta_0
+  
+  # Isomeric latitude.
+  Psi <- 0.5 * log( (1 + sin(Chi)) / (c * (1 - sin(Chi))) ) / n
+  
+  # First approximation
+  Phi_1 <- 2 * atan( exp(Psi) ) - pi / 2
+  
+  # Iterate until error in Phi is sufficiently small.
+  # Psi_i is the isometric latutude at Phi_i.	
+  
+  Phi_i <- pi  # An impossible latitude
+  
+  Phi_i_Plus1 <- Phi_1  # To get the loop going
+  
+  Latitude_Accuracy <- (0.0001 / 180.0) * pi  # About 10m
+  
+  # i is effectively 1 first time through.
+  for (k in 1:length(i)) {
+    Count <- 10  # Count down to make sure we escape the loop!
+    while (abs(Phi_i_Plus1[k] - Phi_i) > Latitude_Accuracy & Count >= 0) {
+      Phi_i <- Phi_i_Plus1[k]
+      
+      Psi_i <- log( tan(Phi_i / 2 + pi / 4) * (1 - e * sin(Phi_i)) / (1 + e * sin(Phi_i))^(e / 2) )
+      
+      Phi_i_Plus1[k] <- Phi_i - (Psi_i - Psi[k]) * cos(Phi_i) * (1 - e^2 * sin(Phi_i)^2) / (1 - e^2)
+      
+      Count <- Count - 1
+    }
+  }
+  
+  # Set function output parameters.
+  return(data.table(
+    PositionLatitude = Phi_i_Plus1,
+    PositionLongitude = Lamda
+  ))
+  
+}
+
+Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adaptation_Data) {
+  
+  # Copy inputs for naming convenience.
+  Phi <- PositionLatitude
+  Lamda <- abs(PositionLongitude)
+  
+  # Set up False Easting / Northings and scaling as required.
+  FN <- tbl_Adaptation_Data$Grid_Offset_Y[1]
+  FE <- tbl_Adaptation_Data$Grid_Offset_X[1]
+  K_0 <- 1.0
+  
+  # Set up origin as required (R27L threshold for local coords).
+  # Geodetic origin latitude / longitude.
+  Phi_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lat[1]
+  Lamda_0 <- abs(tbl_Adaptation_Data$Grid_Projection_Origin_Lon[1])
+  
+  # WGS84 Earth spheroid parameters.
+  
+  # Semi_Major_Axis (metres)
+  a <- 6378137.0
+  
+  # Semi_Minor_Axis (metres)
+  b <- 6356752.0
+  
+  # Flattening.
+  f <- (a - b) / a
+  
+  # Eccentricity.
+  e2 <- 2 * f - f^2
+  e <- sqrt(e2)
+  
+  # Radius of curvature in the meridian.
+  Rho_0 <- a * (1 - e2) / (1 - e2 * sin(Phi_0)^2)^1.5
+  
+  # Radius of curvature in the prime vertical.
+  Nu_0 <- a / (1 - e2 * sin(Phi_0)^2)^0.5
+  
+  # Conformal sphere parameters.
+  R <- (Rho_0 * Nu_0)^0.5
+  
+  n <- (1 + (e2 * cos(Phi_0)^4 / (1 - e2)))^0.5
+  
+  # Intermediates for conformal origin.
+  S1 <- (1 + sin(Phi_0)) / (1 - sin(Phi_0))
+  
+  S2 <- (1 - e * sin(Phi_0)) / (1 + e * sin(Phi_0))
+  
+  w1 <- (S1 * S2^e)^n
+  
+  c <- (n + sin(Phi_0)) * (1 - (w1 - 1) / (w1 + 1)) / ((n - sin(Phi_0)) * (1 + (w1 - 1) / (w1 + 1)))
+  
+  w2 <- c * w1
+  
+  # Conformal origin latitude.
+  Chi_0 <- asin((w2 - 1) / (w2 + 1))
+  
+  # Conformal origin longitude.
+  Delta_0 <- Lamda_0
+  
+  # Intermediates for conformal point.
+  Sa <- (1 + sin(Phi)) / (1 - sin(Phi))
+  
+  Sb <- (1 - e * sin(Phi)) / (1 + e * sin(Phi))
+  
+  w <- c * (Sa * Sb^e)^n
+  
+  # Conformal point latitude.
+  Chi <- asin((w - 1) / (w + 1))
+  
+  # Conformal point longitude.
+  Delta <- n * (Lamda - Delta_0) + Delta_0
+  
+  # Intermediates for final grid calcs.
+  B_Cap <- (1 + sin(Chi) * sin(Chi_0) + cos(Chi) * cos(Chi_0) * cos(Delta - Delta_0))
+  
+  # Eastings (X) and Northings (Y)
+  return(data.table(
+    Position_X = FE + 2 * R * K_0 * cos(Chi) * sin(Delta - Delta_0) / B_Cap,
+    Position_Y = FN + 2 * R * K_0 * (sin(Chi) * cos(Chi_0) - cos(Chi) * sin(Chi_0) * cos(Delta - Delta_0)) / B_Cap
+  ))
+  
+}
