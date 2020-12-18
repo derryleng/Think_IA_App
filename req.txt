@@ -2,6 +2,7 @@ shiny
 shinyjs
 shinydashboard
 shinyWidgets
+shinyFiles
 tidyverse
 plotly
 RColorBrewer

@@ -11,15 +11,15 @@
 # Current limitations:
 # Cannot update existing flight plan rows with new information found. (Can only append new flight plan rows)
 
-source("resources.R", local = T)
+source("modules/data_loader/resources.R", local = T)
 
-source("TBS_Log_Loader.R", local = T)
+source("modules/data_loader/TBS_Log_Loader.R", local = T)
 
-source("Asterix_Log_Loader.R", local = T)
+source("modules/data_loader/Asterix_Log_Loader.R", local = T)
 
-source("NavCan_Log_Loader.R", local = T)
+source("modules/data_loader/NavCan_Log_Loader.R", local = T)
 
-source("LVNL_Log_Loader.R", local = T)
+source("modules/data_loader/LVNL_Log_Loader.R", local = T)
 
 read_logs <- function(LogFilePaths, LogFileType, tbl_Adaptation_Data, tbl_Runway, Airfield_Name, dbi_con) {
   t0 <- Sys.time()
