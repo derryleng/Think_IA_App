@@ -10,8 +10,8 @@ db_defaults <- list(
     "Maverick (192.168.1.23)" = "192.168.1.23"
   ),
   database = if (file.exists("temp/db_names.csv")) fread("temp/db_names.csv", header = F)$V1,
-  username = "ruser",
-  password = "Th!nkruser"
+  username = c("ruser", "vbuser"),
+  password = NA
 )
 
 # con <- odbcDriverConnect(connection="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")

@@ -41,11 +41,11 @@ connection_dialogue <- function() {
     ),
     div(
       style = "margin-bottom: -10px",
-      textInput("db_username", "Username", db_defaults$username, width = "100%")
+      selectizeInput("db_username", "Username", db_defaults$username, options = list(create = T), width = "100%")
     ),
     div(
       style = "margin-bottom: -10px",
-      passwordInput("db_password", "Password", db_defaults$password, width = "100%")
+      passwordInput("db_password", "Password", NULL, width = "100%")
     ),
     div(
       style = "margin-bottom: -5px",
