@@ -47,7 +47,7 @@ process_LVNL_Surv <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
   message("[",Sys.time(),"] ", "Retrieved ", nrow(x), " valid rows.")
   
   out <- data.table(
-    Flight_Plan_ID = integer(),
+    Flight_Plan_ID = NA,
     Track_Date = format(as.Date(as.character(x$date), "%Y%m%d"), "%d/%m/%Y"),
     Track_Time = Time_String_To_Seconds(format(as.POSIXct("1970-01-01 00:00:00", tz = "UTC") + as.numeric(x$time), "%H:%M:%S")),
     Callsign = x$CALLSIGN,
@@ -74,8 +74,7 @@ process_LVNL_Surv <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
   message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  fp_matches <- unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)
-  for (j in fp_matches) {
+  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
     out[
       Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &

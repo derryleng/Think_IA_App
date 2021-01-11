@@ -14,7 +14,7 @@ db_defaults <- list(
 )
 
 # con <- odbcDriverConnect(connection="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
-# dbi_con <- dbConnect(odbc::odbc(), .connection_string="Driver={SQL Server};Server={192.168.1.23};Database={App_Test_LVNL_UTMA_Validation};Uid={vbuser};Pwd={Th!nkvbuser};")
+# dbi_con <- dbConnect(odbc::odbc(), .connection_string="Driver={SQL Server};Server={192.168.1.23};Database={App_Test_NavCan_UTMA_Validation_DB2};Uid={vbuser};Pwd={Th!nkvbuser};")
 
 # ----------------------------------------------------------------------- #
 # Sidebar Settings --------------------------------------------------------

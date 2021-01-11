@@ -34,7 +34,7 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
   }
   
   out <- data.table(
-    Flight_Plan_ID = integer(),
+    Flight_Plan_ID = NA,
     Track_Date = x$FLIGHT_EVENT_DATE,
     Track_Time = as.numeric(Time_String_To_Seconds(x$FLIGHT_EVENT_TIME_UTC)),
     Callsign = x$ACID,
@@ -58,8 +58,10 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
     Mode_S_BPS = NA
   )
   
+  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
+  
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp$Flight_Plan_ID)) {
+  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
     out[
       Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
@@ -131,6 +133,8 @@ process_NavCan_FP <- function(LogFilePath, dbi_con) {
     SID = NA
   )
   
+  out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
+  
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
   
   out_undup <- out[!duplicated(out[,.(FP_Date, Callsign)])]
@@ -196,11 +200,11 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
     "STAR"
   )
   
-  x$LUTUTC <- as.POSIXct(x$LUTUTC, "%y-%m-%dT%H:%M:%S", tz = "UTC")
+  x$Timestamp <- as.POSIXct(x$LUTUTC, "%Y-%m-%dT%H:%M:%S", tz = "UTC")
   
   out <- data.table(
-    FP_Date = format(as.Date(x$LUTUTC), "%d/%m/%Y"),
-    FP_Time = as.numeric(Time_String_To_Seconds(gsub("^[0-9\\-]{11} ([0-9]{2}:[0-9]{2}:[0-9]{2})$", "\\1", x$LUTUTC))),
+    FP_Date = format(as.Date(x$Timestamp), "%d/%m/%Y"),
+    FP_Time = Time_String_To_Seconds(format(x$Timestamp, "%H:%M:%S")),
     Callsign = x$CALLSIGN,
     Aircraft_Type = x$TYPE,
     SSR_Code = x$SSRCODE,
@@ -212,6 +216,8 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
     Departure_Runway = NA,
     SID = x$SID
   )
+  
+  out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
   
@@ -316,18 +322,18 @@ process_NavCan_GR <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
     x <- x[
       as.numeric(x$cart_coord_x) >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
         as.numeric(x$cart_coord_x) <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
-        s.numeric(x$cart_coord_y) >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
-        s.numeric(x$cart_coord_y) <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
+        as.numeric(x$cart_coord_y) >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
+        as.numeric(x$cart_coord_y) <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
     ]
     
-    x$timestamp <- as.POSIXct(x$timestamp, "%y-%m-%dT%H:%M:%S", tz = "UTC")
+    x$timestamp <- as.POSIXct(x$timestamp, "%Y-%m-%d %H:%M:%OS", tz = "UTC")
     
   }
   
   out <- data.table(
-    Flight_Plan_ID = integer(),
+    Flight_Plan_ID = NA,
     Track_Date = format(as.Date(x$timestamp), "%d/%m/%Y"),
-    Track_Time = as.numeric(Time_String_To_Seconds(gsub("^[0-9\\-]{11} ([0-9]{2}:[0-9]{2}:[0-9]{2})$", "\\1", x$timestamp))),
+    Track_Time = Time_String_To_Seconds(format(x$timestamp, "%H:%M:%S")),
     Callsign = x$callsign,
     SSR_Code = x$mode_3a,
     X_Pos = as.numeric(x$cart_coord_x),
@@ -349,8 +355,10 @@ process_NavCan_GR <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
     Mode_S_BPS = NA
   )
   
+  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
+  
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp$Flight_Plan_ID)) {
+  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
     out[
       Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
@@ -384,28 +392,39 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
     "wind_variation_end"
   )
   
-  x$create_date <- as.POSIXct(x$create_date, "%y-%m-%dT%H:%M:%S", tz = "UTC")
+  x$timestamp <- as.POSIXct(x$create_date, "%Y-%m-%d %H:%M:%S", tz = "UTC")
   
   out1 <- data.table(
     Airfield = Airfield_Name,
-    Landing_Runway = NA,
-    Anemo_Date = format(as.Date(x$create_date), "%d/%m/%Y"),
-    Anemo_Time = as.numeric(Time_String_To_Seconds(gsub("^[0-9\\-]{11} ([0-9]{2}:[0-9]{2}:[0-9]{2})$", "\\1", x$create_date))),
+    Landing_Runway = "",
+    Anemo_Date = format(as.Date(x$timestamp), "%d/%m/%Y"),
+    Anemo_Time = Time_String_To_Seconds(format(x$timestamp, "%H:%M:%S")),
     Anemo_SPD = as.numeric(x$wind_speed) * KnotsToMetresPerSecond,
     Anemo_HDG = as.numeric(x$wind_direction) * DegreesToRadians,
     Anemo_HW = NA,
     Anemo_CW = NA
   )
   
+  out1 <- out1[
+    !is.na(Airfield) &
+      !is.na(Landing_Runway) &
+      !is.na(Anemo_Date) &
+      !is.na(Anemo_Time) &
+      !is.na(Anemo_SPD) &
+      !is.na(Anemo_HDG)
+  ]
+  
   dbWriteTable(dbi_con, "tbl_Anemometer", out1, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out1), " rows to tbl_Anemometer")
   
   out2 <- data.table(
     Airfield = Airfield_Name,
-    Baro_Date = format(as.Date(x$create_date), "%d/%m/%Y"),
-    Baro_Time = as.numeric(Time_String_To_Seconds(gsub("^[0-9\\-]{11} ([0-9]{2}:[0-9]{2}:[0-9]{2})$", "\\1", x$create_date))),
+    Baro_Date = format(as.Date(x$timestamp), "%d/%m/%Y"),
+    Baro_Time = Time_String_To_Seconds(format(x$timestamp, "%H:%M:%S")),
     Baro_Pressure = as.numeric(x$pressure) * MbarToPa
   )
+  
+  out2 <- out2[!is.na(Airfield) & !is.na(Baro_Date) & !is.na(Baro_Time) & !is.na(Baro_Pressure)]
   
   dbWriteTable(dbi_con, "tbl_Baro", out2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out2), " rows to tbl_Baro")

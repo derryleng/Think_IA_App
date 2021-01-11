@@ -125,7 +125,7 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     "I062/100/X",
     "I062/100/Y",
     "I062/105/Lat",
-    "I062/105/Log",
+    "I062/105/Lon",
     "I062/135/QNH",
     "I062/135/CTL",
     "I062/185/VX",
@@ -186,12 +186,12 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
   }
   
   out <- data.table(
-    Flight_Plan_ID = integer(),
+    Flight_Plan_ID = NA,
     Track_Date = Date_String,
     Track_Time = as.numeric(x$`I062/070/Time`),
     Callsign = x$`I062/390/CSN/CSN`,
     SSR_Code = x$`I062/060/Mode3A`,
-    X_Pos = felse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_X, x$`I062/100/X`),
+    X_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_X, x$`I062/100/X`),
     Y_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_Y, x$`I062/100/Y`),
     Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lat` * DegreesToRadians, x$PositionLatitude),
     Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lon` * DegreesToRadians, x$PositionLongitude),
@@ -210,8 +210,10 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * MbarToPa
   )
   
+  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
+  
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp$Flight_Plan_ID)) {
+  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
     out[
       Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &

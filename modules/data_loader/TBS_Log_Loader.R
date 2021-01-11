@@ -353,20 +353,23 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   logs_9005 <- process_9005(LogFile, tbl_Adaptation_Data, tbl_Runway)
   message("[",Sys.time(),"] ", "Finished processing 9005 entries (", nrow(logs_9005), " found), cross referencing FPIDs...")
   
-  # Flight plan ID cross reference
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp$Flight_Plan_ID)) {
-    logs_9005[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
-        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-        Callsign == fp[Flight_Plan_ID == j]$Callsign &
-        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-    ]$Flight_Plan_ID <- j
+  if (nrow(logs_9005) > 0) {
+    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
+    # Flight plan ID cross reference
+    fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
+    for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
+      logs_9005[
+        Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
+          abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+          Callsign == fp[Flight_Plan_ID == j]$Callsign &
+          grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+      ]$Flight_Plan_ID <- j
+    }
+    
+    message("[",Sys.time(),"] ", "Finished cross referencing FPIDs, saving to tbl_Radar_Track_Point...")
+    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", logs_9005, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Radar_Track_Point.")
   }
-  
-  message("[",Sys.time(),"] ", "Finished cross referencing FPIDs, saving to tbl_Radar_Track_Point...")
-  dbWriteTable(dbi_con, "tbl_Radar_Track_Point", logs_9005, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Radar_Track_Point.")
   
   ### Barometer
   message("[",Sys.time(),"] ", "Begin processing 9043 entries...")
