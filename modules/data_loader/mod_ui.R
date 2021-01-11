@@ -113,7 +113,9 @@ data_loader_ui <- function(id) {
           shinyDirButton(ns("export_config_folder"), label="Select Output Folder", title="Select Config Output Folder"),
           div(style = "width: 5px"),
           actionButton(ns("export_xml"), "Export XML")
-        )
+        ),
+        div(style = "height: 5px"),
+        textOutput(ns("console_output_config"))
       )
       
     )

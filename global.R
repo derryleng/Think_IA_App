@@ -4,20 +4,11 @@ source("packages.R", local = T)
 # Import settings
 source("settings.R", local = T)
 
+# Import resources
+source("resources.R", local = T)
+
 # Import modules
 invisible(lapply(list.files(path = "modules", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T), source))
-
-# ----------------------------------------------------------------------- #
-# General Functions -------------------------------------------------------
-# ----------------------------------------------------------------------- #
-
-# Usage: x %!in% y; this is equivalent to !(x %in% y)
-'%!in%' <- function(x, y) !('%in%'(x, y))
-
-# Evaluate a string (or multiple comma-separated strings) as R code
-evalParse <- function(...) {
-  return(eval(parse(text = paste0(..., collapse = ","))))
-}
 
 # ----------------------------------------------------------------------- #
 # Database Functions ------------------------------------------------------
@@ -53,7 +44,9 @@ connection_dialogue <- function() {
     ),
     div(
       class = "centered",
-      actionButton("db_refresh_list", "Refresh Database List", icon("sync")),
+      modalButton("Cancel"),
+      div(style = "width: 15px"),
+      actionButton("db_refresh_list", "DB List", icon("sync")),
       div(style = "width: 15px"),
       actionButton("db_connect", "Connect", icon("database"))
     ),
@@ -61,7 +54,7 @@ connection_dialogue <- function() {
     uiOutput("db_status"),
     size = "s",
     footer = NULL,
-    easyClose = T
+    easyClose = F
   )
 }
 

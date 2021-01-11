@@ -1,4 +1,12 @@
+# ----------------------------------------------------------------------- #
+# 1. Variables (General) --------------------------------------------------
+# ----------------------------------------------------------------------- #
+
 pi <- 3.1415926535897931
+
+# ----------------------------------------------------------------------- #
+# 2. Variables (Imported) -------------------------------------------------
+# ----------------------------------------------------------------------- #
 
 FeetToMetres <- 0.3048
 NmToMetres <- 1852.0
@@ -6,6 +14,36 @@ DegreesToRadians <- pi / 180.0
 KnotsToMetresPerSecond <- NmToMetres / 3600
 MbarToPa <- 100.0
 FtPerMinToMetresPerSecond <- FeetToMetres / 60
+
+# ----------------------------------------------------------------------- #
+# 3. Functions (General) --------------------------------------------------
+# ----------------------------------------------------------------------- #
+
+# Usage: x %!in% y; this is equivalent to !(x %in% y)
+'%!in%' <- function(x, y) !('%in%'(x, y))
+
+# Evaluate a string (or multiple comma-separated strings) as R code
+evalParse <- function(...) {
+  return(eval(parse(text = paste0(..., collapse = ","))))
+}
+
+read_SQL_File <- function(filepath){
+  # WARNING: R does not support reading UTF-16 (UCS-2 LE BOM) encoded files!
+  con <- file(filepath, "r")
+  sql.string <- ""
+  while (T) {
+    line <- readLines(con, n = 1)
+    if (length(line) == 0) break
+    if (grepl("^--.*$",line)) next
+    sql.string <- paste(sql.string, gsub("\\t", " ", gsub("--.*$", "", line)))
+  }
+  close(con)
+  return(sql.string)
+}
+
+# ----------------------------------------------------------------------- #
+# 4. Functions (Imported) -------------------------------------------------
+# ----------------------------------------------------------------------- #
 
 # Convert time string(s) (hh:mm:ss.sss OR hh:mm.mmm) to seconds after midnight.
 Time_String_To_Seconds <- function(Time_String) {
@@ -16,11 +54,11 @@ Time_String_To_Seconds <- function(Time_String) {
 }
 
 # Convert seconds to days, hours, minutes, seconds
-dhms <- function(t) {
+Time_String_From_Seconds <- function(t) {
   t_days <- t %/% (60*60*24)
   t_hours <- formatC(t %/% (60*60) %% 24, width = 2, format = "d", flag = "0")
   t_minutes <- formatC(t %/% 60 %% 60, width = 2, format = "d", flag = "0")
-  t_seconds <- formatC(t %% 60, width = 2, format = "d", flag = "0")
+  t_seconds <- formatC(t %% 60, width = 2, format = "d", flag = "0") # Add milliseconds! (For CAV)
   if (t_days > 0) {
     return(paste0(t_days, " ", t_hours, ":", t_minutes, ":", t_seconds))
   } else {

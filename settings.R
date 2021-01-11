@@ -10,12 +10,11 @@ db_defaults <- list(
     "Maverick (192.168.1.23)" = "192.168.1.23"
   ),
   database = if (file.exists("temp/db_names.csv")) fread("temp/db_names.csv", header = F)$V1,
-  username = c("ruser", "vbuser"),
-  password = NA
+  username = c("ruser", "vbuser")
 )
 
 # con <- odbcDriverConnect(connection="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
-# dbi_con <- dbConnect(odbc::odbc(), .connection_string="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+# dbi_con <- dbConnect(odbc::odbc(), .connection_string="Driver={SQL Server};Server={192.168.1.23};Database={App_Test_LVNL_UTMA_Validation};Uid={vbuser};Pwd={Th!nkvbuser};")
 
 # ----------------------------------------------------------------------- #
 # Sidebar Settings --------------------------------------------------------

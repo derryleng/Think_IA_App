@@ -131,14 +131,28 @@ process_NavCan_FP <- function(LogFilePath, dbi_con) {
     SID = NA
   )
   
+  message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+  
+  out_undup <- out[!duplicated(out[,.(FP_Date, Callsign)])]
+  out_dup <- out[duplicated(out[,.(FP_Date, Callsign)])]
+  
   # Remove some duplicate flight plans
-  out_pass_1 <- rbindlist(lapply(unique(paste(out$FP_Date, out$Callsign)), function(j) {
-    out_j <- out[paste(FP_Date, Callsign) == j]
-    return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
+  out_dup_proc <- rbindlist(lapply(unique(paste(out_dup$FP_Date, out_dup$Callsign)), function(j) {
+    out_j <- out_dup[paste(FP_Date, Callsign) == j]
+    if (!all(is.na(out_j$FP_Time))) {
+      return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
+    } else {
+      out_j[1]
+    }
   }))
+  
+  out_pass_1 <- rbind(out_undup, out_dup_proc)
   
   # Flight plan check for more duplicates
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
+  
+  if (nrow(fp) > 0) {
+  message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
   out_pass_2 <- rbindlist(lapply(1:nrow(out_pass_1), function(j) {
     fp_j <- fp[
       FP_Date == out_pass_1$FP_Date[j] &
@@ -149,6 +163,13 @@ process_NavCan_FP <- function(LogFilePath, dbi_con) {
       return(out_pass_1[j])
     }
   }), fill = T, use.names = T)
+  rm(fp)
+  } else {
+    out_pass_2 <- out_pass_1
+  }
+  rm(out_pass_1)
+  
+  message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_2), " rows to tbl_Flight_Plan...")
   
   dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_2), " rows to tbl_Flight_Plan")
@@ -192,25 +213,46 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
     SID = x$SID
   )
   
+  message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+  
+  out_undup <- out[!duplicated(out[,.(FP_Date, Callsign)])]
+  out_dup <- out[duplicated(out[,.(FP_Date, Callsign)])]
+  
   # Remove some duplicate flight plans
-  out_pass_1 <- rbindlist(lapply(unique(paste(out$FP_Date, out$Callsign, out$SSR_Code)), function(j) {
-    out_j <- out[paste(FP_Date, Callsign, SSR_Code) == j]
-    return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
+  out_dup_proc <- rbindlist(lapply(unique(paste(out_dup$FP_Date, out_dup$Callsign)), function(j) {
+    out_j <- out_dup[paste(FP_Date, Callsign) == j]
+    if (!all(is.na(out_j$FP_Time))) {
+      return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
+    } else {
+      out_j[1]
+    }
   }))
+  
+  out_pass_1 <- rbind(out_undup, out_dup_proc)
   
   # Flight plan check for more duplicates
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  out_pass_2 <- rbindlist(lapply(1:nrow(out_pass_1), function(j) {
-    fp_j <- fp[
-      FP_Date == out_pass_1$FP_Date[j] &
-        Callsign == out_pass_1$Callsign[j] &
-        SSR_Code == out_pass_1$SSR_Code[j] &
-        Destination == out_pass_1$Destination[j]
-    ]
-    if (nrow(fp_j) == 0) {
-      return(out_pass_1[j])
-    }
-  }), fill = T, use.names = T)
+  
+  if (nrow(fp) > 0) {
+    message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
+    out_pass_2 <- rbindlist(lapply(1:nrow(out_pass_1), function(j) {
+      fp_j <- fp[
+        FP_Date == out_pass_1$FP_Date[j] &
+          Callsign == out_pass_1$Callsign[j] &
+          SSR_Code == out_pass_1$SSR_Code[j] &
+          Destination == out_pass_1$Destination[j]
+      ]
+      if (nrow(fp_j) == 0) {
+        return(out_pass_1[j])
+      }
+    }), fill = T, use.names = T)
+    rm(fp)
+  } else {
+    out_pass_2 <- out_pass_1
+  }
+  rm(out_pass_1)
+  
+  message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_2), " rows to tbl_Flight_Plan...")
   
   dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_2), " rows to tbl_Flight_Plan")

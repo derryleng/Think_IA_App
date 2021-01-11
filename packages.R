@@ -4,7 +4,7 @@ load_packages <- function(req_file, silent = F) {
   if (length(req) > 0) {
     missing_packages <- req[!(req %in% installed.packages()[,"Package"])]
     if (length(missing_packages) > 0) {
-      update.packages(repos = "https://cloud.r-project.org", ask = F)
+      # update.packages(repos = "https://cloud.r-project.org", ask = F)
       install.packages(missing_packages, repos = "https://cloud.r-project.org", dependencies = T, clean = T)
     }
   }
