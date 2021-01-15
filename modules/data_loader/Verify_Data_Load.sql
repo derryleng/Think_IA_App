@@ -1,3 +1,5 @@
+-- Script in SMSS/ADS targeting relevant database
+
 -- Flight Plan
 SELECT TOP (10) * FROM tbl_Flight_Plan ORDER BY Flight_Plan_ID DESC
 SELECT COUNT(*) AS tbl_Flight_Plan_Rows FROM tbl_Flight_Plan

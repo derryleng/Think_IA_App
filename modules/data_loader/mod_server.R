@@ -146,7 +146,7 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       message("[",Sys.time(),"] ", "Clearing existing configuration data...")
       dbSendQuery(dbi_con, read_SQL_File("modules/data_loader/usp_DL_Clear_Config_Tables.sql"))
       Sys.sleep(2)
-      import_configs(config_files(), dbi_con)
+      import_Config(config_files(), dbi_con, input$load_legacy_wake, input$load_DW_volumes)
     },
     message = function(m) {
       shinyjs::html(id = "console_output_config", html = paste0(m$message, "<br>"), add = TRUE)

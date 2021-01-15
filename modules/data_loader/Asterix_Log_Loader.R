@@ -47,8 +47,8 @@ process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
   
   x <- x[as.numeric(Mode_C_ft) <= 10000 & !grepl("^7777$", Mode_A) & !grepl("^7000$", Mode_A)]
   
-  x$Derived_X_nm <- as.numeric(x$Derived_X_nm) * NmToMetres
-  x$Derived_Y_nm <- as.numeric(x$Derived_Y_nm) * NmToMetres
+  x$Derived_X_nm <- as.numeric(x$Derived_X_nm) * fnc_GI_Nm_To_M()
+  x$Derived_Y_nm <- as.numeric(x$Derived_Y_nm) * fnc_GI_Nm_To_M()
   
   x <- x[
     Derived_X_nm >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
@@ -59,7 +59,7 @@ process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
   
   if (nrow(x) > 0) {
     
-    x <- cbind(x, Latlong_From_XY(as.numeric(x$Derived_X_nm) * NmToMetres, as.numeric(x$Derived_Y_nm) * NmToMetres, tbl_Adaptation_Data))
+    x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$Derived_X_nm) * fnc_GI_Nm_To_M(), as.numeric(x$Derived_Y_nm) * fnc_GI_Nm_To_M(), tbl_Adaptation_Data))
     
     x[Magnetic_Heading_deg < 0]$Magnetic_Heading_deg <- as.numeric(x[Magnetic_Heading_deg < 0]$Magnetic_Heading_deg) + 360
     x[True_Track_Angle_deg < 0]$True_Track_Angle_deg <- as.numeric(x[True_Track_Angle_deg < 0]$True_Track_Angle_deg) + 360
@@ -76,19 +76,19 @@ process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Y_Pos = x$Derived_Y_nm,
     Lat = x$PositionLatitude,
     Lon = x$PositionLongitude,
-    Mode_C = as.numeric(x$Mode_C_ft) * FeetToMetres,
-    Track_SPD = as.numeric(x$Calc_Groundspeed_kt) * KnotsToMetresPerSecond,
-    Track_HDG = as.numeric(x$Calc_Heading_deg) * DegreesToRadians,
+    Mode_C = as.numeric(x$Mode_C_ft) * fnc_GI_Ft_To_M(),
+    Track_SPD = as.numeric(x$Calc_Groundspeed_kt) * fnc_GI_Kts_To_M_Per_Sec(),
+    Track_HDG = as.numeric(x$Calc_Heading_deg) * fnc_GI_Degs_To_Rads(),
     Track_Number = as.integer(x$Track_Number),
     Mode_S_Address = x$Mode_S_Address,
-    Mode_S_GSPD = as.numeric(x$Ground_Speed_kt) * KnotsToMetresPerSecond,
-    Mode_S_IAS = as.numeric(x$Indicated_Airspeed_kt) * KnotsToMetresPerSecond,
-    Mode_S_HDG = as.numeric(x$Magnetic_Heading_deg) * DegreesToRadians,
-    Mode_S_TAS = as.numeric(x$True_Airspeed_kt) * KnotsToMetresPerSecond,
-    Mode_S_Track_HDG = as.numeric(x$True_Track_Angle_deg) * DegreesToRadians,
-    Mode_S_Track_HDG_Rate = as.numeric(x$Track_Angle_Rate_degps) * DegreesToRadians,
-    Mode_S_Roll_Angle = as.numeric(x$Roll_Angle_deg) * DegreesToRadians,
-    Mode_S_BPS = as.numeric(x$Barometric_Pressure_Setting_mbar) * MbarToPa
+    Mode_S_GSPD = as.numeric(x$Ground_Speed_kt) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_IAS = as.numeric(x$Indicated_Airspeed_kt) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_HDG = as.numeric(x$Magnetic_Heading_deg) * fnc_GI_Degs_To_Rads(),
+    Mode_S_TAS = as.numeric(x$True_Airspeed_kt) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_Track_HDG = as.numeric(x$True_Track_Angle_deg) * fnc_GI_Degs_To_Rads(),
+    Mode_S_Track_HDG_Rate = as.numeric(x$Track_Angle_Rate_degps) * fnc_GI_Degs_To_Rads(),
+    Mode_S_Roll_Angle = as.numeric(x$Roll_Angle_deg) * fnc_GI_Degs_To_Rads(),
+    Mode_S_BPS = as.numeric(x$Barometric_Pressure_Setting_mbar) * fnc_GI_Mbar_To_Pa()
   )
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
@@ -169,9 +169,9 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
   if (nrow(x) > 0) {
     
     if (tbl_Adaptation_Data$Use_Local_Coords) {
-      x <- cbind(x, Latlong_To_XY(as.numeric(x$`I062/105/Lat`) * DegreesToRadians, as.numeric(x$`I062/105/Lon`) * DegreesToRadians, tbl_Adaptation_Data))
+      x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
     } else {
-      x <- cbind(x, Latlong_From_XY(as.numeric(x$`I062/100/X`), as.numeric(x$`I062/100/Y`), tbl_Adaptation_Data))
+      x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I062/100/X`), as.numeric(x$`I062/100/Y`), tbl_Adaptation_Data))
     }
     
     x$`I062/380/GSP/GSP` <- ifelse(as.numeric(x$`I062/295/GSP/GSP`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/GSP/GSP`)
@@ -193,21 +193,21 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     SSR_Code = x$`I062/060/Mode3A`,
     X_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_X, x$`I062/100/X`),
     Y_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_Y, x$`I062/100/Y`),
-    Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lat` * DegreesToRadians, x$PositionLatitude),
-    Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lon` * DegreesToRadians, x$PositionLongitude),
-    Mode_C = as.numeric(x$`I062/135/CTL`) * 100 * FeetToMetres,
+    Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lat` * fnc_GI_Degs_To_Rads(), x$PositionLatitude),
+    Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lon` * fnc_GI_Degs_To_Rads(), x$PositionLongitude),
+    Mode_C = as.numeric(x$`I062/135/CTL`) * 100 * fnc_GI_Ft_To_M(),
     Track_SPD = sqrt(as.numeric(x$`I062/185/VX`)^2 + as.numeric(x$`I062/185/VY`)^2),
-    Track_HDG = To_Vector_Angle(as.numeric(x$`I062/185/VX`), as.numeric(x$`I062/185/VY`)),
+    Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I062/185/VX`), as.numeric(x$`I062/185/VY`)),
     Track_Number = as.integer(x$`I062/040/TrackNum`),
     Mode_S_Address = x$`I062/380/ADR/ADR`,
-    Mode_S_GSPD = as.numeric(x$`I062/380/GSP/GSP`) * KnotsToMetresPerSecond,
-    Mode_S_IAS = as.numeric(x$`I062/380/IAR/IAR`) * KnotsToMetresPerSecond,
-    Mode_S_HDG = as.numeric(x$`I062/380/MHG/MHG`) * DegreesToRadians,
-    Mode_S_TAS = as.numeric(x$`I062/380/TAS/TAS`) * KnotsToMetresPerSecond,
-    Mode_S_Track_HDG = as.numeric(x$`I062/380/TAN/TAN`) * DegreesToRadians,
-    Mode_S_Track_HDG_Rate = as.numeric(x$`I062/380/TAR/RateOfTurn`) * DegreesToRadians,
-    Mode_S_Roll_Angle = as.numeric(x$`I062/380/RAN/RAN`) * DegreesToRadians,
-    Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * MbarToPa
+    Mode_S_GSPD = as.numeric(x$`I062/380/GSP/GSP`) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_IAS = as.numeric(x$`I062/380/IAR/IAR`) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_HDG = as.numeric(x$`I062/380/MHG/MHG`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_TAS = as.numeric(x$`I062/380/TAS/TAS`) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_Track_HDG = as.numeric(x$`I062/380/TAN/TAN`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_Track_HDG_Rate = as.numeric(x$`I062/380/TAR/RateOfTurn`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_Roll_Angle = as.numeric(x$`I062/380/RAN/RAN`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * fnc_GI_Mbar_To_Pa()
   )
   
   message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
@@ -303,9 +303,9 @@ process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
   if (nrow(x) > 0) {
     
     if (tbl_Adaptation_Data$Use_Local_Coords) {
-      x <- cbind(x, Latlong_To_XY(as.numeric(x$`I020/041/Lat`) * DegreesToRadians, as.numeric(x$`I020/041/Lon`) * DegreesToRadians, tbl_Adaptation_Data))
+      x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I020/041/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I020/041/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
     } else {
-      x <- cbind(x, Latlong_From_XY(as.numeric(x$`I020/042/X`), as.numeric(x$`I020/042/Y`), tbl_Adaptation_Data))
+      x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I020/042/X`), as.numeric(x$`I020/042/Y`), tbl_Adaptation_Data))
     }
     
     x[`I020/250/Bds6_0/Mgh` < 0]$`I020/250/Bds6_0/Mgh` <- as.numeric(x[`I020/250/Bds6_0/Mgh` < 0]$`I020/250/Bds6_0/Mgh`) + 360
@@ -329,21 +329,21 @@ process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     SSR_Code = x$`I020/070/Mode3A`,
     X_Pos = felse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_X, x$`I020/042/X`),
     Y_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_Y, x$`I020/042/Y`),
-    Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I020/041/Lat` * DegreesToRadians, x$PositionLatitude),
-    Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I020/041/Lon` * DegreesToRadians, x$PositionLongitude),
-    Mode_C = as.numeric(x$`I020/090/MFL`) * 100 * FeetToMetres,
+    Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I020/041/Lat` * fnc_GI_Degs_To_Rads(), x$PositionLatitude),
+    Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I020/041/Lon` * fnc_GI_Degs_To_Rads(), x$PositionLongitude),
+    Mode_C = as.numeric(x$`I020/090/MFL`) * 100 * fnc_GI_Ft_To_M(),
     Track_SPD = sqrt(as.numeric(x$`I020/202/VX`)^2 + as.numeric(x$`I020/202/VY`)^2),
-    Track_HDG = To_Vector_Angle(as.numeric(x$`I020/202/VX`), as.numeric(x$`I020/202/VY`)),
+    Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I020/202/VX`), as.numeric(x$`I020/202/VY`)),
     Track_Number = as.integer(x$`I020/161/TrkNum`),
     Mode_S_Address = x$`I020/220/ADR`,
-    Mode_S_GSPD = as.numeric(x$`I020/250/Bds5_0/Gsp`) * KnotsToMetresPerSecond,
-    Mode_S_IAS = as.numeric(x$`I020/250/Bds6_0/Ias`) * KnotsToMetresPerSecond,
-    Mode_S_HDG = as.numeric(x$`I020/250/Bds6_0/Mgh`) * DegreesToRadians,
-    Mode_S_TAS = as.numeric(x$`I020/250/Bds5_0/Tas`) * KnotsToMetresPerSecond,
-    Mode_S_Track_HDG = as.numeric(x$`I020/250/Bds5_0/Tan`) * DegreesToRadians,
-    Mode_S_Track_HDG_Rate = as.numeric(x$`I020/250/Bds5_0/TanRate`) * DegreesToRadians,
-    Mode_S_Roll_Angle = as.numeric(x$`I020/250/Bds5_0/Ran`) * DegreesToRadians,
-    Mode_S_BPS = (as.numeric(x$`I020/250/Bds4_0/Bps`) + 800) * MbarToPa
+    Mode_S_GSPD = as.numeric(x$`I020/250/Bds5_0/Gsp`) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_IAS = as.numeric(x$`I020/250/Bds6_0/Ias`) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_HDG = as.numeric(x$`I020/250/Bds6_0/Mgh`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_TAS = as.numeric(x$`I020/250/Bds5_0/Tas`) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_Track_HDG = as.numeric(x$`I020/250/Bds5_0/Tan`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_Track_HDG_Rate = as.numeric(x$`I020/250/Bds5_0/TanRate`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_Roll_Angle = as.numeric(x$`I020/250/Bds5_0/Ran`) * fnc_GI_Degs_To_Rads(),
+    Mode_S_BPS = (as.numeric(x$`I020/250/Bds4_0/Bps`) + 800) * fnc_GI_Mbar_To_Pa()
   )
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))

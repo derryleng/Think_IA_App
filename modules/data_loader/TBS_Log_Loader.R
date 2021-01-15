@@ -143,7 +143,7 @@ process_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
   
   if (nrow(x) > 0) {
     
-    x <- cbind(x, Latlong_From_XY(as.numeric(x$Rept_Sys_X), as.numeric(x$Rept_Sys_Y), tbl_Adaptation_Data))
+    x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$Rept_Sys_X), as.numeric(x$Rept_Sys_Y), tbl_Adaptation_Data))
     
     x$Ground_Speed <- ifelse(grepl("^-32767.*$", x$Ground_Speed) | as.numeric(x$Ground_Speed_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Ground_Speed)
     x$Indicated_Air_Speed <- ifelse(is.na(x$Indicated_Air_Speed) | grepl("^65535.*$", x$Indicated_Air_Speed) | as.numeric(x$Indicated_ASP_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Indicated_Air_Speed)
@@ -165,19 +165,19 @@ process_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
     Y_Pos = as.numeric(x$Rept_Sys_Y),
     Lat = as.numeric(x$PositionLatitude),
     Lon = as.numeric(x$PositionLongitude),
-    Mode_C = as.numeric(x$Alt) * FeetToMetres,
+    Mode_C = as.numeric(x$Alt) * fnc_GI_Ft_To_M(),
     Track_SPD = sqrt(as.numeric(x$XDot)^2 + as.numeric(x$YDot)^2),
-    Track_HDG = To_Vector_Angle(as.numeric(x$XDot), as.numeric(x$YDot)),
+    Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$XDot), as.numeric(x$YDot)),
     Track_Number = as.integer(x$Track_ID),
     Mode_S_Address = as.character(x$Target_Address),
-    Mode_S_GSPD = as.numeric(x$Ground_Speed) * NmToMetres,
-    Mode_S_IAS = as.numeric(x$Indicated_Air_Speed) * KnotsToMetresPerSecond,
-    Mode_S_HDG = as.numeric(x$Magnetic_Heading) * DegreesToRadians,
-    Mode_S_TAS = as.numeric(x$True_Air_Speed) * KnotsToMetresPerSecond,
-    Mode_S_Track_HDG = as.numeric(x$Track_Angle) * DegreesToRadians,
+    Mode_S_GSPD = as.numeric(x$Ground_Speed) * fnc_GI_Nm_To_M(),
+    Mode_S_IAS = as.numeric(x$Indicated_Air_Speed) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_HDG = as.numeric(x$Magnetic_Heading) * fnc_GI_Degs_To_Rads(),
+    Mode_S_TAS = as.numeric(x$True_Air_Speed) * fnc_GI_Kts_To_M_Per_Sec(),
+    Mode_S_Track_HDG = as.numeric(x$Track_Angle) * fnc_GI_Degs_To_Rads(),
     Mode_S_Track_HDG_Rate = numeric(),
-    Mode_S_Roll_Angle = as.numeric(x$Roll_Angle) * DegreesToRadians,
-    Mode_S_BPS = as.numeric(x$Barometric_Pressure) * MbarToPa
+    Mode_S_Roll_Angle = as.numeric(x$Roll_Angle) * fnc_GI_Degs_To_Rads(),
+    Mode_S_BPS = as.numeric(x$Barometric_Pressure) * fnc_GI_Mbar_To_Pa()
   ))
   
 }
@@ -227,7 +227,7 @@ process_9043 <- function(LogFile, Airfield_Name) {
     Airfield = Airfield_Name,
     Baro_Date = format(as.Date(x$Date), "%d/%m/%y"),
     Baro_Time = as.numeric(x$Derived_QNH_Time) / 1000,
-    Baro_Pressure = as.numeric(x$Derived_QNH) * MbarToPa
+    Baro_Pressure = as.numeric(x$Derived_QNH) * fnc_GI_Mbar_To_Pa()
   ))
   
 }
@@ -306,9 +306,9 @@ process_9081 <- function(LogFile, Airfield_Name) {
     Landing_Runway = paste0("R", logs$Runway),
     Anemo_Date = format(as.Date(logs$Date), "%d/%m/%y"),
     Anemo_Time = as.numeric(logs$Time),
-    Anemo_SPD = as.numeric(logs$Runway_Surface_Wind_SPD) * KnotsToMetresPerSecond,
-    Anemo_HDG = as.numeric(logs$Runway_Surface_Wind_HDG) * DegreesToRadians,
-    Anemo_HW = as.numeric(logs$Runway_Surface_Headwind) * KnotsToMetresPerSecond,
+    Anemo_SPD = as.numeric(logs$Runway_Surface_Wind_SPD) * fnc_GI_Kts_To_M_Per_Sec(),
+    Anemo_HDG = as.numeric(logs$Runway_Surface_Wind_HDG) * fnc_GI_Degs_To_Rads(),
+    Anemo_HW = as.numeric(logs$Runway_Surface_Headwind) * fnc_GI_Kts_To_M_Per_Sec(),
     Anemo_CW = NA
   ))
   

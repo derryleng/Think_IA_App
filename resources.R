@@ -1,22 +1,7 @@
-# ----------------------------------------------------------------------- #
-# 1. Variables (General) --------------------------------------------------
-# ----------------------------------------------------------------------- #
-
 pi <- 3.1415926535897931
 
 # ----------------------------------------------------------------------- #
-# 2. Variables (Imported) -------------------------------------------------
-# ----------------------------------------------------------------------- #
-
-FeetToMetres <- 0.3048
-NmToMetres <- 1852.0
-DegreesToRadians <- pi / 180.0
-KnotsToMetresPerSecond <- NmToMetres / 3600
-MbarToPa <- 100.0
-FtPerMinToMetresPerSecond <- FeetToMetres / 60
-
-# ----------------------------------------------------------------------- #
-# 3. Functions (General) --------------------------------------------------
+# Functions (General) -----------------------------------------------------
 # ----------------------------------------------------------------------- #
 
 # Usage: x %!in% y; this is equivalent to !(x %in% y)
@@ -41,8 +26,42 @@ read_SQL_File <- function(filepath){
   return(sql.string)
 }
 
+runway_Opposite_End <- function(rwy) {
+  # Example
+  # Input: c("36", "07", "21R", "R18L", "R27C", "R32R")
+  # Output: c("18", "25", "03L", "R36R", "R09C", "R14L")
+  rwy_split <- strsplit(gsub("^([R]{0,1})([0-9]{2})([A-Z]{0,1})$", "\\2 \\3 \\1", rwy), " ")
+  new_rwy <- rep("", length(rwy_split))
+  for (i in 1:length(rwy_split)) {
+    
+    rwy_hdg <- as.numeric(rwy_split[[i]][1])
+    new_rwy[i] <- if (rwy_hdg > 18) {
+      as.character(rwy_hdg - 18)
+    } else {
+      as.character(rwy_hdg + 18)
+    }
+    if (nchar(new_rwy[i]) == 1) {
+      new_rwy[i] <- paste0("0", new_rwy[i])
+    }
+    
+    if (rwy_split[[i]][2] == "L") {
+      new_rwy[i] <- paste0(new_rwy[i], "R")
+    } else if (rwy_split[[i]][2] == "R") {
+      new_rwy[i] <- paste0(new_rwy[i], "L")
+    } else {
+      new_rwy[i] <- paste0(new_rwy[i], rwy_split[[i]][2])
+    }
+    
+    if (!is.na(rwy_split[[i]][3])) {
+      new_rwy[i] <- paste0("R", new_rwy[i])
+    }
+    
+  }
+  return(new_rwy)
+}
+
 # ----------------------------------------------------------------------- #
-# 4. Functions (Imported) -------------------------------------------------
+# Functions (Imported) ----------------------------------------------------
 # ----------------------------------------------------------------------- #
 
 # Convert time string(s) (hh:mm:ss.sss OR hh:mm.mmm) to seconds after midnight.
@@ -66,8 +85,43 @@ Time_String_From_Seconds <- function(t) {
   }
 }
 
+fnc_GI_Nm_To_M <- function() return(1852)
+
+fnc_GI_Kts_To_M_Per_Sec <- function() return(fnc_GI_Nm_To_M() / 3600)
+
+fnc_GI_Ft_To_M <- function() return(0.3048)
+
+fnc_GI_Ft_Per_Min_To_M_Per_Sec <- function() return(fnc_GI_Ft_To_M() / 60)
+
+fnc_GI_Mbar_To_Pa <- function() return(100)
+
+fnc_GI_Degs_To_Rads <- function() return(pi / 180)
+
+fnc_GI_Latlong_String_To_Radians <- function(x) {
+  # x is a string/vector of strings in either format below:
+  if (all(nchar(x) == 10)) { # latitude format: ddmmss.hhN
+    return(
+      (as.numeric(substr(x, 1, 2)) +
+         as.numeric(substr(x, 3, 4)) / 60 +
+         as.numeric(substr(x, 5, 6)) / 3600 +
+         as.numeric(substr(x, 8, 9)) / 360000) *
+        ifelse(substr(x, 10, 10) == "S", -1, 1) / pi * 180
+    )
+  } else if (all(nchar(x) == 11)) { # longitude format: dddmmss.hhW
+    return(
+      (as.numeric(substr(x, 1, 3)) +
+         as.numeric(substr(x, 4, 5)) / 60 +
+         as.numeric(substr(x, 6, 7)) / 3600 +
+         as.numeric(substr(x, 9, 10)) / 360000) *
+        ifelse(substr(x, 11, 11) == "W", -1, 1) / pi * 180
+    )
+  } else { # Error
+    return(0)
+  }
+}
+
 # Calculate the angle component of vector from its X/Y cartesian representation.
-To_Vector_Angle <- function(Vector_X, Vector_Y) {
+fnc_GI_To_Vector_Angle <- function(Vector_X, Vector_Y) {
   return(ifelse(
     Vector_Y == 0 & Vector_X == 0, 0, ifelse(
       Vector_Y == 0 & Vector_X > 0, 0.5 * pi, ifelse(
@@ -89,7 +143,19 @@ To_Vector_Angle <- function(Vector_X, Vector_Y) {
   ))
 }
 
-# Latlong_From_XY and Latlong_To_XY
+fnc_GI_To_Vector_X <- function(Vector_Amplitude, Vector_Angle) {
+  return(Vector_Amplitude * sin(Vector_Angle))
+}
+
+fnc_GI_To_Vector_Y <- function(Vector_Amplitude, Vector_Angle) {
+  return(Vector_Amplitude * cos(Vector_Angle))
+}
+
+# ----------------------------------------------------------------------- #
+# Procedures (Imported) ---------------------------------------------------
+# ----------------------------------------------------------------------- #
+
+# usp_GI_Latlong_From_XY and usp_GI_Latlong_To_XY
 #
 # Synopsis:
 #   For a position supplied in cartesian representation relative to an
@@ -111,7 +177,7 @@ To_Vector_Angle <- function(Vector_X, Vector_Y) {
 # (OGP Surveying and Positioning Guidance Note Number 7, Part 2 - August 2006
 #   Coordinate Conversion and Transformations including Formulas, Page 42)
 
-Latlong_From_XY <- function(Position_X, Position_Y, tbl_Adaptation_Data) {
+usp_GI_Latlong_From_XY <- function(Position_X, Position_Y, tbl_Adaptation_Data) {
   
   # False Easting / Northings and scaling
   FN <- tbl_Adaptation_Data$Grid_Offset_Y[1]
@@ -208,7 +274,7 @@ Latlong_From_XY <- function(Position_X, Position_Y, tbl_Adaptation_Data) {
   
 }
 
-Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adaptation_Data) {
+usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adaptation_Data) {
   
   # Copy inputs for naming convenience.
   Phi <- PositionLatitude

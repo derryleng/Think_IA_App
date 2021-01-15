@@ -22,7 +22,7 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
   
   if (nrow(x) > 0) {
     
-    x <- cbind(x, Latlong_To_XY(as.numeric(x$FLIGHT_FIX_LATITUDE_DEG) * DegreesToRadians, as.numeric(x$FLIGHT_FIX_LONGITUDE_DEG) * DegreesToRadians, tbl_Adaptation_Data))
+    x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$FLIGHT_FIX_LATITUDE_DEG) * fnc_GI_Degs_To_Rads(), as.numeric(x$FLIGHT_FIX_LONGITUDE_DEG) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
     
     x <- x[
       Position_X >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
@@ -41,11 +41,11 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
     SSR_Code = x$SSR_CODE_REPORTED,
     X_Pos = x$Position_X,
     Y_Pos = x$Position_Y,
-    Lat = as.numeric(x$FLIGHT_FIX_LATITUDE_DEG) * DegreesToRadians,
-    Lon = as.numeric(x$FLIGHT_FIX_LONGITUDE_DEG) * DegreesToRadians,
-    Mode_C = as.numeric(x$FLIGHT_FIX_ALTITUDE_ESTAB_FT) * FeetToMetres, 
-    Track_SPD = as.numeric(x$FLIGHT_FIX_SPEED_KN) * KnotsToMetresPerSecond,
-    Track_HDG = as.numeric(x$FLIGHT_FIX_HEADING_DEG) * DegreesToRadians,
+    Lat = as.numeric(x$FLIGHT_FIX_LATITUDE_DEG) * fnc_GI_Degs_To_Rads(),
+    Lon = as.numeric(x$FLIGHT_FIX_LONGITUDE_DEG) * fnc_GI_Degs_To_Rads(),
+    Mode_C = as.numeric(x$FLIGHT_FIX_ALTITUDE_ESTAB_FT) * fnc_GI_Ft_To_M(), 
+    Track_SPD = as.numeric(x$FLIGHT_FIX_SPEED_KN) * fnc_GI_Kts_To_M_Per_Sec(),
+    Track_HDG = as.numeric(x$FLIGHT_FIX_HEADING_DEG) * fnc_GI_Degs_To_Rads(),
     Track_Number = NA,
     Mode_S_Address = 0,
     Mode_S_GSPD = NA,
@@ -317,7 +317,7 @@ process_NavCan_GR <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
   
   if (nrow(x) > 0) {
     
-    x <- cbind(x, Latlong_From_XY(as.numeric(x$cart_coord_x), as.numeric(x$cart_coord_y), tbl_Adaptation_Data))
+    x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$cart_coord_x), as.numeric(x$cart_coord_y), tbl_Adaptation_Data))
     
     x <- x[
       as.numeric(x$cart_coord_x) >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
@@ -340,7 +340,7 @@ process_NavCan_GR <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
     Y_Pos = as.numeric(x$cart_coord_y),
     Lat = x$PositionLatitude,
     Lon = x$PositionLongitude,
-    Mode_C = as.numeric(x$mode_c_altitude) * FeetToMetres, 
+    Mode_C = as.numeric(x$mode_c_altitude) * fnc_GI_Ft_To_M(), 
     Track_SPD = NA,
     Track_HDG = NA,
     Track_Number = NA,
@@ -399,8 +399,8 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
     Landing_Runway = "",
     Anemo_Date = format(as.Date(x$timestamp), "%d/%m/%Y"),
     Anemo_Time = Time_String_To_Seconds(format(x$timestamp, "%H:%M:%S")),
-    Anemo_SPD = as.numeric(x$wind_speed) * KnotsToMetresPerSecond,
-    Anemo_HDG = as.numeric(x$wind_direction) * DegreesToRadians,
+    Anemo_SPD = as.numeric(x$wind_speed) * fnc_GI_Kts_To_M_Per_Sec(),
+    Anemo_HDG = as.numeric(x$wind_direction) * fnc_GI_Degs_To_Rads(),
     Anemo_HW = NA,
     Anemo_CW = NA
   )
@@ -421,7 +421,7 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
     Airfield = Airfield_Name,
     Baro_Date = format(as.Date(x$timestamp), "%d/%m/%Y"),
     Baro_Time = Time_String_To_Seconds(format(x$timestamp, "%H:%M:%S")),
-    Baro_Pressure = as.numeric(x$pressure) * MbarToPa
+    Baro_Pressure = as.numeric(x$pressure) * fnc_GI_Mbar_To_Pa()
   )
   
   out2 <- out2[!is.na(Airfield) & !is.na(Baro_Date) & !is.na(Baro_Time) & !is.na(Baro_Pressure)]

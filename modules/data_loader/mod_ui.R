@@ -100,11 +100,13 @@ data_loader_ui <- function(id) {
       tabPanel(
         title = "Adaptation Management",
         h4("Import CSV Configs to Database"),
+        checkboxInput(ns("load_legacy_wake"), "Load Legacy Wake (Populate_tbl_Aircraft_Type_To_Wake_Legacy)", width = "100%"),
+        checkboxInput(ns("load_DW_volumes"), "Load DW Volumes (05_Populate_Airspace_Volumes_*_DW)", width = "100%"),
         div(
           style = "display: flex; justify-content: flex-start;",
           shinyDirButton(ns("load_config_folder"), label="Browse Config Folder", title="Select Config Folder"),
           div(style = "width: 5px"),
-          actionButton(ns("load_config"), "Load Config"),
+          actionButton(ns("load_config"), "Load Config")
         ),
         hr(),
         h4("Export Database Configs to XML Format"),
