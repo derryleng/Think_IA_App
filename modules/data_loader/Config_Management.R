@@ -495,37 +495,37 @@ Populate_tbl_Reference_TBS_Table_Time <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Reference_TBS_Table_Time")
 }
 
-import_Config <- function(cd, dbi_con, load_legacy_wake = T, load_DW_volumes = T) {
-  message("[",Sys.time(),"] ", "Import config from: ", cd)
-  Populate_tbl_Adaptation(list.files(cd, ".*Populate_tbl_Adaptation_?D?a?t?a?.csv", full.names = T), dbi_con)
-  Populate_tbl_Airfield(list.files(cd, ".*Populate_tbl_Airfield.csv", full.names = T), dbi_con)
-  Populate_tbl_Runway(list.files(cd, ".*Populate_tbl_Runway.csv", full.names = T), dbi_con)
-  Populate_tbl_Mode_S_Wind_Localiser_Capture(list.files(cd, ".*Populate_tbl_Mode_S_Wind_Localiser_Capture.csv", full.names = T), dbi_con)
-  Populate_Airspace_Volumes(list.files(cd, ".*Populate_Airspace_Volumes.csv", full.names = T), dbi_con)
+import_Config <- function(configDir, dbi_con, load_legacy_wake = T, load_DW_volumes = T) {
+  message("[",Sys.time(),"] ", "Import config from: ", configDir)
+  Populate_tbl_Adaptation(list.files(configDir, ".*Populate_tbl_Adaptation_?D?a?t?a?.csv", full.names = T), dbi_con)
+  Populate_tbl_Airfield(list.files(configDir, ".*Populate_tbl_Airfield.csv", full.names = T), dbi_con)
+  Populate_tbl_Runway(list.files(configDir, ".*Populate_tbl_Runway.csv", full.names = T), dbi_con)
+  Populate_tbl_Mode_S_Wind_Localiser_Capture(list.files(configDir, ".*Populate_tbl_Mode_S_Wind_Localiser_Capture.csv", full.names = T), dbi_con)
+  Populate_Airspace_Volumes(list.files(configDir, ".*Populate_Airspace_Volumes.csv", full.names = T), dbi_con)
   if (load_DW_volumes) {
-    Populate_Airspace_Volumes_DW(list.files(cd, ".*Route_Fix.csv", full.names = T), list.files(cd, ".*Route_Point.csv", full.names = T), dbi_con)
+    Populate_Airspace_Volumes_DW(list.files(configDir, ".*Route_Fix.csv", full.names = T), list.files(configDir, ".*Route_Point.csv", full.names = T), dbi_con)
   }
-  Populate_tbl_Mode_S_Wind_Adaptation(list.files(cd, ".*Populate_tbl_Mode_S_Wind_Adaptation.csv", full.names = T), dbi_con)
-  Populate_tbl_Path_Leg(list.files(cd, ".*Populate_tbl_Path_Leg.csv", full.names = T), dbi_con)
-  Populate_tbl_Path_Leg_Transition(list.files(cd, ".*Populate_tbl_Path_Leg_Transition.csv", full.names = T), dbi_con)
-  Populate_tbl_ORD_Runway_Adaptation(list.files(cd, ".*Populate_tbl_ORD_Runway_Adaptation.csv", full.names = T), dbi_con)
-  Populate_tbl_Aircraft_Type_To_Wake(list.files(cd, "Populate_tbl_Aircraft_Type_To_Wake.*.csv", full.names = T) %>% .[. != file.path(cd, "Populate_tbl_Aircraft_Type_To_Wake_Legacy.csv")], dbi_con)
+  Populate_tbl_Mode_S_Wind_Adaptation(list.files(configDir, ".*Populate_tbl_Mode_S_Wind_Adaptation.csv", full.names = T), dbi_con)
+  Populate_tbl_Path_Leg(list.files(configDir, ".*Populate_tbl_Path_Leg.csv", full.names = T), dbi_con)
+  Populate_tbl_Path_Leg_Transition(list.files(configDir, ".*Populate_tbl_Path_Leg_Transition.csv", full.names = T), dbi_con)
+  Populate_tbl_ORD_Runway_Adaptation(list.files(configDir, ".*Populate_tbl_ORD_Runway_Adaptation.csv", full.names = T), dbi_con)
+  Populate_tbl_Aircraft_Type_To_Wake(list.files(configDir, "Populate_tbl_Aircraft_Type_To_Wake.*.csv", full.names = T) %>% .[. != file.path(configDir, "Populate_tbl_Aircraft_Type_To_Wake_Legacy.csv")], dbi_con)
   if (load_legacy_wake) {
-    Populate_tbl_Aircraft_Type_To_Wake_Legacy(file.path(cd, "Populate_tbl_Aircraft_Type_To_Wake_Legacy.csv"), dbi_con)
+    Populate_tbl_Aircraft_Type_To_Wake_Legacy(file.path(configDir, "Populate_tbl_Aircraft_Type_To_Wake_Legacy.csv"), dbi_con)
   }
-  Populate_tbl_Assumed_Recat_Separation_IAS(list.files(cd, "Populate_tbl_Assumed_Recat_Separation_IAS.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Assumed_ROT_Spacing_IAS(list.files(cd, "Populate_tbl_Assumed_ROT_Spacing_IAS.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Assumed_TBS_Table_IAS(list.files(cd, "Populate_tbl_Assumed_TBS_Table_IAS.*.csv", full.names = T), dbi_con)
-  Populate_tbl_DBS_Wake_Turbulence(file.path(cd, "Populate_tbl_DBS_Wake_Turbulence.csv"), dbi_con)
-  Populate_tbl_Mode_S_Wind_Default_Wind_Effect_Segments(file.path(cd, "Populate_tbl_Mode_S_Wind_Default_Wind_Effect_Segments.csv"), dbi_con)
-  Populate_tbl_ORD_Aircraft_Adaptation(list.files(cd, "Populate_tbl_ORD_Aircraft_Adaptation.*.csv", full.names = T), dbi_con)
-  Populate_tbl_ORD_DBS_Adaptation(list.files(cd, "Populate_tbl_ORD_DBS_Adaptation.*.csv", full.names = T), dbi_con)
-  Populate_tbl_ORD_Wake_Adaptation(list.files(cd, "Populate_tbl_ORD_Wake_Adaptation.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Reference_Recat_Separation_Dist(list.files(cd, "Populate_tbl_Reference_Recat_Separation_Dist.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Reference_Recat_Separation_Time(list.files(cd, "Populate_tbl_Reference_Recat_Separation_Time.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Reference_ROT_Spacing_Dist(list.files(cd, "Populate_tbl_Reference_ROT_Spacing_Dist.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Reference_ROT_Spacing_Time(list.files(cd, "Populate_tbl_Reference_ROT_Spacing_Time.*.csv", full.names = T), dbi_con)
-  Populate_tbl_Reference_TBS_Table_Time(list.files(cd, "Populate_tbl_Reference_TBS_Table_Time.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Assumed_Recat_Separation_IAS(list.files(configDir, "Populate_tbl_Assumed_Recat_Separation_IAS.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Assumed_ROT_Spacing_IAS(list.files(configDir, "Populate_tbl_Assumed_ROT_Spacing_IAS.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Assumed_TBS_Table_IAS(list.files(configDir, "Populate_tbl_Assumed_TBS_Table_IAS.*.csv", full.names = T), dbi_con)
+  Populate_tbl_DBS_Wake_Turbulence(file.path(configDir, "Populate_tbl_DBS_Wake_Turbulence.csv"), dbi_con)
+  Populate_tbl_Mode_S_Wind_Default_Wind_Effect_Segments(file.path(configDir, "Populate_tbl_Mode_S_Wind_Default_Wind_Effect_Segments.csv"), dbi_con)
+  Populate_tbl_ORD_Aircraft_Adaptation(list.files(configDir, "Populate_tbl_ORD_Aircraft_Adaptation.*.csv", full.names = T), dbi_con)
+  Populate_tbl_ORD_DBS_Adaptation(list.files(configDir, "Populate_tbl_ORD_DBS_Adaptation.*.csv", full.names = T), dbi_con)
+  Populate_tbl_ORD_Wake_Adaptation(list.files(configDir, "Populate_tbl_ORD_Wake_Adaptation.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Reference_Recat_Separation_Dist(list.files(configDir, "Populate_tbl_Reference_Recat_Separation_Dist.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Reference_Recat_Separation_Time(list.files(configDir, "Populate_tbl_Reference_Recat_Separation_Time.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Reference_ROT_Spacing_Dist(list.files(configDir, "Populate_tbl_Reference_ROT_Spacing_Dist.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Reference_ROT_Spacing_Time(list.files(configDir, "Populate_tbl_Reference_ROT_Spacing_Time.*.csv", full.names = T), dbi_con)
+  Populate_tbl_Reference_TBS_Table_Time(list.files(configDir, "Populate_tbl_Reference_TBS_Table_Time.*.csv", full.names = T), dbi_con)
   dbSendQuery(dbi_con, read_SQL_File("modules/data_loader/Update_tbl_Path_Leg_Transition.sql"))
   Sys.sleep(1)
   message("[",Sys.time(),"] ", "Finished importing new configuration data.")
@@ -535,69 +535,609 @@ import_Config <- function(cd, dbi_con, load_legacy_wake = T, load_DW_volumes = T
 # Export Config Functions -------------------------------------------------
 # ----------------------------------------------------------------------- #
 
-# list(
-#   ord_runways = list(
-#     ord_runway = list(
-#       runway_name = "R06",
-#       max_dtt = "30.00",
-#       four_hundred_ft_aal = "1.04",
-#       six_hundred_ft_aal = "1.67",
-#       thousand_ft_gate = "2.93",
-#       gust_adjustment = "0.0"
-#     ),
-#     ord_runway = list(
-#       runway_name = "R09",
-#       max_dtt = "30.00",
-#       four_hundred_ft_aal = "1.05",
-#       six_hundred_ft_aal = "1.68",
-#       thousand_ft_gate = "2.94",
-#       gust_adjustment = "0.0"
-#     )
-#     # more ord_runway = list(...) here
-#   ),
-#   ord_wake_categories = list(
-#     ord_wake_category = list(
-#       # ...
-#     ),
-#     ord_wake_category = list(
-#       # ...
-#     ),
-#     ord_wake_category = list(
-#       # ...
-#     )
-#   ),
-#   ord_aircraft_types = list(
-#     ord_aircraft_type = list(
-#       # ...
-#     ),
-#     ord_aircraft_type = list(
-#       # ...
-#     ),
-#     ord_aircraft_type = list(
-#       # ...
-#     )
-#   ),
-#   ord_tbs_table_values = list(
-#     ord_tbs_table_value = list(
-#       #
-#     ),
-#     ord_tbs_table_value = list(
-#       #
-#     ),
-#     ord_tbs_table_value = list(
-#       #
-#     )
-#   ),
-#   wind_effect_segment_entries = list(
-#     wind_effect_segment_entry = list(
-#       #
-#     ),
-#     wind_effect_segment_entry = list(
-#       #
-#     ),
-#     wind_effect_segment_entry = list(
-#       #
-#     )
-#   )
-# )
+xml_airspace <- function(OutputPath, dbi_con) {
+  
+  # Redundant dependencies:
+  # usp_GI_Get_Airfield_Data
+  # usp_GI_Get_Adaptation_Data
+  # usp_GI_Get_Area_Of_Interest_Data
+  # usp_GI_Get_Runway_Group_Data
+  # usp_GI_Get_Runway_Data
+  # usp_GI_Get_Path_Leg_Data
+  # usp_GI_Get_Volume_Data
+  # usp_GI_Get_Polygon_Data
+  # usp_GI_Get_Path_leg_Transition_Data
+  
+  tbl_Airfield <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield"))
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  tbl_Path_Leg <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Path_Leg"))
+  tbl_Volume <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Volume"))
+  tbl_Polygon <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Polygon"))
+  tbl_Path_Leg_Transition <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Path_Leg_Transition"))
+  
+  area_of_interest <- data.table(
+    Min_X = mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range[1],
+    Max_X = mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range[1],
+    Min_Y = mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range[1],
+    Max_Y = mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range[1]
+  )
+  area_of_interest_min <- usp_GI_Latlong_From_XY(area_of_interest$Min_X, area_of_interest$Min_Y, tbl_Adaptation_Data)
+  area_of_interest_max <- usp_GI_Latlong_From_XY(area_of_interest$Max_X, area_of_interest$Max_Y, tbl_Adaptation_Data)
+  area_of_interest_list <- list(
+    min_lat = area_of_interest_min$PositionLatitude / fnc_GI_Degs_To_Rads(),
+    max_lat = area_of_interest_max$PositionLatitude / fnc_GI_Degs_To_Rads(),
+    min_long = area_of_interest_min$PositionLongitude / fnc_GI_Degs_To_Rads(),
+    max_long = area_of_interest_max$PositionLongitude / fnc_GI_Degs_To_Rads(),
+    min_alt = round(tbl_Adaptation_Data$Load_Min_Alt / fnc_GI_Ft_To_M(), 0)[1],
+    max_alt = round(tbl_Adaptation_Data$Load_Max_Alt / fnc_GI_Ft_To_M(), 0)[1]
+  )
+  
+  runways <- tbl_Runway[Airfield_Name == tbl_Airfield$Airfield_Name[1] | is.na(Airfield_Name)][order(Runway_Name)]
+  runways$Threshold_X_Pos <- as.integer(runways$Threshold_X_Pos)
+  runways$Threshold_Y_Pos <- as.integer(runways$Threshold_Y_Pos)
+  runways$Heading <- runways$Heading / fnc_GI_Degs_To_Rads()
+  runways$Elevation <- runways$Elevation / fnc_GI_Ft_To_M()
+  runways$Glideslope_Angle <- runways$Glideslope_Angle / fnc_GI_Degs_To_Rads()
+  runways$Threshold_Lat <- runways$Threshold_Lat / fnc_GI_Degs_To_Rads()
+  runways$Threshold_Lon <- runways$Threshold_Lon / fnc_GI_Degs_To_Rads()
+  
+  runway_groups <- sort(unique(runways$Runway_Group))
+  runway_groups_list <- lapply(runway_groups, function(i) list(runway_group_name = i))
+  names(runway_groups_list) <- rep("runway_group", length(runway_groups_list))
+  
+  runways_list <- lapply(1:nrow(runways), function(i) {
+    runways_i <- runways[i]
+    return(list(
+      runway_name = runways_i$Runway_Name,
+      threshold_position = list(
+        local_x = runways_i$Threshold_X_Pos,
+        local_y = runways_i$Threshold_Y_Pos
+      ),
+      runway_heading = runways_i$Heading,
+      runway_group = runways_i$Runway_Group,
+      elevation = runways_i$Elevation,
+      touchdown_offset = runways_i$Touchdown_Offset,
+      glideslope_angle = runways_i$Glideslope_Angle
+    ))
+  })
+  names(runways_list) <- rep("runway", length(runways_list))
+  
+  path_legs <- tbl_Path_Leg[Airfield_Name == tbl_Airfield$Airfield_Name[1] | is.na(Airfield_Name)][order(Path_Leg_Name)]
+  path_legs_list <- lapply(1:nrow(path_legs), function(i){
+    path_legs_i <- path_legs[i]
+    list_i <- list(path_leg_name = path_legs_i$Path_Leg_Name)
+    if (!is.na(path_legs_i$Landing_Runway)) {
+      list_i <- c(list_i, landing_runway = path_legs_i$Landing_Runway)
+    }
+    if (!is.na(path_legs_i$Path_Leg_Type)) {
+      list_i <- c(list_i, path_leg_type = toupper(path_legs_i$Path_Leg_Type))
+    }
+    return(list_i)
+  })
+  names(path_legs_list) <- rep("path_leg", length(path_legs_list))
+  
+  volumes <- tbl_Volume[Runway_Name %in% runways$Runway_Name]
+  volumes$Min_Altitude <- volumes$Min_Altitude / fnc_GI_Ft_To_M()
+  volumes$Max_Altitude <- volumes$Max_Altitude / fnc_GI_Ft_To_M()
+  
+  polygons <- tbl_Polygon[Volume_Name %in% volumes$Volume_Name]
+  polygons$Latitude <- as.numeric(polygons$Latitude) / fnc_GI_Degs_To_Rads()
+  polygons$Longitude <- as.numeric(polygons$Longitude) / fnc_GI_Degs_To_Rads()
+  
+  volumes_list <- lapply(1:nrow(volumes), function(i) {
+    volumes_i <- volumes[i]
+    polygons_i <- polygons[Volume_Name == volumes_i$Volume_Name][order(Point_Sequence)]
+    if (nrow(polygons_i) < 4) stop("Minimum 4 volume_points required!")
+    list_i <- list(
+      volume_name = volumes_i$Volume_Name,
+      min_altitude = volumes_i$Min_Altitude,
+      max_altitude = volumes_i$Max_Altitude
+    )
+    for (j in 1:nrow(polygons_i)) {
+      list_i <- append(list_i, list(volume_point = list(local_x = polygons_i$Point_X[j], local_y = polygons_i$Point_Y[j])))
+    }
+    return(list_i)
+  })
+  names(volumes_list) <- rep("volume", length(volumes_list))
+  
+  path_leg_transitions <- tbl_Path_Leg_Transition[Airfield_Name == tbl_Airfield$Airfield_Name[1] | is.na(Airfield_Name)][order(PLT_ID)]
+  path_leg_transitions_list <- lapply(1:nrow(path_leg_transitions), function(i) {
+    path_leg_transitions_i <- path_leg_transitions[i]
+    list_i <- list()
+    if (!is.na(path_leg_transitions_i$Current_Path_Leg)) {
+      list_i <- c(list_i, current_path_leg = path_leg_transitions_i$Current_Path_Leg)
+    }
+    if (!is.na(path_leg_transitions_i$New_Path_Leg)) {
+      list_i <- c(list_i, new_path_leg = path_leg_transitions_i$New_Path_Leg)
+    }
+    if (!is.na(path_leg_transitions_i$Min_Heading) & !is.na(path_leg_transitions_i$Max_Heading)) {
+      list_i <- append(list_i, list(heading = list(from = path_leg_transitions_i$Min_Heading, to = path_leg_transitions_i$Max_Heading)))
+    }
+    if (!is.na(path_leg_transitions_i$Volume_Name)) {
+      list_i <- c(list_i, volume_name = path_leg_transitions_i$Volume_Name)
+    }
+    if (!is.na(path_leg_transitions_i$Runway_Name)) {
+      list_i <- c(list_i, landing_runway = path_leg_transitions_i$Runway_Name)
+    } else if (!is.na(path_leg_transitions_i$Difference_Runway)) {
+      list_i <- c(list_i, difference_runway = path_leg_transitions_i$Difference_Runway)
+    }
+    if (!is.na(path_leg_transitions_i$Min_Sustained_RoCD)) {
+      list_i <- c(list_i, min_sustained_rocd = path_leg_transitions_i$Min_Sustained_RoCD)
+    }
+    return(list_i)
+  })
+  names(path_leg_transitions_list) <- rep("path_leg_transition", length(path_leg_transitions_list))
+  
+  out_list <- list(
+    `ia:airspace` = list(
+      plt_diff_mode_s_to_radar_track = tbl_Adaptation_Data$Diff_Mode_S_To_Radar_Track_Max[1] / fnc_GI_Degs_To_Rads(),
+      plt_max_mode_s_data_age = tbl_Adaptation_Data$Max_Mode_S_Data_Age[1],
+      area_of_interest = area_of_interest_list,
+      runway_groups = runway_groups_list,
+      runways = runways_list,
+      path_legs = path_legs_list,
+      volumes = volumes_list,
+      path_leg_transitions = path_leg_transitions_list
+    ),
+    `ia:airspace.attr` = list(
+      `xmlns:xsi` = "http://www.w3.org/2001/XMLSchema-instance",
+      `xsi:noNamespaceSchemaLocation` = "AirspaceAdaptation.xsd"
+    )
+  )
+  
+  out <- data.table(c(
+    "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>",
+    "<!-- _________________________________________________________________ -->",
+    "<!-- NATS IA Tool TDPS Adaptation File from Think                      -->",
+    "<!-- Format: AirspaceAdaptation.xsd                                    -->",
+    "<!-- _________________________________________________________________ -->",
+    List_To_XML(out_list)
+  ))
+  
+  fwrite(out, file = OutputPath, col.names = F, quote = F)
+  
+}
 
+xml_gwcs <- function(OutputPath, dbi_con) {
+  
+  # Redundant dependencies:
+  # usp_GI_Get_Mode_S_Wind_Adaptation_Data
+  # usp_GI_Get_Adaptation_Data
+  # usp_GI_Get_Mode_S_Wind_Localiser_Capture_Data
+  
+  tbl_Mode_S_Wind_Adaptation <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Mode_S_Wind_Adaptation"))
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+    
+  gwcs_localiser_captures <- as.data.table(dbGetQuery(dbi_con, "
+    SELECT * FROM tbl_Mode_S_Wind_Localiser_Capture
+    WHERE Runway_Name IN (
+      SELECT Runway_Name FROM tbl_Runway
+      WHERE Airfield_Name IS NULL
+      OR Airfield_Name = (SELECT Airfield_Name FROM tbl_Airfield)
+    )                              
+    ORDER BY Runway_Name
+  "))
+  gwcs_localiser_captures_list <- lapply(1:nrow(gwcs_localiser_captures), function(i) {
+    gwcs_localiser_captures_i <- gwcs_localiser_captures[i]
+    return(list(
+      runway_name = gwcs_localiser_captures_i$Runway_Name,
+      volume_name = gwcs_localiser_captures_i$Volume_Name,
+      heading = list(from = gwcs_localiser_captures_i$Min_Heading, to = gwcs_localiser_captures_i$Max_Heading)
+    ))
+  })
+  names(gwcs_localiser_captures_list) <- rep("gwcs_localiser_capture", length(gwcs_localiser_captures_list))
+  
+  out_list <- list(
+    `ia:gwcs` = list(
+      mode_s_gspd_min = tbl_Mode_S_Wind_Adaptation$Mode_S_GSPD_Min / fnc_GI_Kts_To_M_Per_Sec(),
+      mode_s_gspd_max = tbl_Mode_S_Wind_Adaptation$Mode_S_GSPD_Max / fnc_GI_Kts_To_M_Per_Sec(),
+      mode_s_ias_min = tbl_Mode_S_Wind_Adaptation$Mode_S_IAS_Min / fnc_GI_Kts_To_M_Per_Sec(),
+      mode_s_ias_max = tbl_Mode_S_Wind_Adaptation$Mode_S_IAS_Max / fnc_GI_Kts_To_M_Per_Sec(),
+      mode_s_tas_min = tbl_Mode_S_Wind_Adaptation$Mode_S_TAS_Min / fnc_GI_Kts_To_M_Per_Sec(),
+      mode_s_tas_max = tbl_Mode_S_Wind_Adaptation$Mode_S_TAS_Max / fnc_GI_Kts_To_M_Per_Sec(),
+      mode_s_roll_angle_max = tbl_Mode_S_Wind_Adaptation$Mode_S_Roll_Angle_Max / fnc_GI_Degs_To_Rads(),
+      extrapolation_seg_min = tbl_Mode_S_Wind_Adaptation$Extrapolation_Seg_Min / fnc_GI_Nm_To_M(),
+      range_to_threshold_min = tbl_Mode_S_Wind_Adaptation$DME_Seg_Min / fnc_GI_Nm_To_M(),
+      range_to_threshold_max = tbl_Mode_S_Wind_Adaptation$DME_Seg_Max / fnc_GI_Nm_To_M(),
+      wind_segment_size = tbl_Mode_S_Wind_Adaptation$DME_Seg_Size / fnc_GI_Nm_To_M(),
+      altitude_tolerance = tbl_Mode_S_Wind_Adaptation$Altitude_Tolerance / fnc_GI_Ft_To_M(),
+      seg_duration_min = tbl_Mode_S_Wind_Adaptation$Seg_Duration_Min,
+      seg_duration_max = tbl_Mode_S_Wind_Adaptation$Seg_Duration_Max,
+      seg_diff_track_to_runway_hdg_max = tbl_Mode_S_Wind_Adaptation$Diff_Track_To_Runway_HDG_Max / fnc_GI_Degs_To_Rads(),
+      seg_diff_hdg_to_runway_hdg_max = tbl_Mode_S_Wind_Adaptation$Diff_HDG_To_Runway_HDG_Max / fnc_GI_Degs_To_Rads(),
+      seg_diff_mode_s_to_radar_track_max = tbl_Mode_S_Wind_Adaptation$Diff_Mode_S_To_Radar_Track_Max / fnc_GI_Degs_To_Rads(),
+      seg_diff_mode_s_to_radar_gspd_max = tbl_Mode_S_Wind_Adaptation$Diff_Mode_S_To_Radar_GSPD_Max / fnc_GI_Kts_To_M_Per_Sec(),
+      seg_max_wind_effect = tbl_Mode_S_Wind_Adaptation$Max_Wind_Effect / fnc_GI_Kts_To_M_Per_Sec(),
+      seg_max_wind_spd = tbl_Mode_S_Wind_Adaptation$Max_Wind_SPD / fnc_GI_Kts_To_M_Per_Sec(),
+      forecast_valid_seg_min = tbl_Mode_S_Wind_Adaptation$Forecast_Seg_Min / fnc_GI_Nm_To_M(),
+      forecast_valid_seg_max = tbl_Mode_S_Wind_Adaptation$Forecast_Seg_Max / fnc_GI_Nm_To_M(),
+      max_segment_extrapolation = tbl_Mode_S_Wind_Adaptation$Max_Seg_Extrapolation,
+      separation_forecast_seg_max = tbl_Mode_S_Wind_Adaptation$Separation_Forecast_Seg_Max / fnc_GI_Nm_To_M(),
+      forecast_stale_time = tbl_Mode_S_Wind_Adaptation$Forecast_Stale_Time,
+      bps_min = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Min / fnc_GI_Mbar_To_Pa(),
+      bps_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Max / fnc_GI_Mbar_To_Pa(),
+      bps_rtt_min = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_DME_Min / fnc_GI_Nm_To_M(),
+      bps_rtt_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_DME_Max / fnc_GI_Nm_To_M(),
+      max_rtt_null_derived_qnh = tbl_Mode_S_Wind_Adaptation$Max_RTT_Null_Derived_QNH / fnc_GI_Nm_To_M(),
+      bps_delta_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Delta_Max / fnc_GI_Mbar_To_Pa(),
+      bps_delta_check = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Delta_Check / fnc_GI_Mbar_To_Pa(),
+      bps_stale_time = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Stale_Time,
+      bps_altitude_diff_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Alt_Diff_Max / fnc_GI_Ft_To_M(),
+      gwcs_bps_stable_confirm = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Stability_Count,
+      gwcs_bps_update_max_time = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Update_Max_Time,
+      mag_var = tbl_Adaptation_Data$Mag_Var / fnc_GI_Degs_To_Rads(),
+      max_mode_s_data_age = tbl_Adaptation_Data$Max_Mode_S_Data_Age,
+      gwcs_localiser_captures = gwcs_localiser_captures_list
+    ),
+    `ia:gwcs.attr` = list(
+      `xmlns:xsi` = "http://www.w3.org/2001/XMLSchema-instance",
+      `xsi:noNamespaceSchemaLocation` = "GwcsAdaptation.xsd"
+    )
+  )
+  
+  out <- data.table(c(
+    "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>",
+    "<!-- _________________________________________________________________ -->",
+    "<!-- NATS IA Tool TDPS Adaptation File from Think                      -->",
+    "<!-- Format: GwcsAdaptation.xsd                                        -->",
+    "<!-- _________________________________________________________________ -->",
+    List_To_XML(out_list)
+  ))
+  
+  fwrite(out, file = OutputPath, col.names = F, quote = F)
+  
+}
+
+xml_ord <- function(OutputPath, dbi_con) {
+  
+  # Redundant dependencies:
+  # usp_GI_Get_ORD_Runway_Adaptation_Data
+  # usp_GI_Get_ORD_Wake_Adaptation_Data
+  # usp_GI_Get_ORD_Aircraft_Adaptation_Data
+  # usp_GI_Get_ORD_DBS_Adaptation_Data
+  # usp_GI_Get_Mode_S_Wind_Default_Wind_Effect_Segments
+  
+  tbl_ORD_Wake_Adaptation <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_ORD_Wake_Adaptation ORDER BY Wake_Cat"))
+  tbl_ORD_Aircraft_Adaptation <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_ORD_Aircraft_Adaptation ORDER BY Aircraft_Type"))
+  tbl_ORD_DBS_Adaptation <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_ORD_DBS_Adaptation ORDER BY DBS_Distance"))
+  tbl_Mode_S_Wind_Default_Wind_Effect_Segments <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Mode_S_Wind_Default_Wind_Effect_Segments ORDER BY Wind_Segment_Start"))
+  
+  ord_runways <- as.data.table(dbGetQuery(dbi_con, "
+    SELECT * FROM tbl_ORD_Runway_Adaptation
+    WHERE Runway_Name IN (
+      SELECT Runway_Name FROM tbl_Runway
+      WHERE Airfield_Name IS NULL
+      OR Airfield_Name = (SELECT Airfield_Name FROM tbl_Airfield)
+    )                              
+    ORDER BY Runway_Name
+  "))
+  ord_runways_list <- lapply(1:nrow(ord_runways), function(i) {
+    ord_runways_i <- ord_runways[i]
+    return(list(
+      runway_name = ord_runways_i$Runway_Name,
+      max_dtt = ord_runways_i$Max_DTT / fnc_GI_Nm_To_M(),
+      four_hundred_ft_aal = ord_runways_i$Four_Hundred_Ft_AAL / fnc_GI_Nm_To_M(),
+      six_hundred_ft_aal = ord_runways_i$Six_Hundred_Ft_AAL / fnc_GI_Nm_To_M(),
+      thousand_ft_gate = ord_runways_i$Thousand_Ft_Gate / fnc_GI_Nm_To_M(),
+      gust_adjustment = ord_runways_i$Gust_Adjustment / fnc_GI_Kts_To_M_Per_Sec()
+    ))
+  })
+  names(ord_runways_list) <- rep("ord_runway", length(ord_runways_list))
+  
+  ord_wake_categories_list <- lapply(1:nrow(tbl_ORD_Wake_Adaptation), function(i) {
+    tbl_ORD_Wake_Adaptation_i <- tbl_ORD_Wake_Adaptation[i]
+    return(list(
+      wake_category = tbl_ORD_Wake_Adaptation_i$Wake_Cat,
+      compression_commencement_threshold = tbl_ORD_Wake_Adaptation_i$Compression_Commencement_Threshold,
+      lead = list(
+        landing_stabilisation_speed_type = tbl_ORD_Wake_Adaptation_i$Landing_Stabilisation_Speed_Type_Lead,
+        minimum_safe_landing_speed = tbl_ORD_Wake_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        apply_gusting = tbl_ORD_Wake_Adaptation_i$Apply_Gusting_Lead,
+        local_stabilisation_threshold = tbl_ORD_Wake_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(),
+        initial_deceleration = tbl_ORD_Wake_Adaptation_i$Initial_deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        end_initial_decel = tbl_ORD_Wake_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(),
+        initial_procedural_speed = tbl_ORD_Wake_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        steady_procedural_speed = tbl_ORD_Wake_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        final_deceleration = tbl_ORD_Wake_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec()
+      ),
+      foll = list(
+        landing_stabilisation_speed_type = tbl_ORD_Wake_Adaptation_i$Landing_Stabilisation_Speed_Type_Follower,
+        minimum_safe_landing_speed = tbl_ORD_Wake_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        apply_gusting = tbl_ORD_Wake_Adaptation_i$Apply_Gusting_Follower,
+        local_stabilisation_threshold = tbl_ORD_Wake_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(),
+        initial_deceleration = tbl_ORD_Wake_Adaptation_i$Initial_deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        end_initial_decel = tbl_ORD_Wake_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(),
+        initial_procedural_speed = tbl_ORD_Wake_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        steady_procedural_speed = tbl_ORD_Wake_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        final_deceleration = tbl_ORD_Wake_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec()
+      )
+    ))
+  })
+  names(ord_wake_categories_list) <- rep("ord_wake_category", length(ord_wake_categories_list))
+  
+  ord_aircraft_types_list <- lapply(1:nrow(tbl_ORD_Aircraft_Adaptation), function(i) {
+    tbl_ORD_Aircraft_Adaptation_i <- tbl_ORD_Aircraft_Adaptation[i]
+    return(list(
+      ac_type = tbl_ORD_Aircraft_Adaptation_i$Aircraft_Type,
+      compression_commencement_threshold = tbl_ORD_Aircraft_Adaptation_i$Compression_Commencement_Threshold,
+      lead = list(
+        landing_stabilisation_speed_type = tbl_ORD_Aircraft_Adaptation_i$Landing_Stabilisation_Speed_Type_Lead,
+        minimum_safe_landing_speed = tbl_ORD_Aircraft_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        apply_gusting = tbl_ORD_Aircraft_Adaptation_i$Apply_Gusting_Lead,
+        local_stabilisation_threshold = tbl_ORD_Aircraft_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(),
+        initial_deceleration = tbl_ORD_Aircraft_Adaptation_i$Initial_deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        end_initial_decel = tbl_ORD_Aircraft_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(),
+        initial_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        steady_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        final_deceleration = tbl_ORD_Aircraft_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec()
+      ),
+      foll = list(
+        landing_stabilisation_speed_type = tbl_ORD_Aircraft_Adaptation_i$Landing_Stabilisation_Speed_Type_Follower,
+        minimum_safe_landing_speed = tbl_ORD_Aircraft_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        apply_gusting = tbl_ORD_Aircraft_Adaptation_i$Apply_Gusting_Follower,
+        local_stabilisation_threshold = tbl_ORD_Aircraft_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(),
+        initial_deceleration = tbl_ORD_Aircraft_Adaptation_i$Initial_deceleration_follower / fnc_GI_Kts_To_M_Per_Sec(),
+        end_initial_decel = tbl_ORD_Aircraft_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(),
+        initial_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        steady_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        final_deceleration = tbl_ORD_Aircraft_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec()
+      )
+    ))
+  })
+  names(ord_aircraft_types_list) <- rep("ord_aircraft_type", length(ord_aircraft_types_list))
+  
+  ord_tbs_table_values_list <- lapply(1:nrow(tbl_ORD_DBS_Adaptation), function(i) {
+    tbl_ORD_DBS_Adaptation_i <- tbl_ORD_DBS_Adaptation[i]
+    return(list(
+      dbs_distance_value = tbl_ORD_DBS_Adaptation_i$DBS_Distance,
+      compression_commencement_threshold = tbl_ORD_DBS_Adaptation_i$Compression_Commencement_Threshold,
+      lead = list(
+        landing_stabilisation_speed_type = tbl_ORD_DBS_Adaptation_i$Landing_Stabilisation_Speed_Type_Lead,
+        minimum_safe_landing_speed = tbl_ORD_DBS_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        apply_gusting = tbl_ORD_DBS_Adaptation_i$Apply_Gusting_Lead,
+        local_stabilisation_threshold = tbl_ORD_DBS_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(),
+        initial_deceleration = tbl_ORD_DBS_Adaptation_i$Initial_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        end_initial_decel = tbl_ORD_DBS_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(),
+        initial_procedural_speed = tbl_ORD_DBS_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        steady_procedural_speed = tbl_ORD_DBS_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        final_deceleration = tbl_ORD_DBS_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec()
+      ),
+      foll = list(
+        landing_stabilisation_speed_type = tbl_ORD_DBS_Adaptation_i$Landing_Stabilisation_Speed_Type_Follower,
+        minimum_safe_landing_speed = tbl_ORD_DBS_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        apply_gusting = tbl_ORD_DBS_Adaptation_i$Apply_Gusting_Follower,
+        local_stabilisation_threshold = tbl_ORD_DBS_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(),
+        initial_deceleration = tbl_ORD_DBS_Adaptation_i$Initial_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        end_initial_decel = tbl_ORD_DBS_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(),
+        initial_procedural_speed = tbl_ORD_DBS_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        steady_procedural_speed = tbl_ORD_DBS_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        final_deceleration = tbl_ORD_DBS_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec()
+      )
+    ))
+  })
+  names(ord_tbs_table_values_list) <- rep("ord_tbs_table_value", length(ord_tbs_table_values_list))
+  
+  wind_effect_segment_entries_list <- lapply(1:nrow(tbl_Mode_S_Wind_Default_Wind_Effect_Segments), function(i) {
+    tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i <- tbl_Mode_S_Wind_Default_Wind_Effect_Segments[i]
+    return(list(
+      wind_segment_start = tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Segment_Start / fnc_GI_Nm_To_M(),
+      wind_segment_end = tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Segment_End / fnc_GI_Nm_To_M(),
+      wind_effect = tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Effect / fnc_GI_Kts_To_M_Per_Sec()
+    ))
+  })
+  names(wind_effect_segment_entries_list) <- rep("wind_effect_segment_entry", length(wind_effect_segment_entries_list))
+  
+  out_list <- list(
+    `ia:ord` = list(
+      ord_runways = ord_runways_list,
+      ord_wake_categories = ord_wake_categories_list,
+      ord_aircraft_types = ord_aircraft_types_list,
+      ord_tbs_table_values = ord_tbs_table_values_list,
+      wind_effect_segment_entries = wind_effect_segment_entries_list
+    ),
+    `ia:ord.attr` = list(
+      `xmlns:xsi` = "http://www.w3.org/2001/XMLSchema-instance",
+      `xsi:noNamespaceSchemaLocation` = "OrdAdaptation.xsd"
+    )
+  )
+  
+  out <- data.table(c(
+    "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>",
+    "<!-- _________________________________________________________________ -->",
+    "<!-- NATS IA Tool TDPS Adaptation File from Think                      -->",
+    "<!-- Format: OrdAdaptation.xsd                                         -->",
+    "<!-- _________________________________________________________________ -->",
+    List_To_XML(out_list)
+  ))
+  
+  fwrite(out, file = OutputPath, col.names = F, quote = F)
+  
+}
+
+xml_sasai <- function(OutputPath, dbi_con) {
+  
+  # Redundant dependencies:
+  # usp_GI_Get_Airfield_Data
+  # usp_GI_Get_Runway_Data
+  # usp_GI_Get_Reference_ROT_Spacing_Time_Data
+  # usp_GI_Get_Assumed_ROT_Spacing_IAS_Data
+  # usp_GI_Get_Reference_ROT_Spacing_Dist_Data
+  # usp_GI_Get_Assumed_Recat_Separation_IAS_Data
+  # usp_GI_Get_Reference_Recat_Separation_Time_Data
+  # usp_GI_Get_Reference_Recat_Separation_Dist_Data
+  # usp_GI_Get_Reference_TBS_Table_Time_Data
+  # usp_GI_Get_Assumed_TBS_Table_IAS_Data
+  
+  tbl_Airfield <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield"))
+  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  
+  tbl_Reference_ROT_Spacing_Time <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Reference_ROT_Spacing_Time"))
+  tbl_Assumed_ROT_Spacing_IAS <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Assumed_ROT_Spacing_IAS"))
+  tbl_Reference_ROT_Spacing_Dist <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Reference_ROT_Spacing_Dist"))
+  tbl_Assumed_Recat_Separation_IAS <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Assumed_Recat_Separation_IAS"))
+  
+  tbl_Reference_Recat_Separation_Time <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Reference_Recat_Separation_Time"))
+  tbl_Reference_Recat_Separation_Dist <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Reference_Recat_Separation_Dist"))
+  
+  tbl_Reference_TBS_Table_Time <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Reference_TBS_Table_Time"))
+  tbl_Assumed_TBS_Table_IAS <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Assumed_TBS_Table_IAS"))
+  
+  runway_wvc_pair <- merge(
+    tbl_Assumed_Recat_Separation_IAS,
+    merge(
+      tbl_Reference_ROT_Spacing_Time, 
+      merge(
+        tbl_Assumed_ROT_Spacing_IAS,
+        tbl_Reference_ROT_Spacing_Dist,
+        by = c("Runway", "Leader_WTC", "Follower_WTC"),
+        all = T
+      ),
+      by = c("Runway", "Leader_WTC", "Follower_WTC"),
+      all = T
+    ),
+    by = c("Leader_WTC", "Follower_WTC"),
+    all = T
+  )[Runway %in% tbl_Runway[Airfield_Name == tbl_Airfield$Airfield_Name[1] | is.na(Airfield_Name)]$Runway_Name][order(Runway, Leader_WTC, Follower_WTC)]
+  runway_wvc_pair$Assumed_ROT_Spacing_IAS <- runway_wvc_pair$Assumed_ROT_Spacing_IAS / fnc_GI_Kts_To_M_Per_Sec()
+  runway_wvc_pair$Reference_ROT_Spacing_Distance <- runway_wvc_pair$Reference_ROT_Spacing_Distance / fnc_GI_Nm_To_M()
+  runway_wvc_pair$Assumed_Wake_Separation_IAS <- runway_wvc_pair$Assumed_Wake_Separation_IAS / fnc_GI_Kts_To_M_Per_Sec()
+  
+  runway_rules_list <- lapply(unique(runway_wvc_pair$Runway), function(rwy) {
+    
+    runway_wvc_pair_rwy <- runway_wvc_pair[Runway == rwy]
+    
+    runway_wvc_pair_rules_rwy <- lapply(1:nrow(runway_wvc_pair_rwy), function(i) {
+      
+      runway_wvc_pair_rules_rwy_i <- runway_wvc_pair_rwy[i]
+      
+      return(list(
+        leader_wt = runway_wvc_pair_rules_rwy_i$Leader_WTC,
+        follower_wt = runway_wvc_pair_rules_rwy_i$Follower_WTC,
+        wake_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_Wake_Separation_IAS, 0),
+        rot_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_ROT_Spacing_IAS, 0),
+        rot_spacing_time = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time,
+        rot_spacing_distance = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance
+      ))
+      
+    })
+    names(runway_wvc_pair_rules_rwy) <- rep("runway_wvc_pair_rule", length(runway_wvc_pair_rules_rwy))
+    
+    return(list(
+      runway_name = rwy,
+      runway_wvc_pair_rules = runway_wvc_pair_rules_rwy
+    ))
+
+  })
+  names(runway_rules_list) <- rep("runway_rule", length(runway_rules_list))
+  
+  wvc_pair <- merge(
+    tbl_Reference_Recat_Separation_Time,
+    tbl_Reference_Recat_Separation_Dist,
+    by = c("Leader_WTC", "Follower_WTC"),
+    all = T
+  )[order(Leader_WTC, Follower_WTC)]
+  wvc_pair$Reference_Wake_Separation_Distance <- wvc_pair$Reference_Wake_Separation_Distance / fnc_GI_Nm_To_M()
+  
+  wvc_pair_rules_list <- lapply(1:nrow(wvc_pair), function(i) {
+    wvc_pair_i <- wvc_pair[i]
+    return(list(
+      leader_wt = wvc_pair_i$Leader_WTC,
+      follower_wt = wvc_pair_i$Follower_WTC,
+      wake_separation_time = wvc_pair_i$Reference_Wake_Separation_Time,
+      wake_separation_distance = wvc_pair_i$Reference_Wake_Separation_Distance
+    ))
+  })
+  names(wvc_pair_rules_list) <- rep("wvc_pair_rule", length(wvc_pair_rules_list))
+  
+  tbs_reference_table <- merge(
+    tbl_Reference_TBS_Table_Time,
+    tbl_Assumed_TBS_Table_IAS,
+    by = "Reference_Wake_Separation_Distance",
+    all = T
+  )[order(Reference_Wake_Separation_Distance)]
+  tbs_reference_table$Reference_Wake_Separation_Distance <- tbs_reference_table$Reference_Wake_Separation_Distance / fnc_GI_Nm_To_M()
+  tbs_reference_table$Assumed_Wake_Separation_IAS <- tbs_reference_table$Assumed_Wake_Separation_IAS / fnc_GI_Kts_To_M_Per_Sec()
+  
+  tbs_reference_table_list <- lapply(1:nrow(tbs_reference_table), function(i) {
+    tbs_reference_table_i <- tbs_reference_table[i]
+    return(list(
+      dbs = tbs_reference_table_i$Reference_Wake_Separation_Distance,
+      tbs = tbs_reference_table_i$Reference_Wake_Separation_Time,
+      assumed_ias = round(tbs_reference_table_i$Assumed_Wake_Separation_IAS, 0)
+    ))
+  })
+  names(tbs_reference_table_list) <- rep("tbs_reference_table_entry", length(tbs_reference_table_list))
+  
+  out_list <- list(
+    `ia:sasai` = list(
+      runway_rules = runway_rules_list,
+      wvc_pair_rules = wvc_pair_rules_list,
+      tbs_reference_table = tbs_reference_table_list
+    ),
+    `ia:sasai.attr` = list(
+      `xmlns:xsi` = "http://www.w3.org/2001/XMLSchema-instance",
+      `xsi:noNamespaceSchemaLocation` = "SasaiAdaptation.xsd"
+    )
+  )
+  
+  out <- data.table(c(
+    "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>",
+    "<!-- _________________________________________________________________ -->",
+    "<!-- NATS IA Tool TDPS Adaptation File from Think                      -->",
+    "<!-- Format: SasaiAdaptation.xsd                                       -->",
+    "<!-- _________________________________________________________________ -->",
+    List_To_XML(out_list)
+  ))
+  
+  fwrite(out, file = OutputPath, col.names = F, quote = F)
+  
+}
+
+xml_tdps <- function(OutputPath, dbi_con) {
+  
+  # Redundant dependencies:
+  # usp_GI_Get_Adaptation_Data
+  
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  
+  out_list <- list(
+    `ia:tdps` = list(
+      intermediate_projection_origin_lat = tbl_Adaptation_Data$Grid_Projection_Origin_Lat / fnc_GI_Degs_To_Rads(),
+      intermediate_projection_origin_long = tbl_Adaptation_Data$Grid_Projection_Origin_Lon / fnc_GI_Degs_To_Rads(),
+      false_northing = tbl_Adaptation_Data$Grid_Offset_X,
+      false_easting = tbl_Adaptation_Data$Grid_Offset_Y
+    ),
+    `ia:tdps.attr` = list(
+      `xmlns:xsi` = "http://www.w3.org/2001/XMLSchema-instance",
+      `xsi:noNamespaceSchemaLocation` = "TdpsAdaptation.xsd"
+    )
+  )
+  
+  out <- data.table(c(
+    "<?xml version=\"1.0\" encoding=\"ISO-8859-1\" ?>",
+    "<!-- _________________________________________________________________ -->",
+    "<!-- NATS IA Tool TDPS Adaptation File from Think                      -->",
+    "<!-- Format: TdpsAdaptation.xsd                                        -->",
+    "<!-- _________________________________________________________________ -->",
+    List_To_XML(out_list)
+  ))
+  
+  fwrite(out, file = OutputPath, col.names = F, quote = F)
+  
+}
+
+export_Config <- function(configDir, dbi_con, ver_str = "V0.0.0") {
+  
+  message("[",Sys.time(),"] ", "Exporting config XML to: ", configDir)
+  Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  
+  xml_airspace(file.path(configDir, paste0("airspace-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
+  xml_gwcs(file.path(configDir, paste0("gwcs-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
+  xml_ord(file.path(configDir, paste0("ord-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
+  xml_sasai(file.path(configDir, paste0("sasai-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
+  xml_tdps(file.path(configDir, paste0("tdps-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
+  
+  message("[",Sys.time(),"] ", "Finished exporting configuration XML files.")
+  
+}

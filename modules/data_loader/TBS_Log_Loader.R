@@ -1,4 +1,4 @@
-process_9002 <- function(LogFile) {
+process_eTBS_logs_9002 <- function(LogFile) {
   
   logs <- rbindlist(lapply(grep("^9002, .*$", LogFile), function(i) {
     
@@ -63,7 +63,7 @@ process_9002 <- function(LogFile) {
   
 }
 
-process_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
+process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
   
   logs <- rbindlist(lapply(grep("^9005, .*$", LogFile), function(i) {
     
@@ -182,7 +182,7 @@ process_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
   
 }
 
-process_9043 <- function(LogFile, Airfield_Name) {
+process_eTBS_logs_9043 <- function(LogFile, Airfield_Name) {
   
   logs <- rbindlist(lapply(grep("^9043, .*$", LogFile), function(i) {
     
@@ -232,7 +232,7 @@ process_9043 <- function(LogFile, Airfield_Name) {
   
 }
 
-process_9081 <- function(LogFile, Airfield_Name) {
+process_eTBS_logs_9081 <- function(LogFile, Airfield_Name) {
   
   logs <- rbindlist(lapply(grep("^9081, .*$", LogFile), function(i) {
     
@@ -322,7 +322,7 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   
   ### Flight Plan
   message("[",Sys.time(),"] ", "Begin processing 9002 entries...")
-  logs_9002 <- process_9002(LogFile)
+  logs_9002 <- process_eTBS_logs_9002(LogFile)
   message("[",Sys.time(),"] ", "Finished processing 9002 entries (", nrow(logs_9002), " found), saving to tbl_Flight_Plan...")
   
   # Remove some duplicate flight plans
@@ -350,7 +350,7 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   
   ### Radar tracks
   message("[",Sys.time(),"] ", "Begin processing 9005 entries...")
-  logs_9005 <- process_9005(LogFile, tbl_Adaptation_Data, tbl_Runway)
+  logs_9005 <- process_eTBS_logs_9005(LogFile, tbl_Adaptation_Data, tbl_Runway)
   message("[",Sys.time(),"] ", "Finished processing 9005 entries (", nrow(logs_9005), " found), cross referencing FPIDs...")
   
   if (nrow(logs_9005) > 0) {
@@ -373,14 +373,14 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   
   ### Barometer
   message("[",Sys.time(),"] ", "Begin processing 9043 entries...")
-  logs_9043 <- process_9043(LogFile, Airfield_Name)
+  logs_9043 <- process_eTBS_logs_9043(LogFile, Airfield_Name)
   message("[",Sys.time(),"] ", "Finished processing 9043 entries (", nrow(logs_9043), " found), saving to tbl_Baro...")
   dbWriteTable(dbi_con, "tbl_Baro", logs_9043, append = T)
   message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Baro.")
   
   ### Anemometer
   message("[",Sys.time(),"] ", "Begin processing 9081 entries...")
-  logs_9081 <- process_9081(LogFile, Airfield_Name)
+  logs_9081 <- process_eTBS_logs_9081(LogFile, Airfield_Name)
   message("[",Sys.time(),"] ", "Finished processing 9081 entries (", nrow(logs_9081), " found), saving to tbl_Anemometer...")
   dbWriteTable(dbi_con, "tbl_Anemometer", logs_9081, append = T)
   message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Anemometer.")

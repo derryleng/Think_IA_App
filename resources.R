@@ -60,6 +60,78 @@ runway_Opposite_End <- function(rwy) {
   return(new_rwy)
 }
 
+# Based on Time_String_To_Seconds
+Time_String_To_Milliseconds <- function(Time_String) {
+  return(sapply(1:length(Time_String), function(i) {
+    x_i <- unlist(strsplit(Time_String[i], ":"))
+    return(sum(as.double(x_i) * c(3600000, 60000, 1000)))
+  }))
+}
+
+XML_Tag_Open <- function(tag_name, tag_attr = NA) {
+  if (all(is.na(tag_attr))) {
+    return(paste0("<", tag_name, ">"))
+  } else {
+    attrs <- sapply(1:length(tag_attr), function(i) {
+      if (is.numeric(tag_attr[i])) {
+        paste0(names(tag_attr)[i], "=", tag_attr[i])
+      } else {
+        paste0(names(tag_attr)[i], "=\"", tag_attr[i], "\"")
+      }
+    })
+    return(paste0("<", tag_name, " ", paste(attrs, collapse = ", "), ">"))
+  }
+}
+
+XML_Tag_Close <- function(tag_name) {
+  return(paste0("</", tag_name, ">"))
+}
+
+# Convert list type to vector of XML strings
+List_To_XML <- function(x, indent = 0, out_vec = c()) {
+  
+  x_names <- names(x)
+  i <- 1
+  
+  while (i <= length(x)) {
+    
+    if (i < length(x)) {
+      if (x_names[i + 1] == paste0(x_names[i], ".attr")) {
+        attrs_list <- x[[i+1]]
+        skip_next <- T
+      } else {
+        attrs_list <- NA
+        skip_next <- F
+      }
+    }
+
+    if (is.numeric(x[[i]]) | is.character(x[[i]])) {
+      out_vec <- c(out_vec, paste0(
+        paste(rep("    ", indent), collapse = ""),
+        XML_Tag_Open(x_names[i], attrs_list),
+        x[[i]],
+        XML_Tag_Close(x_names[i])
+      ))
+    } else if (is.list(x[[i]])) {
+      out_vec <- c(out_vec, paste0(paste(rep("    ", indent), collapse = ""), XML_Tag_Open(x_names[i], attrs_list)))
+      out_vec <- List_To_XML(x[[i]], indent = indent + 1, out_vec = out_vec)
+      out_vec <- c(out_vec, paste0(paste(rep("    ", indent), collapse = ""), XML_Tag_Close(x_names[i])))
+    } else {
+      warning(paste0("Invalid data type at ", x_names[i]))
+    }
+    
+    if (skip_next) {
+      i <- i + 2
+    } else {
+      i <- i + 1
+    }
+    
+  }
+  
+  return(out_vec)
+  
+}
+
 # ----------------------------------------------------------------------- #
 # Functions (Imported) ----------------------------------------------------
 # ----------------------------------------------------------------------- #
@@ -68,7 +140,7 @@ runway_Opposite_End <- function(rwy) {
 Time_String_To_Seconds <- function(Time_String) {
   return(sapply(1:length(Time_String), function(i) {
     x_i <- unlist(strsplit(Time_String[i], ":"))
-    return(sum(as.numeric(x_i) * c(3600, 60, 1)[1:length(x_i)]))
+    return(sum(as.numeric(x_i) * c(3600, 60, 1)))
   }))
 }
 
@@ -96,6 +168,29 @@ fnc_GI_Ft_Per_Min_To_M_Per_Sec <- function() return(fnc_GI_Ft_To_M() / 60)
 fnc_GI_Mbar_To_Pa <- function() return(100)
 
 fnc_GI_Degs_To_Rads <- function() return(pi / 180)
+
+fnc_GI_Latlong_String_To_Degrees <- function(x) {
+  # x is a string/vector of strings in either format below:
+  if (all(nchar(x) == 10)) { # latitude format: ddmmss.hhN
+    return(
+      as.numeric(substr(x, 1, 2)) +
+        as.numeric(substr(x, 3, 4)) / 60 +
+        as.numeric(substr(x, 5, 6)) / 3600 +
+        as.numeric(substr(x, 8, 9)) / 360000) *
+      ifelse(substr(x, 10, 10) == "S", -1, 1
+      )
+  } else if (all(nchar(x) == 11)) { # longitude format: dddmmss.hhW
+    return(
+      as.numeric(substr(x, 1, 3)) +
+        as.numeric(substr(x, 4, 5)) / 60 +
+        as.numeric(substr(x, 6, 7)) / 3600 +
+        as.numeric(substr(x, 9, 10)) / 360000) *
+      ifelse(substr(x, 11, 11) == "W", -1, 1
+      )
+  } else { # Error
+    return(0)
+  }
+}
 
 fnc_GI_Latlong_String_To_Radians <- function(x) {
   # x is a string/vector of strings in either format below:
