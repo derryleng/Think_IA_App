@@ -565,12 +565,12 @@ xml_airspace <- function(OutputPath, dbi_con) {
   area_of_interest_min <- usp_GI_Latlong_From_XY(area_of_interest$Min_X, area_of_interest$Min_Y, tbl_Adaptation_Data)
   area_of_interest_max <- usp_GI_Latlong_From_XY(area_of_interest$Max_X, area_of_interest$Max_Y, tbl_Adaptation_Data)
   area_of_interest_list <- list(
-    min_lat = area_of_interest_min$PositionLatitude / fnc_GI_Degs_To_Rads(),
-    max_lat = area_of_interest_max$PositionLatitude / fnc_GI_Degs_To_Rads(),
-    min_long = area_of_interest_min$PositionLongitude / fnc_GI_Degs_To_Rads(),
-    max_long = area_of_interest_max$PositionLongitude / fnc_GI_Degs_To_Rads(),
-    min_alt = round(tbl_Adaptation_Data$Load_Min_Alt / fnc_GI_Ft_To_M(), 0)[1],
-    max_alt = round(tbl_Adaptation_Data$Load_Max_Alt / fnc_GI_Ft_To_M(), 0)[1]
+    min_lat = round(area_of_interest_min$PositionLatitude / fnc_GI_Degs_To_Rads(), 6),
+    max_lat = round(area_of_interest_max$PositionLatitude / fnc_GI_Degs_To_Rads(), 6),
+    min_long = round(area_of_interest_min$PositionLongitude / fnc_GI_Degs_To_Rads(), 6),
+    max_long = round(area_of_interest_max$PositionLongitude / fnc_GI_Degs_To_Rads(), 6),
+    min_alt = round(tbl_Adaptation_Data$Load_Min_Alt / fnc_GI_Ft_To_M(), 2)[1],
+    max_alt = round(tbl_Adaptation_Data$Load_Max_Alt / fnc_GI_Ft_To_M(), 2)[1]
   )
   
   runways <- tbl_Runway[Airfield_Name == tbl_Airfield$Airfield_Name[1] | is.na(Airfield_Name)][order(Runway_Name)]
@@ -594,11 +594,11 @@ xml_airspace <- function(OutputPath, dbi_con) {
         local_x = runways_i$Threshold_X_Pos,
         local_y = runways_i$Threshold_Y_Pos
       ),
-      runway_heading = runways_i$Heading,
+      runway_heading = round(runways_i$Heading, 2),
       runway_group = runways_i$Runway_Group,
-      elevation = runways_i$Elevation,
+      elevation = round(runways_i$Elevation, 2),
       touchdown_offset = runways_i$Touchdown_Offset,
-      glideslope_angle = runways_i$Glideslope_Angle
+      glideslope_angle = round(runways_i$Glideslope_Angle, 2)
     ))
   })
   names(runways_list) <- rep("runway", length(runways_list))
@@ -631,8 +631,8 @@ xml_airspace <- function(OutputPath, dbi_con) {
     if (nrow(polygons_i) < 4) stop("Minimum 4 volume_points required!")
     list_i <- list(
       volume_name = volumes_i$Volume_Name,
-      min_altitude = volumes_i$Min_Altitude,
-      max_altitude = volumes_i$Max_Altitude
+      min_altitude = round(volumes_i$Min_Altitude, 2),
+      max_altitude = round(volumes_i$Max_Altitude, 2)
     )
     for (j in 1:nrow(polygons_i)) {
       list_i <- append(list_i, list(volume_point = list(local_x = polygons_i$Point_X[j], local_y = polygons_i$Point_Y[j])))
@@ -652,7 +652,10 @@ xml_airspace <- function(OutputPath, dbi_con) {
       list_i <- c(list_i, new_path_leg = path_leg_transitions_i$New_Path_Leg)
     }
     if (!is.na(path_leg_transitions_i$Min_Heading) & !is.na(path_leg_transitions_i$Max_Heading)) {
-      list_i <- append(list_i, list(heading = list(from = path_leg_transitions_i$Min_Heading, to = path_leg_transitions_i$Max_Heading)))
+      list_i <- append(list_i, list(heading = list(
+        from = round(path_leg_transitions_i$Min_Heading / fnc_GI_Degs_To_Rads(), 2),
+        to = round(path_leg_transitions_i$Max_Heading / fnc_GI_Degs_To_Rads(), 2)
+      )))
     }
     if (!is.na(path_leg_transitions_i$Volume_Name)) {
       list_i <- c(list_i, volume_name = path_leg_transitions_i$Volume_Name)
@@ -663,7 +666,7 @@ xml_airspace <- function(OutputPath, dbi_con) {
       list_i <- c(list_i, difference_runway = path_leg_transitions_i$Difference_Runway)
     }
     if (!is.na(path_leg_transitions_i$Min_Sustained_RoCD)) {
-      list_i <- c(list_i, min_sustained_rocd = path_leg_transitions_i$Min_Sustained_RoCD)
+      list_i <- c(list_i, min_sustained_rocd = round(path_leg_transitions_i$Min_Sustained_RoCD / fnc_GI_Ft_Per_Min_To_M_Per_Sec(), 2))
     }
     return(list_i)
   })
@@ -671,7 +674,7 @@ xml_airspace <- function(OutputPath, dbi_con) {
   
   out_list <- list(
     `ia:airspace` = list(
-      plt_diff_mode_s_to_radar_track = tbl_Adaptation_Data$Diff_Mode_S_To_Radar_Track_Max[1] / fnc_GI_Degs_To_Rads(),
+      plt_diff_mode_s_to_radar_track = round(tbl_Adaptation_Data$Diff_Mode_S_To_Radar_Track_Max[1] / fnc_GI_Degs_To_Rads(), 0),
       plt_max_mode_s_data_age = tbl_Adaptation_Data$Max_Mode_S_Data_Age[1],
       area_of_interest = area_of_interest_list,
       runway_groups = runway_groups_list,
@@ -723,50 +726,53 @@ xml_gwcs <- function(OutputPath, dbi_con) {
     return(list(
       runway_name = gwcs_localiser_captures_i$Runway_Name,
       volume_name = gwcs_localiser_captures_i$Volume_Name,
-      heading = list(from = gwcs_localiser_captures_i$Min_Heading, to = gwcs_localiser_captures_i$Max_Heading)
+      heading = list(
+        from = round(gwcs_localiser_captures_i$Min_Heading / fnc_GI_Degs_To_Rads(), 0),
+        to = round(gwcs_localiser_captures_i$Max_Heading / fnc_GI_Degs_To_Rads(), 0)
+      )
     ))
   })
   names(gwcs_localiser_captures_list) <- rep("gwcs_localiser_capture", length(gwcs_localiser_captures_list))
   
   out_list <- list(
     `ia:gwcs` = list(
-      mode_s_gspd_min = tbl_Mode_S_Wind_Adaptation$Mode_S_GSPD_Min / fnc_GI_Kts_To_M_Per_Sec(),
-      mode_s_gspd_max = tbl_Mode_S_Wind_Adaptation$Mode_S_GSPD_Max / fnc_GI_Kts_To_M_Per_Sec(),
-      mode_s_ias_min = tbl_Mode_S_Wind_Adaptation$Mode_S_IAS_Min / fnc_GI_Kts_To_M_Per_Sec(),
-      mode_s_ias_max = tbl_Mode_S_Wind_Adaptation$Mode_S_IAS_Max / fnc_GI_Kts_To_M_Per_Sec(),
-      mode_s_tas_min = tbl_Mode_S_Wind_Adaptation$Mode_S_TAS_Min / fnc_GI_Kts_To_M_Per_Sec(),
-      mode_s_tas_max = tbl_Mode_S_Wind_Adaptation$Mode_S_TAS_Max / fnc_GI_Kts_To_M_Per_Sec(),
-      mode_s_roll_angle_max = tbl_Mode_S_Wind_Adaptation$Mode_S_Roll_Angle_Max / fnc_GI_Degs_To_Rads(),
-      extrapolation_seg_min = tbl_Mode_S_Wind_Adaptation$Extrapolation_Seg_Min / fnc_GI_Nm_To_M(),
-      range_to_threshold_min = tbl_Mode_S_Wind_Adaptation$DME_Seg_Min / fnc_GI_Nm_To_M(),
-      range_to_threshold_max = tbl_Mode_S_Wind_Adaptation$DME_Seg_Max / fnc_GI_Nm_To_M(),
-      wind_segment_size = tbl_Mode_S_Wind_Adaptation$DME_Seg_Size / fnc_GI_Nm_To_M(),
-      altitude_tolerance = tbl_Mode_S_Wind_Adaptation$Altitude_Tolerance / fnc_GI_Ft_To_M(),
+      mode_s_gspd_min = round(tbl_Mode_S_Wind_Adaptation$Mode_S_GSPD_Min / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      mode_s_gspd_max = round(tbl_Mode_S_Wind_Adaptation$Mode_S_GSPD_Max / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      mode_s_ias_min = round(tbl_Mode_S_Wind_Adaptation$Mode_S_IAS_Min / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      mode_s_ias_max = round(tbl_Mode_S_Wind_Adaptation$Mode_S_IAS_Max / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      mode_s_tas_min = round(tbl_Mode_S_Wind_Adaptation$Mode_S_TAS_Min / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      mode_s_tas_max = round(tbl_Mode_S_Wind_Adaptation$Mode_S_TAS_Max / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      mode_s_roll_angle_max = round(tbl_Mode_S_Wind_Adaptation$Mode_S_Roll_Angle_Max / fnc_GI_Degs_To_Rads(), 2),
+      extrapolation_seg_min = round(tbl_Mode_S_Wind_Adaptation$Extrapolation_Seg_Min / fnc_GI_Nm_To_M(), 2),
+      range_to_threshold_min = round(tbl_Mode_S_Wind_Adaptation$DME_Seg_Min / fnc_GI_Nm_To_M(), 2),
+      range_to_threshold_max = round(tbl_Mode_S_Wind_Adaptation$DME_Seg_Max / fnc_GI_Nm_To_M(), 2),
+      wind_segment_size = round(tbl_Mode_S_Wind_Adaptation$DME_Seg_Size / fnc_GI_Nm_To_M(), 2),
+      altitude_tolerance = round(tbl_Mode_S_Wind_Adaptation$Altitude_Tolerance / fnc_GI_Ft_To_M(), 2),
       seg_duration_min = tbl_Mode_S_Wind_Adaptation$Seg_Duration_Min,
       seg_duration_max = tbl_Mode_S_Wind_Adaptation$Seg_Duration_Max,
-      seg_diff_track_to_runway_hdg_max = tbl_Mode_S_Wind_Adaptation$Diff_Track_To_Runway_HDG_Max / fnc_GI_Degs_To_Rads(),
-      seg_diff_hdg_to_runway_hdg_max = tbl_Mode_S_Wind_Adaptation$Diff_HDG_To_Runway_HDG_Max / fnc_GI_Degs_To_Rads(),
-      seg_diff_mode_s_to_radar_track_max = tbl_Mode_S_Wind_Adaptation$Diff_Mode_S_To_Radar_Track_Max / fnc_GI_Degs_To_Rads(),
-      seg_diff_mode_s_to_radar_gspd_max = tbl_Mode_S_Wind_Adaptation$Diff_Mode_S_To_Radar_GSPD_Max / fnc_GI_Kts_To_M_Per_Sec(),
-      seg_max_wind_effect = tbl_Mode_S_Wind_Adaptation$Max_Wind_Effect / fnc_GI_Kts_To_M_Per_Sec(),
-      seg_max_wind_spd = tbl_Mode_S_Wind_Adaptation$Max_Wind_SPD / fnc_GI_Kts_To_M_Per_Sec(),
-      forecast_valid_seg_min = tbl_Mode_S_Wind_Adaptation$Forecast_Seg_Min / fnc_GI_Nm_To_M(),
-      forecast_valid_seg_max = tbl_Mode_S_Wind_Adaptation$Forecast_Seg_Max / fnc_GI_Nm_To_M(),
+      seg_diff_track_to_runway_hdg_max = round(tbl_Mode_S_Wind_Adaptation$Diff_Track_To_Runway_HDG_Max / fnc_GI_Degs_To_Rads(), 2),
+      seg_diff_hdg_to_runway_hdg_max = round(tbl_Mode_S_Wind_Adaptation$Diff_HDG_To_Runway_HDG_Max / fnc_GI_Degs_To_Rads(), 2),
+      seg_diff_mode_s_to_radar_track_max = round(tbl_Mode_S_Wind_Adaptation$Diff_Mode_S_To_Radar_Track_Max / fnc_GI_Degs_To_Rads(), 2),
+      seg_diff_mode_s_to_radar_gspd_max = round(tbl_Mode_S_Wind_Adaptation$Diff_Mode_S_To_Radar_GSPD_Max / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      seg_max_wind_effect = round(tbl_Mode_S_Wind_Adaptation$Max_Wind_Effect / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      seg_max_wind_spd = round(tbl_Mode_S_Wind_Adaptation$Max_Wind_SPD / fnc_GI_Kts_To_M_Per_Sec(), 2),
+      forecast_valid_seg_min = round(tbl_Mode_S_Wind_Adaptation$Forecast_Seg_Min / fnc_GI_Nm_To_M(), 2),
+      forecast_valid_seg_max = round(tbl_Mode_S_Wind_Adaptation$Forecast_Seg_Max / fnc_GI_Nm_To_M(), 2),
       max_segment_extrapolation = tbl_Mode_S_Wind_Adaptation$Max_Seg_Extrapolation,
       separation_forecast_seg_max = tbl_Mode_S_Wind_Adaptation$Separation_Forecast_Seg_Max / fnc_GI_Nm_To_M(),
       forecast_stale_time = tbl_Mode_S_Wind_Adaptation$Forecast_Stale_Time,
       bps_min = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Min / fnc_GI_Mbar_To_Pa(),
       bps_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Max / fnc_GI_Mbar_To_Pa(),
-      bps_rtt_min = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_DME_Min / fnc_GI_Nm_To_M(),
-      bps_rtt_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_DME_Max / fnc_GI_Nm_To_M(),
-      max_rtt_null_derived_qnh = tbl_Mode_S_Wind_Adaptation$Max_RTT_Null_Derived_QNH / fnc_GI_Nm_To_M(),
+      bps_rtt_min = round(tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_DME_Min / fnc_GI_Nm_To_M(), 2),
+      bps_rtt_max = round(tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_DME_Max / fnc_GI_Nm_To_M(), 2),
+      max_rtt_null_derived_qnh = round(tbl_Mode_S_Wind_Adaptation$Max_RTT_Null_Derived_QNH / fnc_GI_Nm_To_M(), 2),
       bps_delta_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Delta_Max / fnc_GI_Mbar_To_Pa(),
       bps_delta_check = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Delta_Check / fnc_GI_Mbar_To_Pa(),
       bps_stale_time = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Stale_Time,
-      bps_altitude_diff_max = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Alt_Diff_Max / fnc_GI_Ft_To_M(),
+      bps_altitude_diff_max = round(tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Alt_Diff_Max / fnc_GI_Ft_To_M(), 2),
       gwcs_bps_stable_confirm = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Stability_Count,
       gwcs_bps_update_max_time = tbl_Mode_S_Wind_Adaptation$Mode_S_BPS_Update_Max_Time,
-      mag_var = tbl_Adaptation_Data$Mag_Var / fnc_GI_Degs_To_Rads(),
+      mag_var = round(tbl_Adaptation_Data$Mag_Var / fnc_GI_Degs_To_Rads(), 2),
       max_mode_s_data_age = tbl_Adaptation_Data$Max_Mode_S_Data_Age,
       gwcs_localiser_captures = gwcs_localiser_captures_list
     ),
@@ -816,11 +822,11 @@ xml_ord <- function(OutputPath, dbi_con) {
     ord_runways_i <- ord_runways[i]
     return(list(
       runway_name = ord_runways_i$Runway_Name,
-      max_dtt = ord_runways_i$Max_DTT / fnc_GI_Nm_To_M(),
-      four_hundred_ft_aal = ord_runways_i$Four_Hundred_Ft_AAL / fnc_GI_Nm_To_M(),
-      six_hundred_ft_aal = ord_runways_i$Six_Hundred_Ft_AAL / fnc_GI_Nm_To_M(),
-      thousand_ft_gate = ord_runways_i$Thousand_Ft_Gate / fnc_GI_Nm_To_M(),
-      gust_adjustment = ord_runways_i$Gust_Adjustment / fnc_GI_Kts_To_M_Per_Sec()
+      max_dtt = round(ord_runways_i$Max_DTT / fnc_GI_Nm_To_M(), 2),
+      four_hundred_ft_aal = round(ord_runways_i$Four_Hundred_Ft_AAL / fnc_GI_Nm_To_M(), 2),
+      six_hundred_ft_aal = round(ord_runways_i$Six_Hundred_Ft_AAL / fnc_GI_Nm_To_M(), 2),
+      thousand_ft_gate = round(ord_runways_i$Thousand_Ft_Gate / fnc_GI_Nm_To_M(), 2),
+      gust_adjustment = round(ord_runways_i$Gust_Adjustment / fnc_GI_Kts_To_M_Per_Sec(), 2)
     ))
   })
   names(ord_runways_list) <- rep("ord_runway", length(ord_runways_list))
@@ -829,28 +835,28 @@ xml_ord <- function(OutputPath, dbi_con) {
     tbl_ORD_Wake_Adaptation_i <- tbl_ORD_Wake_Adaptation[i]
     return(list(
       wake_category = tbl_ORD_Wake_Adaptation_i$Wake_Cat,
-      compression_commencement_threshold = tbl_ORD_Wake_Adaptation_i$Compression_Commencement_Threshold,
+      compression_commencement_threshold = round(tbl_ORD_Wake_Adaptation_i$Compression_Commencement_Threshold / fnc_GI_Nm_To_M(), 2),
       lead = list(
         landing_stabilisation_speed_type = tbl_ORD_Wake_Adaptation_i$Landing_Stabilisation_Speed_Type_Lead,
-        minimum_safe_landing_speed = tbl_ORD_Wake_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        minimum_safe_landing_speed = round(tbl_ORD_Wake_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
         apply_gusting = tbl_ORD_Wake_Adaptation_i$Apply_Gusting_Lead,
-        local_stabilisation_threshold = tbl_ORD_Wake_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(),
-        initial_deceleration = tbl_ORD_Wake_Adaptation_i$Initial_deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        end_initial_decel = tbl_ORD_Wake_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(),
-        initial_procedural_speed = tbl_ORD_Wake_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        steady_procedural_speed = tbl_ORD_Wake_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        final_deceleration = tbl_ORD_Wake_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec()
+        local_stabilisation_threshold = round(tbl_ORD_Wake_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(), 2),
+        initial_deceleration = round(tbl_ORD_Wake_Adaptation_i$Initial_deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        end_initial_decel = round(tbl_ORD_Wake_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(), 2),
+        initial_procedural_speed = round(tbl_ORD_Wake_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        steady_procedural_speed = round(tbl_ORD_Wake_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        final_deceleration = round(tbl_ORD_Wake_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2)
       ),
       foll = list(
         landing_stabilisation_speed_type = tbl_ORD_Wake_Adaptation_i$Landing_Stabilisation_Speed_Type_Follower,
-        minimum_safe_landing_speed = tbl_ORD_Wake_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        minimum_safe_landing_speed = round(tbl_ORD_Wake_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
         apply_gusting = tbl_ORD_Wake_Adaptation_i$Apply_Gusting_Follower,
-        local_stabilisation_threshold = tbl_ORD_Wake_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(),
-        initial_deceleration = tbl_ORD_Wake_Adaptation_i$Initial_deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        end_initial_decel = tbl_ORD_Wake_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(),
-        initial_procedural_speed = tbl_ORD_Wake_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        steady_procedural_speed = tbl_ORD_Wake_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        final_deceleration = tbl_ORD_Wake_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec()
+        local_stabilisation_threshold = round(tbl_ORD_Wake_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(), 2),
+        initial_deceleration = round(tbl_ORD_Wake_Adaptation_i$Initial_deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        end_initial_decel = round(tbl_ORD_Wake_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(), 2),
+        initial_procedural_speed = round(tbl_ORD_Wake_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        steady_procedural_speed = round(tbl_ORD_Wake_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        final_deceleration = round(tbl_ORD_Wake_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2)
       )
     ))
   })
@@ -860,28 +866,28 @@ xml_ord <- function(OutputPath, dbi_con) {
     tbl_ORD_Aircraft_Adaptation_i <- tbl_ORD_Aircraft_Adaptation[i]
     return(list(
       ac_type = tbl_ORD_Aircraft_Adaptation_i$Aircraft_Type,
-      compression_commencement_threshold = tbl_ORD_Aircraft_Adaptation_i$Compression_Commencement_Threshold,
+      compression_commencement_threshold = round(tbl_ORD_Aircraft_Adaptation_i$Compression_Commencement_Threshold / fnc_GI_Nm_To_M(), 2),
       lead = list(
         landing_stabilisation_speed_type = tbl_ORD_Aircraft_Adaptation_i$Landing_Stabilisation_Speed_Type_Lead,
-        minimum_safe_landing_speed = tbl_ORD_Aircraft_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        minimum_safe_landing_speed = round(tbl_ORD_Aircraft_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
         apply_gusting = tbl_ORD_Aircraft_Adaptation_i$Apply_Gusting_Lead,
-        local_stabilisation_threshold = tbl_ORD_Aircraft_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(),
-        initial_deceleration = tbl_ORD_Aircraft_Adaptation_i$Initial_deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        end_initial_decel = tbl_ORD_Aircraft_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(),
-        initial_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        steady_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        final_deceleration = tbl_ORD_Aircraft_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec()
+        local_stabilisation_threshold = round(tbl_ORD_Aircraft_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(), 2),
+        initial_deceleration = round(tbl_ORD_Aircraft_Adaptation_i$Initial_deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        end_initial_decel = round(tbl_ORD_Aircraft_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(), 2),
+        initial_procedural_speed = round(tbl_ORD_Aircraft_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        steady_procedural_speed = round(tbl_ORD_Aircraft_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        final_deceleration = round(tbl_ORD_Aircraft_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2)
       ),
       foll = list(
         landing_stabilisation_speed_type = tbl_ORD_Aircraft_Adaptation_i$Landing_Stabilisation_Speed_Type_Follower,
-        minimum_safe_landing_speed = tbl_ORD_Aircraft_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        minimum_safe_landing_speed = round(tbl_ORD_Aircraft_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
         apply_gusting = tbl_ORD_Aircraft_Adaptation_i$Apply_Gusting_Follower,
-        local_stabilisation_threshold = tbl_ORD_Aircraft_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(),
-        initial_deceleration = tbl_ORD_Aircraft_Adaptation_i$Initial_deceleration_follower / fnc_GI_Kts_To_M_Per_Sec(),
-        end_initial_decel = tbl_ORD_Aircraft_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(),
-        initial_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        steady_procedural_speed = tbl_ORD_Aircraft_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        final_deceleration = tbl_ORD_Aircraft_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec()
+        local_stabilisation_threshold = round(tbl_ORD_Aircraft_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(), 2),
+        initial_deceleration = round(tbl_ORD_Aircraft_Adaptation_i$Initial_deceleration_follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        end_initial_decel = round(tbl_ORD_Aircraft_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(), 2),
+        initial_procedural_speed = round(tbl_ORD_Aircraft_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        steady_procedural_speed = round(tbl_ORD_Aircraft_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        final_deceleration = round(tbl_ORD_Aircraft_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2)
       )
     ))
   })
@@ -891,28 +897,28 @@ xml_ord <- function(OutputPath, dbi_con) {
     tbl_ORD_DBS_Adaptation_i <- tbl_ORD_DBS_Adaptation[i]
     return(list(
       dbs_distance_value = tbl_ORD_DBS_Adaptation_i$DBS_Distance,
-      compression_commencement_threshold = tbl_ORD_DBS_Adaptation_i$Compression_Commencement_Threshold,
+      compression_commencement_threshold = round(tbl_ORD_DBS_Adaptation_i$Compression_Commencement_Threshold / fnc_GI_Nm_To_M(), 2),
       lead = list(
         landing_stabilisation_speed_type = tbl_ORD_DBS_Adaptation_i$Landing_Stabilisation_Speed_Type_Lead,
-        minimum_safe_landing_speed = tbl_ORD_DBS_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
+        minimum_safe_landing_speed = round(tbl_ORD_DBS_Adaptation_i$Min_Safe_Landing_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
         apply_gusting = tbl_ORD_DBS_Adaptation_i$Apply_Gusting_Lead,
-        local_stabilisation_threshold = tbl_ORD_DBS_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(),
-        initial_deceleration = tbl_ORD_DBS_Adaptation_i$Initial_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        end_initial_decel = tbl_ORD_DBS_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(),
-        initial_procedural_speed = tbl_ORD_DBS_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        steady_procedural_speed = tbl_ORD_DBS_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(),
-        final_deceleration = tbl_ORD_DBS_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec()
+        local_stabilisation_threshold = round(tbl_ORD_DBS_Adaptation_i$Local_Stabilisation_Distance_Lead / fnc_GI_Nm_To_M(), 2),
+        initial_deceleration = round(tbl_ORD_DBS_Adaptation_i$Initial_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        end_initial_decel = round(tbl_ORD_DBS_Adaptation_i$End_Initial_Deceleration_Distance_Lead / fnc_GI_Nm_To_M(), 2),
+        initial_procedural_speed = round(tbl_ORD_DBS_Adaptation_i$Initial_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        steady_procedural_speed = round(tbl_ORD_DBS_Adaptation_i$Steady_Procedural_Speed_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        final_deceleration = round(tbl_ORD_DBS_Adaptation_i$Final_Deceleration_Lead / fnc_GI_Kts_To_M_Per_Sec(), 2)
       ),
       foll = list(
         landing_stabilisation_speed_type = tbl_ORD_DBS_Adaptation_i$Landing_Stabilisation_Speed_Type_Follower,
-        minimum_safe_landing_speed = tbl_ORD_DBS_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
+        minimum_safe_landing_speed = round(tbl_ORD_DBS_Adaptation_i$Min_Safe_Landing_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
         apply_gusting = tbl_ORD_DBS_Adaptation_i$Apply_Gusting_Follower,
-        local_stabilisation_threshold = tbl_ORD_DBS_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(),
-        initial_deceleration = tbl_ORD_DBS_Adaptation_i$Initial_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        end_initial_decel = tbl_ORD_DBS_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(),
-        initial_procedural_speed = tbl_ORD_DBS_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        steady_procedural_speed = tbl_ORD_DBS_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(),
-        final_deceleration = tbl_ORD_DBS_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec()
+        local_stabilisation_threshold = round(tbl_ORD_DBS_Adaptation_i$Local_Stabilisation_Distance_Follower / fnc_GI_Nm_To_M(), 2),
+        initial_deceleration = round(tbl_ORD_DBS_Adaptation_i$Initial_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        end_initial_decel = round(tbl_ORD_DBS_Adaptation_i$End_Initial_Deceleration_Distance_Follower / fnc_GI_Nm_To_M(), 2),
+        initial_procedural_speed = round(tbl_ORD_DBS_Adaptation_i$Initial_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        steady_procedural_speed = round(tbl_ORD_DBS_Adaptation_i$Steady_Procedural_Speed_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2),
+        final_deceleration = round(tbl_ORD_DBS_Adaptation_i$Final_Deceleration_Follower / fnc_GI_Kts_To_M_Per_Sec(), 2)
       )
     ))
   })
@@ -921,9 +927,9 @@ xml_ord <- function(OutputPath, dbi_con) {
   wind_effect_segment_entries_list <- lapply(1:nrow(tbl_Mode_S_Wind_Default_Wind_Effect_Segments), function(i) {
     tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i <- tbl_Mode_S_Wind_Default_Wind_Effect_Segments[i]
     return(list(
-      wind_segment_start = tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Segment_Start / fnc_GI_Nm_To_M(),
-      wind_segment_end = tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Segment_End / fnc_GI_Nm_To_M(),
-      wind_effect = tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Effect / fnc_GI_Kts_To_M_Per_Sec()
+      wind_segment_start = round(tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Segment_Start / fnc_GI_Nm_To_M(), 2),
+      wind_segment_end = round(tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Segment_End / fnc_GI_Nm_To_M(), 2),
+      wind_effect = round(tbl_Mode_S_Wind_Default_Wind_Effect_Segments_i$Wind_Effect / fnc_GI_Kts_To_M_Per_Sec(), 2)
     ))
   })
   names(wind_effect_segment_entries_list) <- rep("wind_effect_segment_entry", length(wind_effect_segment_entries_list))
@@ -1011,15 +1017,24 @@ xml_sasai <- function(OutputPath, dbi_con) {
       
       runway_wvc_pair_rules_rwy_i <- runway_wvc_pair_rwy[i]
       
-      return(list(
+      list_i <- list(
         leader_wt = runway_wvc_pair_rules_rwy_i$Leader_WTC,
-        follower_wt = runway_wvc_pair_rules_rwy_i$Follower_WTC,
-        wake_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_Wake_Separation_IAS, 0),
-        rot_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_ROT_Spacing_IAS, 0),
-        rot_spacing_time = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time,
-        rot_spacing_distance = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance
-      ))
+        follower_wt = runway_wvc_pair_rules_rwy_i$Follower_WTC
+      )
+      if (!is.na(runway_wvc_pair_rules_rwy_i$Assumed_Wake_Separation_IAS)) {
+        list_i <- c(list_i, wake_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_Wake_Separation_IAS, 0))
+      }
+      if (!is.na(runway_wvc_pair_rules_rwy_i$Assumed_ROT_Spacing_IAS)) {
+        list_i <- c(list_i, rot_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_ROT_Spacing_IAS, 0))
+      }
+      if (!is.na(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time)) {
+        list_i <- c(list_i, rot_ias = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time)
+      }
+      if (!is.na(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance)) {
+        list_i <- c(list_i, rot_ias = round(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance, 1))
+      }
       
+      return(list_i)
     })
     names(runway_wvc_pair_rules_rwy) <- rep("runway_wvc_pair_rule", length(runway_wvc_pair_rules_rwy))
     
@@ -1027,7 +1042,7 @@ xml_sasai <- function(OutputPath, dbi_con) {
       runway_name = rwy,
       runway_wvc_pair_rules = runway_wvc_pair_rules_rwy
     ))
-
+    
   })
   names(runway_rules_list) <- rep("runway_rule", length(runway_rules_list))
   
@@ -1045,7 +1060,7 @@ xml_sasai <- function(OutputPath, dbi_con) {
       leader_wt = wvc_pair_i$Leader_WTC,
       follower_wt = wvc_pair_i$Follower_WTC,
       wake_separation_time = wvc_pair_i$Reference_Wake_Separation_Time,
-      wake_separation_distance = wvc_pair_i$Reference_Wake_Separation_Distance
+      wake_separation_distance = round(wvc_pair_i$Reference_Wake_Separation_Distance, 1)
     ))
   })
   names(wvc_pair_rules_list) <- rep("wvc_pair_rule", length(wvc_pair_rules_list))
@@ -1103,8 +1118,8 @@ xml_tdps <- function(OutputPath, dbi_con) {
   
   out_list <- list(
     `ia:tdps` = list(
-      intermediate_projection_origin_lat = tbl_Adaptation_Data$Grid_Projection_Origin_Lat / fnc_GI_Degs_To_Rads(),
-      intermediate_projection_origin_long = tbl_Adaptation_Data$Grid_Projection_Origin_Lon / fnc_GI_Degs_To_Rads(),
+      intermediate_projection_origin_lat = round(tbl_Adaptation_Data$Grid_Projection_Origin_Lat / fnc_GI_Degs_To_Rads(), 6),
+      intermediate_projection_origin_long = round(tbl_Adaptation_Data$Grid_Projection_Origin_Lon / fnc_GI_Degs_To_Rads(), 6),
       false_northing = tbl_Adaptation_Data$Grid_Offset_X,
       false_easting = tbl_Adaptation_Data$Grid_Offset_Y
     ),

@@ -95,13 +95,13 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
   
   while (i <= length(x)) {
     
+    attrs_list <- NA
+    skip_next <- F
+    
     if (i < length(x)) {
       if (x_names[i + 1] == paste0(x_names[i], ".attr")) {
         attrs_list <- x[[i+1]]
         skip_next <- T
-      } else {
-        attrs_list <- NA
-        skip_next <- F
       }
     }
 
