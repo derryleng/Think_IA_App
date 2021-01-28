@@ -1,5 +1,3 @@
-pi <- 3.1415926535897931
-
 # ----------------------------------------------------------------------- #
 # Functions (General) -----------------------------------------------------
 # ----------------------------------------------------------------------- #
@@ -130,6 +128,28 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
   
   return(out_vec)
   
+}
+
+generateFPID <- function(tracks, dbi_con) {
+  
+  if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
+  
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
+  fp$SSR_Code <- as.numeric(fp$SSR_Code)
+  
+  tracks <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Track_Time = "FP_Time", Callsign = "Callsign", SSR_Code = "SSR_Code")]
+  
+  # for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
+  #   out[
+  #     Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
+  #       abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+  #       Callsign == fp[Flight_Plan_ID == j]$Callsign &
+  #       grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+  #   ]$Flight_Plan_ID <- j
+  # }
+  
+  return(tracks)
+
 }
 
 # ----------------------------------------------------------------------- #

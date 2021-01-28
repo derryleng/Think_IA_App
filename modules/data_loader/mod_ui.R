@@ -40,6 +40,7 @@ data_loader_ui <- function(id) {
           # div(style = "width: 5px"),
         ),
         hr(),
+        # numericInput("Max_Mode_S_Age", "Max Mode S Age", 6, min = 0, max = 86400, step = 1, width = "120px"),
         div(
           style = "display: flex; justify-content: flex-start; height: 34px;",
           shinyFilesButton(ns("logs_select"), label="Browse Log File(s)", title="Hold shift to select multiple", multiple=T),

@@ -71,21 +71,16 @@ process_LVNL_Surv <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
     Mode_S_BPS = NA
   )
   
-  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
-  
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
-    out[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
-        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-        Callsign == fp[Flight_Plan_ID == j]$Callsign &
-        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-    ]$Flight_Plan_ID <- j
+  if (nrow(out) > 0) {
+    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
+    out <- generateFPID(out)
+    
+    message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Radar_Track_Point...")
+    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
+  } else {
+    message("[",Sys.time(),"] ", "Exited without change to database.")
   }
-  
-  message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Radar_Track_Point...")
-  dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
   
 }
 
@@ -108,14 +103,14 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   )
   
   out <- data.table(
-    FP_Date = format(as.Date(x$DATE_ATA, "%d-%m-%Y"), "%d/%m/%Y"),
+    FP_Date = format(as.Date(x$DATE_ATA, "%d/%m/%Y"), "%d/%m/%Y"),
     FP_Time = as.numeric(Time_String_To_Seconds(x$TIME_ATA)),
     Callsign = x$CALLSIGN,
     Aircraft_Type = x$ICAO_ACTYPE,
     SSR_Code = x$SSR,
     Wake_Vortex = x$WTC,
     Destination = x$DESTINATION,
-    Landing_Runway = ifelse(grepl("^[0-9]{1}$", x$RUNWAY), paste0("R0", x$RUNWAY), ifelse(grepl("^[0-9]{2}$", x$RUNWAY), paste0("R", x$RUNWAY), NA)),
+    Landing_Runway = ifelse(grepl("^[0-9]{1}[A-Z]?$", x$RUNWAY), paste0("R0", x$RUNWAY), ifelse(grepl("^[0-9]{2}[A-Z]?$", x$RUNWAY), paste0("R", x$RUNWAY), NA)),
     STAR = NA,
     Origin = x$ORIGIN,
     Departure_Runway = NA,
@@ -125,41 +120,17 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
   
-  out_undup <- out[!duplicated(out[,.(FP_Date, Callsign)])]
-  out_dup <- out[duplicated(out[,.(FP_Date, Callsign)])]
-  
-  # Remove some duplicate flight plans
-  out_dup_proc <- rbindlist(lapply(unique(paste(out_dup$FP_Date, out_dup$Callsign)), function(j) {
-    out_j <- out_dup[paste(FP_Date, Callsign) == j]
-    return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
-  }))
-  
-  out_pass_1 <- rbind(out_undup, out_dup_proc)
-  
-  # Flight plan check for more duplicates
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  
+  message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
-    message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
-    out_pass_2 <- rbindlist(lapply(1:nrow(out_pass_1), function(j) {
-      fp_j <- fp[
-        FP_Date == out_pass_1$FP_Date[j] &
-          Callsign == out_pass_1$Callsign[j] &
-          Destination == out_pass_1$Destination[j]
-      ]
-      if (nrow(fp_j) == 0) {
-        return(out_pass_1[j])
-      }
-    }), fill = T, use.names = T)
-    rm(fp)
+    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]
   } else {
     out_pass_2 <- out_pass_1
   }
-  rm(out_pass_1)
   
   message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_2), " rows to tbl_Flight_Plan...")
-  
   dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_2), " rows to tbl_Flight_Plan")
   
@@ -208,7 +179,7 @@ process_LVNL_SurfaceWind <- function(LogFilePath, Airfield_Name, dbi_con) {
   
   out <- data.table(
     Airfield = Airfield_Name,
-    Landing_Runway = ifelse(grepl("^[0-9]{1}$", x$RUNWAY), paste0("R0", x$RUNWAY), ifelse(grepl("^[0-9]{2}$", x$RUNWAY), paste0("R", x$RUNWAY), NA)),
+    Landing_Runway = ifelse(grepl("^[0-9]{1}[A-Z]?$", x$RUNWAY), paste0("R0", x$RUNWAY), ifelse(grepl("^[0-9]{2}[A-Z]?$", x$RUNWAY), paste0("R", x$RUNWAY), NA)),
     Anemo_Date = format(as.Date(x$DATE_WIND, "%d-%m-%Y"), "%d/%m/%Y"),
     Anemo_Time = as.numeric(Time_String_To_Seconds(x$TIME_WIND)),
     Anemo_SPD = as.numeric(x$WIND_SPEED) * fnc_GI_Kts_To_M_Per_Sec(),

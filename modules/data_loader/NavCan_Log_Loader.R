@@ -33,6 +33,8 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
     
   }
   
+  message("[",Sys.time(),"] ", "Retrieved ", nrow(x), " valid rows.")
+  
   out <- data.table(
     Flight_Plan_ID = NA,
     Track_Date = x$FLIGHT_EVENT_DATE,
@@ -47,7 +49,7 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
     Track_SPD = as.numeric(x$FLIGHT_FIX_SPEED_KN) * fnc_GI_Kts_To_M_Per_Sec(),
     Track_HDG = as.numeric(x$FLIGHT_FIX_HEADING_DEG) * fnc_GI_Degs_To_Rads(),
     Track_Number = NA,
-    Mode_S_Address = 0,
+    Mode_S_Address = NA,
     Mode_S_GSPD = NA,
     Mode_S_IAS = NA,
     Mode_S_HDG = NA,
@@ -58,20 +60,15 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
     Mode_S_BPS = NA
   )
   
-  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
-  
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
-    out[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
-        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-        Callsign == fp[Flight_Plan_ID == j]$Callsign &
-        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-    ]$Flight_Plan_ID <- j
+  if (nrow(out) > 0) {
+    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
+    out <- generateFPID(out)
+    
+    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
+  } else {
+    message("[",Sys.time(),"] ", "Exited without change to database.")
   }
-  
-  dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
   
 }
 
@@ -126,55 +123,27 @@ process_NavCan_FP <- function(LogFilePath, dbi_con) {
     SSR_Code = NA,
     Wake_Vortex = x$ICAO_AC_WTC_Code,
     Destination = x$Arr_Aero_Code,
-    Landing_Runway = ifelse(grepl("^[0-9]{1}$", x$Arr_RWY_Dsgntr_Code), paste0("R0", x$Arr_RWY_Dsgntr_Code), ifelse(grepl("^[0-9]{2}$", x$Arr_RWY_Dsgntr_Code), paste0("R", x$Arr_RWY_Dsgntr_Code), NA)),
+    Landing_Runway = ifelse(grepl("^[0-9]{1}[A-Z]?$", x$Arr_RWY_Dsgntr_Code), paste0("R0", x$Arr_RWY_Dsgntr_Code), ifelse(grepl("^[0-9]{2}[A-Z]?$", x$Arr_RWY_Dsgntr_Code), paste0("R", x$Arr_RWY_Dsgntr_Code), NA)),
     STAR = NA,
     Origin = x$Dep_Aero_Code,
-    Departure_Runway = ifelse(grepl("^[0-9]{1}$", x$Dep_RWY_Dsgntr_Code), paste0("R0", x$Dep_RWY_Dsgntr_Code), ifelse(grepl("^[0-9]{2}$", x$Dep_RWY_Dsgntr_Code), paste0("R", x$Dep_RWY_Dsgntr_Code), NA)),
+    Departure_Runway = ifelse(grepl("^[0-9]{1}[A-Z]?$", x$Dep_RWY_Dsgntr_Code), paste0("R0", x$Dep_RWY_Dsgntr_Code), ifelse(grepl("^[0-9]{2}[A-Z]?$", x$Dep_RWY_Dsgntr_Code), paste0("R", x$Dep_RWY_Dsgntr_Code), NA)),
     SID = NA
   )
   
   out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
   
-  out_undup <- out[!duplicated(out[,.(FP_Date, Callsign)])]
-  out_dup <- out[duplicated(out[,.(FP_Date, Callsign)])]
-  
-  # Remove some duplicate flight plans
-  out_dup_proc <- rbindlist(lapply(unique(paste(out_dup$FP_Date, out_dup$Callsign)), function(j) {
-    out_j <- out_dup[paste(FP_Date, Callsign) == j]
-    if (!all(is.na(out_j$FP_Time))) {
-      return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
-    } else {
-      out_j[1]
-    }
-  }))
-  
-  out_pass_1 <- rbind(out_undup, out_dup_proc)
-  
-  # Flight plan check for more duplicates
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  
-  if (nrow(fp) > 0) {
   message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
-  out_pass_2 <- rbindlist(lapply(1:nrow(out_pass_1), function(j) {
-    fp_j <- fp[
-      FP_Date == out_pass_1$FP_Date[j] &
-        Callsign == out_pass_1$Callsign[j] &
-        Destination == out_pass_1$Destination[j]
-    ]
-    if (nrow(fp_j) == 0) {
-      return(out_pass_1[j])
-    }
-  }), fill = T, use.names = T)
-  rm(fp)
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
+  if (nrow(fp) > 0) {
+    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]
   } else {
     out_pass_2 <- out_pass_1
   }
-  rm(out_pass_1)
   
   message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_2), " rows to tbl_Flight_Plan...")
-  
   dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_2), " rows to tbl_Flight_Plan")
   
@@ -210,7 +179,7 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
     SSR_Code = x$SSRCODE,
     Wake_Vortex = x$WAKE,
     Destination = x$DESTINATION,
-    Landing_Runway = ifelse(grepl("^[0-9]{1}$", x$ARRIVAL_RUNWAY), paste0("R0", x$ARRIVAL_RUNWAY), ifelse(grepl("^[0-9]{2}$", x$ARRIVAL_RUNWAY), paste0("R", x$ARRIVAL_RUNWAY), NA)),
+    Landing_Runway = ifelse(grepl("^[0-9]{1}[A-Z]?$", x$ARRIVAL_RUNWAY), paste0("R0", x$ARRIVAL_RUNWAY), ifelse(grepl("^[0-9]{2}[A-Z]?$", x$ARRIVAL_RUNWAY), paste0("R", x$ARRIVAL_RUNWAY), NA)),
     STAR = x$STAR,
     Origin = x$ORIGIN,
     Departure_Runway = NA,
@@ -220,46 +189,17 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
   out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
   
-  out_undup <- out[!duplicated(out[,.(FP_Date, Callsign)])]
-  out_dup <- out[duplicated(out[,.(FP_Date, Callsign)])]
-  
-  # Remove some duplicate flight plans
-  out_dup_proc <- rbindlist(lapply(unique(paste(out_dup$FP_Date, out_dup$Callsign)), function(j) {
-    out_j <- out_dup[paste(FP_Date, Callsign) == j]
-    if (!all(is.na(out_j$FP_Time))) {
-      return(out_j[FP_Time == max(out_j$FP_Time, na.rm = T)])
-    } else {
-      out_j[1]
-    }
-  }))
-  
-  out_pass_1 <- rbind(out_undup, out_dup_proc)
-  
-  # Flight plan check for more duplicates
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  
+  message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
-    message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
-    out_pass_2 <- rbindlist(lapply(1:nrow(out_pass_1), function(j) {
-      fp_j <- fp[
-        FP_Date == out_pass_1$FP_Date[j] &
-          Callsign == out_pass_1$Callsign[j] &
-          SSR_Code == out_pass_1$SSR_Code[j] &
-          Destination == out_pass_1$Destination[j]
-      ]
-      if (nrow(fp_j) == 0) {
-        return(out_pass_1[j])
-      }
-    }), fill = T, use.names = T)
-    rm(fp)
+    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]
   } else {
     out_pass_2 <- out_pass_1
   }
-  rm(out_pass_1)
   
   message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_2), " rows to tbl_Flight_Plan...")
-  
   dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_2), " rows to tbl_Flight_Plan")
   
@@ -355,20 +295,16 @@ process_NavCan_GR <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
     Mode_S_BPS = NA
   )
   
-  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
-  
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
-    out[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
-        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-        Callsign == fp[Flight_Plan_ID == j]$Callsign &
-        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-    ]$Flight_Plan_ID <- j
+  if (nrow(out) > 0) {
+    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
+    out <- generateFPID(out)
+    
+    message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Radar_Track_Point...")
+    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
+  } else {
+    message("[",Sys.time(),"] ", "Exited without change to database.")
   }
-  
-  dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
   
 }
 

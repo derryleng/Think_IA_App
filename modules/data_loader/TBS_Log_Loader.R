@@ -26,7 +26,7 @@ process_eTBS_logs_9002 <- function(LogFile) {
       "Desequenced_Flight",
       "Deseq_Code",
       "TGT_Landing_Time"
-    )
+    )[1:length(names(LogContents))]
     
     return(LogContents)
     
@@ -116,8 +116,9 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
       "Magnetic_HDG_Age",
       "Indicated_ASP_Age",
       "Barometric_Age",
-      "True_ASPD_Age"
-    )
+      "True_ASPD_Age",
+      "Is_Altitude_Corrected"
+    )[1:length(names(LogContents))]
     
     return(LogContents)
     
@@ -155,7 +156,7 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
     
   }
   
-  return(data.table(
+  out <- data.table(
     Flight_Plan_ID = integer(),
     Track_Date = as.character(format(as.Date(x$Date), "%d/%m/%y")),
     Track_Time = as.numeric(x$Time),
@@ -178,7 +179,14 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
     Mode_S_Track_HDG_Rate = numeric(),
     Mode_S_Roll_Angle = as.numeric(x$Roll_Angle) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = as.numeric(x$Barometric_Pressure) * fnc_GI_Mbar_To_Pa()
-  ))
+  )
+  
+  # CAV
+  if ("Is_Altitude_Corrected" %in% names(x)) {
+    x$Is_Altitude_Corrected <- ifelse(x$Is_Altitude_Corrected == "1", T, ifelse(x$Is_Altitude_Corrected %in% c("", "255") | is.na(x$Is_Altitude_Corrected), NA, F))
+  }
+  
+  return(out)
   
 }
 
@@ -325,25 +333,16 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   logs_9002 <- process_eTBS_logs_9002(LogFile)
   message("[",Sys.time(),"] ", "Finished processing 9002 entries (", nrow(logs_9002), " found), saving to tbl_Flight_Plan...")
   
-  # Remove some duplicate flight plans
-  logs_9002_pass_1 <- rbindlist(lapply(unique(paste(logs_9002$FP_Date, logs_9002$Callsign, logs_9002$SSR_Code)), function(j) {
-    logs_9002_j <- logs_9002[paste(FP_Date, Callsign, SSR_Code) == j]
-    return(logs_9002_j[FP_Time == max(logs_9002_j$FP_Time, na.rm = T)])
-  }))
+  message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+  logs_9002_pass_1 <- unique(logs_9002, by = c("FP_Date", "Callsign", "SSR_Code"))
   
-  # Flight plan check for more duplicates
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  logs_9002_pass_2 <- rbindlist(lapply(1:nrow(logs_9002_pass_1), function(j) {
-    fp_j <- fp[
-      FP_Date == logs_9002_pass_1$FP_Date[j] &
-        Callsign == logs_9002_pass_1$Callsign[j] &
-        SSR_Code == logs_9002_pass_1$SSR_Code[j] &
-        Destination == logs_9002_pass_1$Destination[j]
-    ]
-    if (nrow(fp_j) == 0) {
-      return(logs_9002_pass_1[j])
-    }
-  }), fill = T, use.names = T)
+  message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
+  if (nrow(fp) > 0) {
+    logs_9002_pass_2 <- logs_9002_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
+  } else {
+    logs_9002_pass_2 <- logs_9002_pass_1
+  }
   
   dbWriteTable(dbi_con, "tbl_Flight_Plan", logs_9002_pass_2, append = T)
   message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Flight_Plan.")
@@ -354,17 +353,9 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   message("[",Sys.time(),"] ", "Finished processing 9005 entries (", nrow(logs_9005), " found), cross referencing FPIDs...")
   
   if (nrow(logs_9005) > 0) {
-    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
     # Flight plan ID cross reference
-    fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-    for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
-      logs_9005[
-        Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
-          abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-          Callsign == fp[Flight_Plan_ID == j]$Callsign &
-          grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-      ]$Flight_Plan_ID <- j
-    }
+    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
+    logs_9005 <- generateFPID(logs_9005)
     
     message("[",Sys.time(),"] ", "Finished cross referencing FPIDs, saving to tbl_Radar_Track_Point...")
     dbWriteTable(dbi_con, "tbl_Radar_Track_Point", logs_9005, append = T)

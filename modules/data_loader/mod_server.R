@@ -8,44 +8,42 @@ source("modules/data_loader/LVNL_Log_Loader.R", local = T)
 
 source("modules/data_loader/Config_Management.R", local = T)
 
-read_logs <- function(LogFilePaths, LogFileType, dbi_con) {
+read_logs <- function(LogFilePaths, input, dbi_con) {
   
-  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-  
-  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
-  
-  Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  tbl_list <- c("tbl_Adaptation_Data", "tbl_Runway", "tbl_Airfield")
+  tbl <- lapply(tbl_list, function(i) as.data.table(dbGetQuery(dbi_con, paste("SELECT * FROM", i))))
+  names(tbl) <- gsub("^tbl_(.*)$", "\\1", tbl_list)
   
   t0 <- Sys.time()
   for (i in 1:length(LogFilePaths)) {
     message("[",Sys.time(),"] ", "Begin loading file: ", basename(LogFilePaths[i]), " (", i, " of ", length(LogFilePaths), ")")
     t1 <- Sys.time()
-    if (LogFileType == "eTBS system logs (NATS)") {
-      process_eTBS_logs(LogFilePaths[i], tbl_Adaptation_Data, tbl_Runway, Airfield_Name, dbi_con)
-    } else if (LogFileType == "Cat48 radar (NATS)") {
-      process_Asterix_Cat48(LogFilePaths[i], tbl_Adaptation_Data, tbl_Runway, dbi_con)
-    } else if (LogFileType == "Cat62 radar (NATS)") {
-      process_Asterix_Cat62(LogFilePaths[i], tbl_Adaptation_Data, tbl_Runway, dbi_con)
-    } else if (LogFileType == "Cat20 radar (NATS)") {
-      process_Asterix_Cat20(LogFilePaths[i], tbl_Adaptation_Data, tbl_Runway, dbi_con)
-    } else if (LogFileType == "Non-Mode_S radar (NAVCAN)") {
-      process_NavCan_RadarNonModeS(LogFilePaths[i], tbl_Adaptation_Data, tbl_Runway, dbi_con)
-    } else if (LogFileType == "Flight Plan logs (NAVCAN)") {
+    if (input$logs_type == "eTBS system logs (NATS)") {
+      process_eTBS_logs(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, tbl$Airfield$Airfield_Name, dbi_con)
+    } else if (input$logs_type == "Cat48 radar (NATS)") {
+      process_Asterix_Cat48(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
+    } else if (input$logs_type == "Cat62 radar (NATS)") {
+      process_Asterix_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
+    } else if (input$logs_type == "Cat20 radar (NATS)") {
+      process_Asterix_Cat20(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
+    } else if (input$logs_type == "Non-Mode_S radar (NAVCAN)") {
+      process_NavCan_RadarNonModeS(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
+    } else if (input$logs_type == "Flight Plan logs (NAVCAN)") {
       process_NavCan_FP(LogFilePaths[i], dbi_con)
-    } else if (LogFileType == "Alt Flight Plan logs (NAVCAN)") {
+    } else if (input$logs_type == "Alt Flight Plan logs (NAVCAN)") {
       process_NavCan_FPAlt(LogFilePaths[i], dbi_con)
-    } else if (LogFileType == "Ground radar (NAVCAN)") {
-      process_NavCan_GR(LogFilePaths[i], tbl_Runway, dbi_con)
-    } else if (LogFileType == "Surface wind and QNH (NAVCAN)") {
-      process_NavCan_SurfaceWindQNH(LogFilePaths[i], Airfield_Name, dbi_con)
-    } else if (LogFileType == "Surveillance radar (LVNL)") {
-      process_LVNL_Surv(LogFilePaths[i], tbl_Adaptation_Data, tbl_Runway, dbi_con)
-    } else if (LogFileType == "Flight Plan logs (LVNL)") {
+    } else if (input$logs_type == "Ground radar (NAVCAN)") {
+      process_NavCan_GR(LogFilePaths[i], tbl$Runway, dbi_con)
+    } else if (input$logs_type == "Surface wind and QNH (NAVCAN)") {
+      process_NavCan_SurfaceWindQNH(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
+    } else if (input$logs_type == "Surveillance radar (LVNL)") {
+      process_LVNL_Surv(LogFilePaths[i], tbl$Adaptation_Data, Runway, dbi_con)
+    } else if (input$logs_type == "Flight Plan logs (LVNL)") {
       process_LVNL_FP(LogFilePaths[i], dbi_con)
-    } else if (LogFileType == "QNH logs (LVNL)") {
-      process_LVNL_QNH(LogFilePaths[i], Airfield_Name, dbi_con)
-    } else if (LogFileType == "Surface Wind logs (LVNL)") {
-      process_LVNL_SurfaceWind(LogFilePaths[i], Airfield_Name, dbi_con)
+    } else if (input$logs_type == "QNH logs (LVNL)") {
+      process_LVNL_QNH(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
+    } else if (input$logs_type == "Surface Wind logs (LVNL)") {
+      process_LVNL_SurfaceWind(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
     }
     t2 <- Sys.time()
     message("[",Sys.time(),"] ", "Finished loading file: ", basename(LogFilePaths[i]), " (time elapsed: ", Time_String_From_Seconds(as.numeric(difftime(t2, t1, units = "secs"))), ")")
@@ -197,7 +195,7 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     removeModal()
     withCallingHandlers({
       shinyjs::html("console_output", "")
-      read_logs(log_files(), input$logs_type, isolate(dbi_con))
+      read_logs(log_files(), input, isolate(dbi_con))
     },
     message = function(m) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)

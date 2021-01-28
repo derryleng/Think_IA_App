@@ -110,4 +110,4 @@
   DELETE FROM tbl_Anemometer
   IF IDENT_CURRENT('tbl_Anemometer') >= 1
   	DBCC CHECKIDENT (tbl_Anemometer, RESEED, 0)  
-  	
+
