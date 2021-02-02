@@ -24,6 +24,12 @@ read_SQL_File <- function(filepath){
   return(sql.string)
 }
 
+Asterix_Filename_To_Date <- function(Log_Filename) {
+  # This is a very specific function for filename strings containing yyyymmdd
+  # If there are other blocks of >=8 numbers in filename this may get confused!
+  return(format(as.Date(gsub("^.*([2]{1}[0]{1}[0-9]{2}[0-1]{1}[0-9]{1}[0-3]{1}[0-9]{1}).*$", "\\1", basename(Log_Filename)), format = "%Y%m%d"), "%d/%m/%Y"))
+}
+
 runway_Opposite_End <- function(rwy) {
   # Example
   # Input: c("36", "07", "21R", "R18L", "R27C", "R32R")
@@ -130,14 +136,23 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
   
 }
 
-generateFPID <- function(tracks, dbi_con) {
-  
-  if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
+generateFPID <- function(tracks, dbi_con = dbi_con) {
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
-  fp$SSR_Code <- as.numeric(fp$SSR_Code)
   
-  tracks <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Track_Time = "FP_Time", Callsign = "Callsign", SSR_Code = "SSR_Code")]
+  if (nrow(fp) > 0 & nrow(tracks) > 0) {
+    
+    if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
+    
+    fp$SSR_Code <- as.numeric(fp$SSR_Code)
+    
+    tracks <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Track_Time = "FP_Time", Callsign = "Callsign", SSR_Code = "SSR_Code")]
+    
+  } else {
+    
+    message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID")
+    
+  }
   
   # for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
   #   out[

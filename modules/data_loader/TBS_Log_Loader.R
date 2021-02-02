@@ -355,7 +355,7 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   if (nrow(logs_9005) > 0) {
     # Flight plan ID cross reference
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    logs_9005 <- generateFPID(logs_9005)
+    logs_9005 <- generateFPID(logs_9005, dbi_con)
     
     message("[",Sys.time(),"] ", "Finished cross referencing FPIDs, saving to tbl_Radar_Track_Point...")
     dbWriteTable(dbi_con, "tbl_Radar_Track_Point", logs_9005, append = T)

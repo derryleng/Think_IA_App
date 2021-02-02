@@ -73,7 +73,7 @@ process_LVNL_Surv <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
   
   if (nrow(out) > 0) {
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    out <- generateFPID(out)
+    out <- generateFPID(out, dbi_con)
     
     message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Radar_Track_Point...")
     dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)

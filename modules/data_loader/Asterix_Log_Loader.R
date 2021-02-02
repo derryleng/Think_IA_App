@@ -1,9 +1,3 @@
-Asterix_Filename_To_Date <- function(Log_Filename) {
-  # This is a very specific function for filename strings containing yyyymmdd
-  # If there are other blocks of >=8 numbers in filename this may get confused!
-  return(format(as.Date(gsub("^.*([2]{1}[0]{1}[0-9]{2}[0-1]{1}[0-9]{1}[0-3]{1}[0-9]{1}).*$", "\\1", basename(Log_Filename)), format = "%Y%m%d"), "%d/%m/%Y"))
-}
-
 process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
   
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
@@ -191,10 +185,10 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Track_Time = as.numeric(x$`I062/070/Time`),
     Callsign = x$`I062/390/CSN/CSN`,
     SSR_Code = x$`I062/060/Mode3A`,
-    X_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_X, x$`I062/100/X`),
-    Y_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_Y, x$`I062/100/Y`),
-    Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lat` * fnc_GI_Degs_To_Rads(), x$PositionLatitude),
-    Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I062/105/Lon` * fnc_GI_Degs_To_Rads(), x$PositionLongitude),
+    X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I062/100/X`},
+    Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
+    Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I062/105/Lat` * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
+    Lon = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I062/105/Lon` * fnc_GI_Degs_To_Rads()} else {x$PositionLongitude},
     Mode_C = as.numeric(x$`I062/135/CTL`) * 100 * fnc_GI_Ft_To_M(),
     Track_SPD = sqrt(as.numeric(x$`I062/185/VX`)^2 + as.numeric(x$`I062/185/VY`)^2),
     Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I062/185/VX`), as.numeric(x$`I062/185/VY`)),
@@ -327,10 +321,10 @@ process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Track_Time = as.numeric(x$`I020/140/Time`),
     Callsign = x$`I020/245/ID`,
     SSR_Code = x$`I020/070/Mode3A`,
-    X_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_X, x$`I020/042/X`),
-    Y_Pos = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$Position_Y, x$`I020/042/Y`),
-    Lat = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I020/041/Lat` * fnc_GI_Degs_To_Rads(), x$PositionLatitude),
-    Lon = ifelse(tbl_Adaptation_Data$Use_Local_Coords, x$`I020/041/Lon` * fnc_GI_Degs_To_Rads(), x$PositionLongitude),
+    X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I020/042/X`},
+    Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I020/042/Y`},
+    Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I020/041/Lat` * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
+    Lon = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I020/041/Lon` * fnc_GI_Degs_To_Rads()} else {x$PositionLongitude},
     Mode_C = as.numeric(x$`I020/090/MFL`) * 100 * fnc_GI_Ft_To_M(),
     Track_SPD = sqrt(as.numeric(x$`I020/202/VX`)^2 + as.numeric(x$`I020/202/VY`)^2),
     Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I020/202/VX`), as.numeric(x$`I020/202/VY`)),
