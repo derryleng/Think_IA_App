@@ -152,6 +152,19 @@ generateFPID <- function(tracks, dbi_con) {
 
 }
 
+XY_To_Heading <- function(vx, vy) {
+  heading <- ifelse(
+    vx >= 0 & vy >= 0, atan(abs(vx / vy)), ifelse(
+      vx >= 0 & vy < 0, atan(abs(vy / vx)) + pi * 0.5, ifelse(
+        vx < 0 & vy < 0, atan(abs(vx / vy)) + pi, ifelse(
+          vx < 0 & vy >= 0, atan(abs(vy / vx)) + pi * 1.5, NA
+        )
+      )
+    )
+  )
+  return(heading)
+}
+
 # ----------------------------------------------------------------------- #
 # Functions (Imported) ----------------------------------------------------
 # ----------------------------------------------------------------------- #
