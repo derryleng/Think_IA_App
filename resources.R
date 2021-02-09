@@ -136,35 +136,56 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
   
 }
 
-generateFPID <- function(tracks, dbi_con = dbi_con) {
+generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
   
-  if (nrow(fp) > 0 & nrow(tracks) > 0) {
-    
-    if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
-    
-    fp$SSR_Code <- as.numeric(fp$SSR_Code)
-    
-    tracks <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Track_Time = "FP_Time", Callsign = "Callsign", SSR_Code = "SSR_Code")]
-    
-  } else {
-    
-    message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID")
-    
-  }
-  
-  # for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
-  #   out[
-  #     Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
-  #       abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-  #       Callsign == fp[Flight_Plan_ID == j]$Callsign &
-  #       grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-  #   ]$Flight_Plan_ID <- j
+  # if (nrow(fp) > 0) {
+  #   
+  #   if (nrow(tracks) > 0) {
+  #     
+  #     if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
+  #     
+  #     fp$SSR_Code <- as.character(fp$SSR_Code)
+  #     tracks$SSR_Code <- as.character(tracks$SSR_Code)
+  #     
+  #     tracks$generateFPID_UID <- seq(1, nrow(tracks), 1)
+  #     
+  #     # tracks_invalid <- tracks[is.na(Track_Date) | is.na(Track_Time) | is.na(Callsign) | is.na(SSR_Code)]
+  #     # tracks_valid <- tracks[!is.na(Track_Date) & !is.na(Track_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
+  #     
+  #     tracks_proc <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Callsign = "Callsign", SSR_Code = "SSR_Code", Track_Time = "FP_Time")]
+  #     
+  #     if (skip_leftover) {
+  #       tracks_proc$generateFPID_UID <- NULL
+  #       return(tracks_proc)
+  #     } else {
+  #       tracks_leftover <- tracks[generateFPID_UID %!in% tracks_proc$generateFPID_UID]
+  #       tracks_leftover$Flight_Plan_ID <- NA
+  #       tracks_combined <- rbind(tracks_proc, tracks_leftover)[order(generateFPID_UID)]
+  #       tracks_combined$generateFPID_UID <- NULL
+  #       return(tracks_combined)
+  #     }
+  #     
+  #   } else {
+  #     message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in processed track data")
+  #   }
+  #   
+  # } else {
+  #   message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in tbl_Flight_Plan")
   # }
   
+  for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
+    tracks[
+      Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
+        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+        Callsign == fp[Flight_Plan_ID == j]$Callsign &
+        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+    ]$Flight_Plan_ID <- j
+  }
+  
   return(tracks)
-
+  
 }
 
 XY_To_Heading <- function(vx, vy) {

@@ -103,7 +103,7 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   )
   
   out <- data.table(
-    FP_Date = format(as.Date(x$DATE_ATA, "%d/%m/%Y"), "%d/%m/%Y"),
+    FP_Date = format(as.Date(x$DATE_ATA, "%d-%m-%Y"), "%d/%m/%Y"),
     FP_Time = as.numeric(Time_String_To_Seconds(x$TIME_ATA)),
     Callsign = x$CALLSIGN,
     Aircraft_Type = x$ICAO_ACTYPE,
@@ -122,7 +122,7 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
   out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
   
-  message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
+  message("[",Sys.time(),"] ", "Checking for duplicates within existing data...")
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
     out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]

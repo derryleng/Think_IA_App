@@ -471,7 +471,6 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
   if (nrow(out) > 0) {
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
     out <- generateFPID(out, dbi_con)
-    
     message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Radar_Track_Point...")
     dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
     message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")

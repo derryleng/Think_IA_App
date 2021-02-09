@@ -72,6 +72,7 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
   names(volumes) <- volumes_names
   volumes$Min_Altitude <- as.numeric(volumes$Min_Altitude) * fnc_GI_Ft_To_M()
   volumes$Max_Altitude <- as.numeric(volumes$Max_Altitude) * fnc_GI_Ft_To_M()
+  volumes$Volume <- NULL
   
   message("[",Sys.time(),"] ", "Appending ", nrow(volumes), " rows to tbl_Volume...")
   dbWriteTable(dbi_con, "tbl_Volume", volumes, append = T)
@@ -95,6 +96,8 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
   
   polygons$Latitude <- Converted_LatLon$PositionLatitude
   polygons$Longitude <- Converted_LatLon$PositionLongitude
+  polygons$Point <- NULL
+  polygons$Runway_Name <- NULL
   
   message("[",Sys.time(),"] ", "Appending ", nrow(polygons), " rows to tbl_Polygon...")
   dbWriteTable(dbi_con, "tbl_Polygon", polygons, append = T)
@@ -190,7 +193,7 @@ Populate_Airspace_Volumes_DW <- function(Route_Fix_Path, Route_Point_Path, dbi_c
   )
   
   message("[",Sys.time(),"] ", "Appending ", nrow(volumes), " rows of additional downwind routes to tbl_Volume...")
-  dbWriteTable(dbi_con, "tbl_Volume", volumes[,-c("Volume")], append = T)
+  dbWriteTable(dbi_con, "tbl_Volume", volumes, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(volumes), " rows to tbl_Volume")
   
   polygons_list <- lapply(1:(nrow(route_point)-1), function(k) {
@@ -215,7 +218,7 @@ Populate_Airspace_Volumes_DW <- function(Route_Fix_Path, Route_Point_Path, dbi_c
   polygons$Longitude <- Converted_LatLon$PositionLongitude
   
   message("[",Sys.time(),"] ", "Appending ", nrow(polygons), " rows of additional downwind routes to tbl_Polygon...")
-  dbWriteTable(dbi_con, "tbl_Polygon", polygons[,-c("Point", "Runway_Name")], append = T)
+  dbWriteTable(dbi_con, "tbl_Polygon", polygons, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(polygons), " rows to tbl_Polygon")
   
 }
@@ -440,10 +443,10 @@ Populate_tbl_ORD_Wake_Adaptation <- function(LogFilePath, dbi_con) {
   x$End_Initial_Deceleration_Distance_Follower <- x$End_Initial_Deceleration_Distance_Follower * fnc_GI_Nm_To_M()
   x$Initial_Procedural_Speed_Lead <- x$Initial_Procedural_Speed_Lead * fnc_GI_Kts_To_M_Per_Sec()
   x$Initial_Procedural_Speed_Follower <- x$Initial_Procedural_Speed_Follower * fnc_GI_Kts_To_M_Per_Sec()
-  x$Initial_deceleration_Lead <- x$Initial_deceleration_Lead * (fnc_GI_Kts_To_M_Per_Sec() / fnc_GI_Nm_To_M())
-  x$Initial_deceleration_Follower <- x$Initial_deceleration_Follower * (fnc_GI_Kts_To_M_Per_Sec() / fnc_GI_Nm_To_M())
+  x$Initial_Deceleration_Lead <- x$Initial_Deceleration_Lead * (fnc_GI_Kts_To_M_Per_Sec() / fnc_GI_Nm_To_M())
+  x$Initial_Deceleration_Follower <- x$Initial_Deceleration_Follower * (fnc_GI_Kts_To_M_Per_Sec() / fnc_GI_Nm_To_M())
   
-  # Change names because it is not capitalised in database!!! PLS FIX!
+  if ("Aircraft_Type" %in% names(x)) setnames(x, "Aircraft_Type", "Wake_Cat")
   setnames(x, "Initial_Deceleration_Lead", "Initial_deceleration_Lead")
   setnames(x, "Initial_Deceleration_Follower", "Initial_deceleration_Follower")
   

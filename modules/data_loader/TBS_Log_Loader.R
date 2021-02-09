@@ -116,8 +116,7 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
       "Magnetic_HDG_Age",
       "Indicated_ASP_Age",
       "Barometric_Age",
-      "True_ASPD_Age",
-      "Is_Altitude_Corrected"
+      "True_ASPD_Age"
     )[1:length(names(LogContents))]
     
     return(LogContents)
@@ -153,7 +152,7 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
     x$Track_Angle <- ifelse(is.na(x$Track_Angle) | grepl("^-32767.*$", x$Track_Angle) | as.numeric(x$Track_Angle_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Track_Angle)
     x$Roll_Angle <- ifelse(is.na(x$Roll_Angle) | grepl("^-32767.*$", x$Roll_Angle) | as.numeric(x$Roll_Angle_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Roll_Angle)
     x$Barometric_Pressure <- ifelse(is.na(x$Barometric_Pressure) | grepl("^-32767.*$", x$Barometric_Pressure) | as.numeric(x$Barometric_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Barometric_Pressure)
-    
+
   }
   
   out <- data.table(
@@ -180,11 +179,6 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
     Mode_S_Roll_Angle = as.numeric(x$Roll_Angle) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = as.numeric(x$Barometric_Pressure) * fnc_GI_Mbar_To_Pa()
   )
-  
-  # CAV
-  if ("Is_Altitude_Corrected" %in% names(x)) {
-    x$Is_Altitude_Corrected <- ifelse(x$Is_Altitude_Corrected == "1", T, ifelse(x$Is_Altitude_Corrected %in% c("", "255") | is.na(x$Is_Altitude_Corrected), NA, F))
-  }
   
   return(out)
   
