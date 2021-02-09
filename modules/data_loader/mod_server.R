@@ -55,7 +55,7 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
   
 }
 
-generic_confirm_dialogue <- function(SQLFileName, actionButtonName, dbi_con) {
+generic_confirm_dialogue <- function(SQLFileName, actionButtonName, dbi_con, ...) {
   modalDialog(
     div(
       style = "text-align: center",
@@ -66,8 +66,13 @@ generic_confirm_dialogue <- function(SQLFileName, actionButtonName, dbi_con) {
       style = "text-align: center",
       tags$b("Do you wish to proceed?")
     ),
+    ...,
     h5("SQL Script"),
-    SQLFileName,
+    if (length(SQLFileName) > 1) {
+      HTML("<li>", paste0(SQLFileName, collapse = "</li><li>"), "</li>")
+    } else {
+      SQLFileName
+    },
     h5("Database"),
     as.character(dbGetQuery(isolate(dbi_con), "SELECT DB_NAME()")),
     size = "s",
@@ -158,7 +163,6 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     })
   })
   
-  
   # Load Raw Data
   
   observeEvent(input$logs_load, {
@@ -202,6 +206,27 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     message = function(m) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
+  })
+  
+  # Additional Processing
+  
+  observeEvent(input$add_proc, {
+    
+    Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+    
+    if (Airfield_Name == "EHAM") {
+      showModal(generic_confirm_dialogue("Schiphol_Generate_Surface_Wind_Entries.sql", ns("add_proc_confirm"), dbi_con, "Detected airport as EHAM."))
+    } else if (Airfield_Name == "CYYZ") {
+      showModal(generic_confirm_dialogue(c(
+        "Remove_Stationary_Track_Updates.sql", "Remove_Stationary_Track_Updates.sql", "Toronto_Generate_Surface_Wind_Entries.sql"
+      ), ns("add_proc_confirm"), dbi_con, "Detected airport as CYYZ."))
+    }
+    
+  })
+  
+  observeEvent(input$add_proc_confirm, {
+    removeModal()
+    additional_processing(dbi_con)
   })
   
   # IA Processing

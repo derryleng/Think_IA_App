@@ -447,7 +447,7 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     Flight_Plan_ID = NA,
     Track_Date = Date_String,
     Track_Time = as.numeric(x$`I062/070/Time`),
-    Callsign = ifelse(nchar(x$`I062/390/CSN/CSN`) < nchar(x$`I062/380/ID/ID`), x$`I062/380/ID/ID`, x$`I062/390/CSN/CSN`),
+    Callsign = gsub(" ", "", ifelse(nchar(x$`I062/390/CSN/CSN`) < nchar(x$`I062/380/ID/ID`), x$`I062/380/ID/ID`, x$`I062/390/CSN/CSN`)),
     SSR_Code = x$`I062/060/Mode3A`,
     X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I062/100/X`},
     Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
@@ -470,13 +470,12 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
   
   if (nrow(out) > 0) {
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    out <- generateFPID(out, dbi_con)
-    message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Radar_Track_Point...")
-    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
-    message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
+    out2 <- generateFPID(out, dbi_con)
+    message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
+    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out2, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended ", nrow(out2), " rows to tbl_Radar_Track_Point")
   } else {
     message("[",Sys.time(),"] ", "Exited without change to database.")
   }
-  
   
 }

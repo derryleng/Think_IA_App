@@ -175,6 +175,9 @@ generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   #   message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in tbl_Flight_Plan")
   # }
   
+  tracks$Flight_Plan_ID <- NULL
+  tracks$Flight_Plan_ID <- character()
+  
   for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
     tracks[
       Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
