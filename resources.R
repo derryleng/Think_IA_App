@@ -204,6 +204,39 @@ XY_To_Heading <- function(vx, vy) {
   return(heading)
 }
 
+# For handling 90XX Leidos logging formats (used in TBS and CAV Log Loaders)
+# Must have a "Date Time Message Type" line directly before each 90XX data line.
+parse_log_lines <- function(raw_logs, log_type, col_names = NA) {
+  
+  logs <- rbindlist(lapply(grep(paste0("^", log_type, ", .*$"), raw_logs), function(i) {
+    
+    Log_Date <- as.character(as.Date(gsub("^([0-9]{2}-[0-9]{2}-[0-9]{2})[T ]{1}([0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3})  Message: [0-9]{4}$", "\\1", raw_logs[i-1]), "%y-%m-%d"))
+    Log_Time <- Time_String_To_Seconds(gsub("^([0-9]{2}-[0-9]{2}-[0-9]{2})[T ]{1}([0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3})  Message: [0-9]{4}$", "\\2", raw_logs[i-1]))
+    
+    LogContents <- data.table(t(c(Log_Date, Log_Time, unlist(strsplit(raw_logs[i], split = "\\s{0,},\\s{0,}")))))
+    
+    if (!is.na(col_names) & ncol(LogContents) > 0) {
+      
+      if (length(col_names) < ncol(LogContents)) {
+        message("WARNING: Not enough column names supplied for parse_log_lines: ", log_type, " - expected ", ncol(LogContents), " but received ", length(col_names), ".")
+        names(LogContents)[1:length(col_names)] <- col_names
+      } else if (length(col_names) == ncol(LogContents)) {
+        names(LogContents) <- col_names
+      } else if (length(col_names) > ncol(LogContents)) {
+        # message("WARNING: Too many column names supplied for parse_log_lines: ", log_type, " - expected ", ncol(LogContents), " but received ", length(col_names), ".")
+        names(LogContents) <- col_names[1:length(names(LogContents))]
+      }
+      
+    }
+    
+    return(LogContents)
+    
+  }), use.names = T, fill = T)
+  
+  return(logs)
+  
+}
+
 # ----------------------------------------------------------------------- #
 # Functions (Imported) ----------------------------------------------------
 # ----------------------------------------------------------------------- #
