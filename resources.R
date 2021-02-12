@@ -305,7 +305,7 @@ fnc_GI_Latlong_String_To_Radians <- function(x) {
          as.numeric(substr(x, 3, 4)) / 60 +
          as.numeric(substr(x, 5, 6)) / 3600 +
          as.numeric(substr(x, 8, 9)) / 360000) *
-        ifelse(substr(x, 10, 10) == "S", -1, 1) / pi * 180
+        ifelse(substr(x, 10, 10) == "S", -1, 1) / 180 * pi
     )
   } else if (all(nchar(x) == 11)) { # longitude format: dddmmss.hhW
     return(
@@ -313,7 +313,7 @@ fnc_GI_Latlong_String_To_Radians <- function(x) {
          as.numeric(substr(x, 4, 5)) / 60 +
          as.numeric(substr(x, 6, 7)) / 3600 +
          as.numeric(substr(x, 9, 10)) / 360000) *
-        ifelse(substr(x, 11, 11) == "W", -1, 1) / pi * 180
+        ifelse(substr(x, 11, 11) == "W", -1, 1) / 180 * pi
     )
   } else { # Error
     return(0)
