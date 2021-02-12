@@ -61,7 +61,8 @@ data_loader_ui <- function(id) {
               "Surveillance radar (LVNL)",
               "Flight Plan logs (LVNL)",
               "QNH logs (LVNL)",
-              "Surface Wind logs (LVNL)"
+              "Surface Wind logs (LVNL)",
+              "CAV logs"
             ),
             multiple = F
           ),

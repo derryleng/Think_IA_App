@@ -46,6 +46,8 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
       process_LVNL_QNH(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "Surface Wind logs (LVNL)") {
       process_LVNL_SurfaceWind(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
+    } else if (input$logs_type == "CAV logs") {
+      process_CAV_logs(LogFilePaths[i], dbi_con)
     }
     t2 <- Sys.time()
     message("[",Sys.time(),"] ", "Finished loading file: ", basename(LogFilePaths[i]), " (time elapsed: ", Time_String_From_Seconds(as.numeric(difftime(t2, t1, units = "secs"))), ")")
