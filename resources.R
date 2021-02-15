@@ -478,7 +478,7 @@ usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adapta
   
   # Copy inputs for naming convenience.
   Phi <- PositionLatitude
-  Lamda <- abs(PositionLongitude)
+  Lamda <- PositionLongitude
   
   # Set up False Easting / Northings and scaling as required.
   FN <- tbl_Adaptation_Data$Grid_Offset_Y[1]
@@ -488,7 +488,7 @@ usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adapta
   # Set up origin as required (R27L threshold for local coords).
   # Geodetic origin latitude / longitude.
   Phi_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lat[1]
-  Lamda_0 <- abs(tbl_Adaptation_Data$Grid_Projection_Origin_Lon[1])
+  Lamda_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lon[1]
   
   # WGS84 Earth spheroid parameters.
   
