@@ -118,14 +118,14 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
   
   observeEvent(input$load_config, {
     withCallingHandlers({
-      shinyjs::html("console_output_config", "")
+      shinyjs::html("console_output", "")
       message("[",Sys.time(),"] ", "Clearing existing configuration data...")
       dbSendQuery(isolate(dbi_con), read_SQL_File("modules/data_loader/usp_DL_Clear_Config_Tables.sql"))
       Sys.sleep(2)
       import_Config(isolate(config_files()), isolate(dbi_con), isolate(input$load_legacy_wake), isolate(input$load_DW_volumes))
     },
     message = function(m) {
-      shinyjs::html(id = "console_output_config", html = paste0(m$message, "<br>"), add = TRUE)
+      shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
   })
   
@@ -139,11 +139,11 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
   
   observeEvent(input$export_xml, {
     withCallingHandlers({
-      shinyjs::html("console_output_config", "")
+      shinyjs::html("console_output", "")
       export_Config(isolate(export_dir()), isolate(dbi_con), isolate(input$export_xml_version))
     },
     message = function(m) {
-      shinyjs::html(id = "console_output_config", html = paste0(m$message, "<br>"), add = TRUE)
+      shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
   })
   
