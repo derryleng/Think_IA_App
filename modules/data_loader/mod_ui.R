@@ -8,7 +8,7 @@ data_loader_ui <- function(id) {
       title = "Console",
       width = NULL,
       div(
-        style = "overflow-y: auto",
+        style = "max-height: 30vh; overflow-y: auto;",
         h5("NOTE: Errors will occur if your user does not have database write permission."),
         textOutput(ns("console_output"))
       )
