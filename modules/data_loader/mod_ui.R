@@ -6,11 +6,12 @@ data_loader_ui <- function(id) {
     
     box(
       title = "Messages",
+      status = "primary",
       solidHeader = T,
       width = NULL,
       div(
         style = "max-height: 30vh; overflow-y: auto;",
-        h5("NOTE: Errors will occur if your user does not have database write permission."),
+        h5("NOTE: Please ensure your user has database write permission."),
         textOutput(ns("console_output"))
       )
     ),
@@ -33,6 +34,7 @@ data_loader_ui <- function(id) {
       ",
         box(
           title = "Adaptation Management",
+          status = "primary",
           solidHeader = T,
           width = NULL,
           h4("Import CSV Configs to Database"),
@@ -47,10 +49,10 @@ data_loader_ui <- function(id) {
           hr(),
           h4("Export Database Configs to XML Format"),
           div(
-            style = "display: flex; justify-content: flex-start; height: 34px;",
+            style = "display: flex; justify-content: flex-start; flex-basis: content; height: 34px;",
             shinyDirButton(ns("export_config_folder"), label="Select Output Folder", title="Select Config Output Folder"),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Version Suffix"),
-            textInput(ns("export_xml_version"), NULL, "V0.0.0"),
+            div(style = "flex-grow: 1", textInput(ns("export_xml_version"), NULL, "V0.0.0")),
             div(style = "width: 5px"),
             actionButton(ns("export_xml"), "Export XML")
           )
@@ -58,12 +60,12 @@ data_loader_ui <- function(id) {
         
         box(
           title = "Data Loading",
+          status = "primary",
           solidHeader = T,
           width = NULL,
-          shinyFilesButton(ns("logs_select"), label="Browse Log File(s)", title="Hold shift to select multiple", multiple=T),
-          div(style = "height: 5px; width: 5px;"),
           div(
             style = "display: flex; justify-content: flex-start; height: 34px;",
+            shinyFilesButton(ns("logs_select"), label="Browse Log File(s)", title="Hold shift to select multiple", multiple=T),
             div(style = "padding: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Select Log Type:"),
             pickerInput_customised(
               ns("logs_type"),
@@ -85,13 +87,16 @@ data_loader_ui <- function(id) {
                 "CAV logs"
               ),
               multiple = F
-            ),
-            
+            )
           ),
-          div(style = "height: 5px; width: 5px;"),
+          div(style = "height: 15px;"),
           actionButton(ns("logs_load"), "Load File(s)"),
-          hr(),
-          actionButton(ns("add_proc"), "Additional Processing")
+          div(style = "height: 15px;"),
+          div(
+            style = "display: flex; justify-content: flex-start; height: 34px;",
+            actionButton(ns("add_proc"), "Additional Processing"),
+            div(style = "padding: 7px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "NOTE: Airport dependent. Use after data loading.")
+          )
         )
       ),
       div(
@@ -103,51 +108,54 @@ data_loader_ui <- function(id) {
       ",
         box(
           title = "IA Processing",
+          status = "primary",
           solidHeader = T,
           width = NULL,
           div(
             style = "display: flex; justify-content: flex-start; height: 34px;",
             actionButton(ns("ord_pre_proc"), "Run ORD Pre-Processing"),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "ORD Pre-P Date (dd/mm/yy)"),
-            textInput(ns("ord_pre_proc_date"), NULL)
+            div(style = "flex-grow: 1", textInput(ns("ord_pre_proc_date"), NULL))
           ),
           div(style = "height: 15px;"),
           div(
             style = "display: flex; justify-content: flex-start; height: 34px;",
             actionButton(ns("ord_proc"), "Run ORD Processing"),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "ORD Run Date (dd/mm/yy)"),
-            textInput(ns("ord_proc_date"), NULL)
+            div(style = "flex-grow: 1", textInput(ns("ord_proc_date"), NULL))
           ),
           div(style = "height: 15px;"),
           div(
             style = "display: flex; justify-content: flex-start; height: 34px;",
             actionButton(ns("plt_pre_proc"), "Run PLT Pre-Processing"),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "PLT Pre-P Date (dd/mm/yy)"),
-            textInput(ns("plt_pre_proc_date"), NULL)
+            div(style = "flex-grow: 1", textInput(ns("plt_pre_proc_date"), NULL))
           ),
           div(style = "height: 15px;"),
           div(
             style = "display: flex; justify-content: flex-start; height: 34px;",
             actionButton(ns("plt_proc"), "Run PLT Processing"),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "PLT Run Date (dd/mm/yy)"),
-            textInput(ns("plt_proc_date"), NULL)
+            div(style = "flex-grow: 1", textInput(ns("plt_proc_date"), NULL))
           )
         ),
         box(
           title = "Run Scripts",
+          status = "primary",
           solidHeader = T,
           width = NULL,
           div(
             style = "display: flex; justify-content: flex-start; height: 34px;",
             shinyFilesButton(ns("script_select"), label="Browse Script", title="Select SQL File", multiple=F),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Parameters"),
-            textInput(ns("script_run_params"), NULL),
+            div(style = "flex-grow: 1", textInput(ns("script_run_params"), NULL)),
             div(style = "width: 5px"),
             actionButton(ns("script_run"), "Run Script"),
           )
         ),
         box(
           title = "Clear Data",
+          status = "primary",
           solidHeader = T,
           width = NULL,
           actionButton(ns("clear_db"), "Clear Database"),
@@ -156,7 +164,7 @@ data_loader_ui <- function(id) {
             style = "display: flex; justify-content: flex-start; height: 34px;",
             actionButton(ns("selective_purge"), "Selective Purge"),
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Only Keep days with A/C Type:"),
-            textInput(ns("selective_purge_actype"), NULL)
+            div(style = "flex-grow: 1", textInput(ns("selective_purge_actype"), NULL))
           )
         )
       )

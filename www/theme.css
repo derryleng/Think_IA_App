@@ -26,3 +26,15 @@
     background-color: #D51067;
     border-color: #D51067;
 }
+
+.box.box-solid.box-primary {
+    border: 1px solid #D51067;
+}
+
+.box.box-solid.box-primary>.box-header {
+    color: #fff;
+    background: #D51067;
+    background-color: #D51067;
+    margin: -1px;
+    border-radius: 3px;
+}
