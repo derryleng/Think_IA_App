@@ -72,70 +72,6 @@ Time_String_To_Milliseconds <- function(Time_String) {
   }))
 }
 
-XML_Tag_Open <- function(tag_name, tag_attr = NA) {
-  if (all(is.na(tag_attr))) {
-    return(paste0("<", tag_name, ">"))
-  } else {
-    attrs <- sapply(1:length(tag_attr), function(i) {
-      if (is.numeric(tag_attr[i])) {
-        paste0(names(tag_attr)[i], "=", tag_attr[i])
-      } else {
-        paste0(names(tag_attr)[i], "=\"", tag_attr[i], "\"")
-      }
-    })
-    return(paste0("<", tag_name, " ", paste(attrs, collapse = ", "), ">"))
-  }
-}
-
-XML_Tag_Close <- function(tag_name) {
-  return(paste0("</", tag_name, ">"))
-}
-
-# Convert list type to vector of XML strings
-List_To_XML <- function(x, indent = 0, out_vec = c()) {
-  
-  x_names <- names(x)
-  i <- 1
-  
-  while (i <= length(x)) {
-    
-    attrs_list <- NA
-    skip_next <- F
-    
-    if (i < length(x)) {
-      if (x_names[i + 1] == paste0(x_names[i], ".attr")) {
-        attrs_list <- x[[i+1]]
-        skip_next <- T
-      }
-    }
-
-    if (is.numeric(x[[i]]) | is.character(x[[i]])) {
-      out_vec <- c(out_vec, paste0(
-        paste(rep("    ", indent), collapse = ""),
-        XML_Tag_Open(x_names[i], attrs_list),
-        x[[i]],
-        XML_Tag_Close(x_names[i])
-      ))
-    } else if (is.list(x[[i]])) {
-      out_vec <- c(out_vec, paste0(paste(rep("    ", indent), collapse = ""), XML_Tag_Open(x_names[i], attrs_list)))
-      out_vec <- List_To_XML(x[[i]], indent = indent + 1, out_vec = out_vec)
-      out_vec <- c(out_vec, paste0(paste(rep("    ", indent), collapse = ""), XML_Tag_Close(x_names[i])))
-    } else {
-      warning(paste0("Invalid data type at ", x_names[i]))
-    }
-    
-    if (skip_next) {
-      i <- i + 2
-    } else {
-      i <- i + 1
-    }
-    
-  }
-  
-  return(out_vec)
-  
-}
-
 generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
@@ -235,6 +171,12 @@ parse_log_lines <- function(raw_logs, log_type, col_names = NA) {
   
   return(logs)
   
+}
+
+# Required to extend DT filter ability on character columns
+factoriseCharCols <- function(df) {
+  for (i in which(sapply(df, class) == "character")) df[[i]] = as.factor(df[[i]])
+  return(df)
 }
 
 # ----------------------------------------------------------------------- #
@@ -554,5 +496,227 @@ usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adapta
     Position_X = FE + 2 * R * K_0 * cos(Chi) * sin(Delta - Delta_0) / B_Cap,
     Position_Y = FN + 2 * R * K_0 * (sin(Chi) * cos(Chi_0) - cos(Chi) * sin(Chi_0) * cos(Delta - Delta_0)) / B_Cap
   ))
+  
+}
+
+# ----------------------------------------------------------------------- #
+# Database Functions ------------------------------------------------------
+# ----------------------------------------------------------------------- #
+
+# Database connection pop-up dialogue
+connection_dialogue <- function() {
+  modalDialog(
+    div(
+      class = "centered",
+      style = "margin: -6px",
+      h4("Connect to a Database")
+    ),
+    div(
+      style = "display: none;",
+      selectizeInput("db_driver", "Driver", db_defaults$driver, options = list(create = T), width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -15px",
+      selectizeInput("db_server", "Server", db_defaults$server, options = list(create = T), width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -10px",
+      selectizeInput("db_username", "Username", db_defaults$username, options = list(create = T), width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -10px",
+      passwordInput("db_password", "Password", db_defaults$password, width = "100%")
+    ),
+    div(
+      style = "margin-bottom: -5px",
+      selectizeInput("db_database", "Database", db_defaults$database, options = list(create = T), width = "100%")
+    ),
+    div(
+      class = "centered",
+      modalButton("Cancel"),
+      div(style = "width: 15px"),
+      actionButton("db_refresh_list", "DB List", icon("sync")),
+      div(style = "width: 15px"),
+      actionButton("db_connect", "Connect", icon("database"))
+    ),
+    div(style = "height: 5px"),
+    uiOutput("db_status"),
+    size = "s",
+    footer = NULL,
+    easyClose = F
+  )
+}
+
+# ----------------------------------------------------------------------- #
+# UI Wrapper Functions ----------------------------------------------------
+# ----------------------------------------------------------------------- #
+
+# Used to make buttons on the header bar
+headerButtonUI <- function(id, icon_str) {
+  tags$li(
+    class = "dropdown header_button",
+    id = id,
+    icon(icon_str)
+  )
+}
+
+sidebarTabUI <- function(id, text_str, icon_str) {
+  menuItem(
+    text = text_str,
+    tabName = id,
+    icon = icon(icon_str)
+  )
+}
+
+tabContentUI <- function(id, ...) {
+  ns <- NS(id)
+  tabItem(tabName = id, ...)
+}
+
+# pickerInput function with customised styling and action boxes
+pickerInput_customised <- function(
+  inputId,
+  label = NULL,
+  choices = NULL,
+  selected = NULL,
+  multiple = T,
+  options = list(`actions-box` = T, `live-search` = T),
+  choicesOpt = NULL,
+  width = "220px",
+  inline = F,
+  ...
+) {
+  pickerInput(
+    inputId = inputId,
+    label = label,
+    choices = choices,
+    selected = selected,
+    multiple = multiple,
+    options = options,
+    choicesOpt = choicesOpt,
+    width = width,
+    inline = inline,
+    ...
+  )
+}
+
+# datatable function with customised styling
+datatable_customised_1 <- function(
+  data,
+  rownames = F,
+  selection = "none",
+  style = "bootstrap4",
+  options = list(
+    pageLength = 15,
+    lengthMenu = seq(5, 100, 5),
+    columnDefs = list(list(className = 'dt-center', targets = "_all")),
+    scrollX = T,
+    dom = '<"dataTables_row"lf>rt<"dataTables_row"ip>'
+  ),
+  ...
+){
+  datatable(
+    data = data,
+    rownames = rownames,
+    selection = selection,
+    style = style,
+    options = options,
+    ...
+  )
+}
+
+# datatable function with customised styling and download buttons
+datatable_customised_2 <- function(
+  data,
+  rownames = F,
+  selection = "none",
+  style = "bootstrap4",
+  options = list(
+    pageLength = 15,
+    lengthMenu = seq(5, 100, 5),
+    columnDefs = list(list(className = 'dt-center', targets = "_all")),
+    scrollX = T,
+    dom = '<"dataTables_row"lBf>rt<"dataTables_row"ip>',
+    buttons = c('copy', 'csv', 'excel')
+  ),
+  extensions = c("Buttons"),
+  ...
+){
+  datatable(
+    data = data,
+    rownames = rownames,
+    selection = selection,
+    style = style,
+    options = options,
+    extensions = extensions,
+    ...
+  )
+}
+
+# ----------------------------------------------------------------------- #
+# XML Functions -----------------------------------------------------------
+# ----------------------------------------------------------------------- #
+
+XML_Tag_Open <- function(tag_name, tag_attr = NA) {
+  if (all(is.na(tag_attr))) {
+    return(paste0("<", tag_name, ">"))
+  } else {
+    attrs <- sapply(1:length(tag_attr), function(i) {
+      if (is.numeric(tag_attr[i])) {
+        paste0(names(tag_attr)[i], "=", tag_attr[i])
+      } else {
+        paste0(names(tag_attr)[i], "=\"", tag_attr[i], "\"")
+      }
+    })
+    return(paste0("<", tag_name, " ", paste(attrs, collapse = ", "), ">"))
+  }
+}
+
+XML_Tag_Close <- function(tag_name) {
+  return(paste0("</", tag_name, ">"))
+}
+
+# Convert list type to vector of XML strings
+List_To_XML <- function(x, indent = 0, out_vec = c()) {
+  
+  x_names <- names(x)
+  i <- 1
+  
+  while (i <= length(x)) {
+    
+    attrs_list <- NA
+    skip_next <- F
+    
+    if (i < length(x)) {
+      if (x_names[i + 1] == paste0(x_names[i], ".attr")) {
+        attrs_list <- x[[i+1]]
+        skip_next <- T
+      }
+    }
+    
+    if (is.numeric(x[[i]]) | is.character(x[[i]])) {
+      out_vec <- c(out_vec, paste0(
+        paste(rep("    ", indent), collapse = ""),
+        XML_Tag_Open(x_names[i], attrs_list),
+        x[[i]],
+        XML_Tag_Close(x_names[i])
+      ))
+    } else if (is.list(x[[i]])) {
+      out_vec <- c(out_vec, paste0(paste(rep("    ", indent), collapse = ""), XML_Tag_Open(x_names[i], attrs_list)))
+      out_vec <- List_To_XML(x[[i]], indent = indent + 1, out_vec = out_vec)
+      out_vec <- c(out_vec, paste0(paste(rep("    ", indent), collapse = ""), XML_Tag_Close(x_names[i])))
+    } else {
+      warning(paste0("Invalid data type at ", x_names[i]))
+    }
+    
+    if (skip_next) {
+      i <- i + 2
+    } else {
+      i <- i + 1
+    }
+    
+  }
+  
+  return(out_vec)
   
 }

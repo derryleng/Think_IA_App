@@ -1,7 +1,8 @@
 header <- dashboardHeader(
   title = htmltools::HTML('<img src="Think_Logo_White.png" width="100" height="37">'),
   titleWidth = sidebarWidth,
-  headerButtonUI("db_button", "database")
+  headerButtonUI("db_button", "database"),
+  headerButtonUI("debug_test", "info-circle")
 )
 
 sidebar <- dashboardSidebar(

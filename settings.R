@@ -13,9 +13,6 @@ db_defaults <- list(
   username = c("ruser", "vbuser")
 )
 
-# con <- odbcDriverConnect(connection="Driver={SQL Server};Server={192.168.1.23};Database={Think_App_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
-# dbi_con <- dbConnect(odbc::odbc(), .connection_string="Driver={SQL Server};Server={192.168.1.23};Database={App_Test_NavCan_UTMA_Validation_DB2};Uid={vbuser};Pwd={Th!nkvbuser};")
-
 # ----------------------------------------------------------------------- #
 # Sidebar Settings --------------------------------------------------------
 # ----------------------------------------------------------------------- #
@@ -30,8 +27,7 @@ sidebarWidth <- "160px"
 #       > Order corresponds to order of appearance in app sidebar
 #       > Use "" for icon_str to specify no icon
 sidebarSettings <- list(
-  # example_1 = c("Example 1", "car"),
-  # user_guide = c("User Guide", "question-circle"),
+  plt_tools = c("PLT Tools", "route"),
   data_loader = c("Data Loader", "database"),
   db_explorer = c("Database Explorer", "list-alt"),
   track_visualiser = c("Track Visualiser", "search-location"),

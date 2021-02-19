@@ -2,7 +2,7 @@ data_loader_ui <- function(id) {
   
   ns <- NS(id)
   
-  fluidPage(
+  div(
     
     box(
       title = "Messages",
@@ -87,7 +87,7 @@ data_loader_ui <- function(id) {
                 "CAV logs"
               ),
               multiple = F
-            )
+            ),
           ),
           div(style = "height: 15px;"),
           actionButton(ns("logs_load"), "Load File(s)"),

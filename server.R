@@ -105,4 +105,42 @@ server <- function(input, output, session) {
 
   })
   
+  # ----------------------------------------------------------------------- #
+  # Debug -------------------------------------------------------------------
+  # ----------------------------------------------------------------------- #
+  
+  onclick("debug_test", showModal(modalDialog(
+    div(class = "centered", h4("input")),
+    verbatimTextOutput("inputdataText"),
+    div(class = "centered", h4("session$clientData")),
+    verbatimTextOutput("clientdataText"),
+    size = "l",
+    footer = NULL,
+    easyClose = T
+  )))
+  
+  inputsTable <- reactive({
+    x <- NULL
+    for (i in 1:length(names(input))) {
+      if (names(input)[i] %!in% c("db_password")) {
+        x <- c(x, paste0(names(input)[i], " = ", input[[names(input)[i]]]))
+      }
+    }
+    return(paste(sort(x), collapse = "\n"))
+  })
+  
+  output$inputdataText <- renderText({
+    inputsTable()
+  })
+  
+  cdata <- session$clientData
+  
+  output$clientdataText <- renderText({
+    cnames <- sort(names(cdata)) %>% .[. %!in% grep("^output_spinner.*$", ., value=T)]
+    allvalues <- lapply(cnames, function(name) {
+      paste(name, cdata[[name]], sep = " = ")
+    })
+    paste(allvalues, collapse = "\n")
+  })
+  
 }

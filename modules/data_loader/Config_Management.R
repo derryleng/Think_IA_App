@@ -67,41 +67,82 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath, header = F)
   
-  volumes_names <- as.character(x[V1 == "Volume"][1])
-  volumes <- x[V1 == "Volume"][-1]
-  names(volumes) <- volumes_names
-  volumes$Min_Altitude <- as.numeric(volumes$Min_Altitude) * fnc_GI_Ft_To_M()
-  volumes$Max_Altitude <- as.numeric(volumes$Max_Altitude) * fnc_GI_Ft_To_M()
-  volumes$Volume <- NULL
+  if (x[1,1] %in% c("Volume", "Point")) {
+    
+    volumes_names <- as.character(x[V1 == "Volume"][1])
+    volumes <- x[V1 == "Volume"][-1]
+    names(volumes) <- volumes_names
+    volumes$Min_Altitude <- as.numeric(volumes$Min_Altitude) * fnc_GI_Ft_To_M()
+    volumes$Max_Altitude <- as.numeric(volumes$Max_Altitude) * fnc_GI_Ft_To_M()
+    volumes$Volume <- NULL
+    
+    polygons_names <- as.character(x[V1 == "Point"][1])
+    polygons <- x[V1 == "Point"][-1]
+    names(polygons) <- polygons_names
+    polygons$Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+    polygons$Point_X <- as.numeric(polygons$Point_X) * fnc_GI_Nm_To_M()
+    polygons$Point_Y <- as.numeric(polygons$Point_Y) * fnc_GI_Nm_To_M()
+    polygons$Runway_Name <- volumes[polygons$Volume_Name, on="Volume_Name"]$Runway_Name
+    
+    tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+    theta <- tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$NODE_Heading_Offset
+    polygons$Point_X <- (polygons$Point_X * cos(theta) + polygons$Point_Y * sin(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_X_Pos
+    polygons$Point_Y <- (-polygons$Point_X * sin(theta) + polygons$Point_Y * cos(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_Y_Pos
+    
+    tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+    Converted_LatLon <- usp_GI_Latlong_From_XY(polygons$Point_X, polygons$Point_Y, tbl_Adaptation_Data)
+    
+    polygons$Latitude <- Converted_LatLon$PositionLatitude
+    polygons$Longitude <- Converted_LatLon$PositionLongitude
+    polygons$Point <- NULL
+    polygons$Runway_Name <- NULL
+    
+  } else {
+    
+    names(x) <- as.character(x[1])
+    x <- x[-1]
+    
+    volumes <- data.table()
+    polygons <- data.table()
+    
+    Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+    
+    for (i in 1:nrow(x)) {
+      
+      volumes <- rbind(
+        volumes,
+        data.table(
+          Volume_Name = x$Volume_Name[i],
+          Runway_Name = gsub("^([A-Z0-9]{1,})_.*$", "R\\1", x$Volume_Name[i]),
+          Volume_Type = x$Volume_Type[i],
+          Min_Altitude = x$Min_Altitude[i],
+          Max_Altitude = x$Max_Altitude[i]
+        )
+      )
+      
+      polygons <- rbind(
+        polygons,
+        data.table(
+          Volume_Name = rep(x$Volume_Name[i], 5),
+          Airfield_Name = rep(Airfield_Name, 5),
+          Point_Sequence = 1:5,
+          Point_X = c(x$Start_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i]),
+          Point_Y = c(x$Lateral_Dist_Left[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Left[i], x$Lateral_Dist_Left[i])
+        )
+      )
+      
+    }
+    
+  }
   
   message("[",Sys.time(),"] ", "Appending ", nrow(volumes), " rows to tbl_Volume...")
   dbWriteTable(dbi_con, "tbl_Volume", volumes, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(volumes), " rows to tbl_Volume")
   
-  polygons_names <- as.character(x[V1 == "Point"][1])
-  polygons <- x[V1 == "Point"][-1]
-  names(polygons) <- polygons_names
-  polygons$Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
-  polygons$Point_X <- as.numeric(polygons$Point_X) * fnc_GI_Nm_To_M()
-  polygons$Point_Y <- as.numeric(polygons$Point_Y) * fnc_GI_Nm_To_M()
-  polygons$Runway_Name <- volumes[polygons$Volume_Name, on="Volume_Name"]$Runway_Name
-  
-  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
-  theta <- tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$NODE_Heading_Offset
-  polygons$Point_X <- (polygons$Point_X * cos(theta) + polygons$Point_Y * sin(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_X_Pos
-  polygons$Point_Y <- (-polygons$Point_X * sin(theta) + polygons$Point_Y * cos(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_Y_Pos
-  
-  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-  Converted_LatLon <- usp_GI_Latlong_From_XY(polygons$Point_X, polygons$Point_Y, tbl_Adaptation_Data)
-  
-  polygons$Latitude <- Converted_LatLon$PositionLatitude
-  polygons$Longitude <- Converted_LatLon$PositionLongitude
-  polygons$Point <- NULL
-  polygons$Runway_Name <- NULL
-  
   message("[",Sys.time(),"] ", "Appending ", nrow(polygons), " rows to tbl_Polygon...")
   dbWriteTable(dbi_con, "tbl_Polygon", polygons, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(polygons), " rows to tbl_Polygon")
+  
 }
 
 Populate_Airspace_Volumes_DW <- function(Route_Fix_Path, Route_Point_Path, dbi_con, Volume_Width = 1) {
@@ -263,6 +304,10 @@ Populate_tbl_Mode_S_Wind_Adaptation <- function(LogFilePath, dbi_con) {
 Populate_tbl_Path_Leg <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath)
+  if ("Airfield_Name" %!in% names(x)) {
+    Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+    x$Airfield_Name <- Airfield_Name
+  }
   message("[",Sys.time(),"] ", "Appending ", nrow(x), " rows to tbl_Path_Leg...")
   dbWriteTable(dbi_con, "tbl_Path_Leg", x, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Path_Leg")
@@ -272,6 +317,7 @@ Populate_tbl_Path_Leg_Transition <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath)
   tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  
   for (i in 1:nrow(x)) {
     if (x$Min_Heading[i] != 0 & x$Max_Heading[i] != 360) {
       x$Min_Heading[i] <- x$Min_Heading[i] + round(tbl_Runway[Runway_Name == x$Runway_Name[i]]$NODE_Heading_Offset[1] / fnc_GI_Degs_To_Rads(), 0)
@@ -289,12 +335,21 @@ Populate_tbl_Path_Leg_Transition <- function(LogFilePath, dbi_con) {
   if (nrow(x[Min_Heading >= Max_Heading | abs(Min_Heading) > 360 | abs(Max_Heading) > 360 | abs(Max_Heading - Min_Heading) > 360]) > 0) {
     stop("ADAPTATION DATA ERROR: Invalid transition heading range detected")
   }
+  
+  if ("Airfield_Name" %!in% names(x)) {
+    Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+    x$Airfield_Name <- Airfield_Name
+  }
+  
   x$Min_Heading <- x$Min_Heading * fnc_GI_Degs_To_Rads()
   x$Max_Heading <- x$Max_Heading * fnc_GI_Degs_To_Rads()
-  x$Min_Range_To_ILS <- x$Min_Range_To_ILS * fnc_GI_Nm_To_M()
-  x$Max_Range_To_ILS <- x$Max_Range_To_ILS * fnc_GI_Nm_To_M()
-  x$Max_Altitude <- x$Max_Altitude * fnc_GI_Ft_To_M()
   x$Min_Sustained_RoCD <- x$Min_Sustained_RoCD * fnc_GI_Ft_Per_Min_To_M_Per_Sec()
+  
+  # Deprecated parameters
+  # x$Min_Range_To_ILS <- x$Min_Range_To_ILS * fnc_GI_Nm_To_M()
+  # x$Max_Range_To_ILS <- x$Max_Range_To_ILS * fnc_GI_Nm_To_M()
+  # x$Max_Altitude <- x$Max_Altitude * fnc_GI_Ft_To_M()
+
   message("[",Sys.time(),"] ", "Appending ", nrow(x), " rows to tbl_Path_Leg_Transition...")
   dbWriteTable(dbi_con, "tbl_Path_Leg_Transition", x, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Path_Leg_Transition")
@@ -499,6 +554,7 @@ Populate_tbl_Reference_TBS_Table_Time <- function(LogFilePath, dbi_con) {
 }
 
 import_Config <- function(configDir, dbi_con, load_legacy_wake = T, load_DW_volumes = T) {
+  # Important! The functions must be called in correct order due to dependencies!
   message("[",Sys.time(),"] ", "Import config from: ", configDir)
   Populate_tbl_Adaptation(list.files(configDir, ".*Populate_tbl_Adaptation_?D?a?t?a?.csv", full.names = T), dbi_con)
   Populate_tbl_Airfield(list.files(configDir, ".*Populate_tbl_Airfield.csv", full.names = T), dbi_con)
