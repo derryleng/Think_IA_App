@@ -377,7 +377,9 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
   logs <- readLines(LogFilePath)
   message("[",Sys.time(),"] ", "Read ", length(logs), " lines.")
   
-  x <- data.table(grep("^98,160.*$", logs, value = T))[, tstrsplit(V1, ",", fixed = T)]
+  x <- rbind(data.table(grep("^98,160.*$", logs, value = T))[, tstrsplit(V1, ",", fixed = T)],
+             data.table(grep("^52,205.*$", logs, value = T))[, tstrsplit(V1, ",", fixed = T)],
+             data.table(grep("^52,225.*$", logs, value = T))[, tstrsplit(V1, ",", fixed = T)])
   message("[",Sys.time(),"] ", "Found ", nrow(x), " valid CAT62 lines.")
   
   names(x) <- c(
