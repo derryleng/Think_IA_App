@@ -10,7 +10,7 @@ db_defaults <- list(
     "Goose (192.168.1.39)" = "192.168.1.39"
   ),
   database = if (file.exists("temp/db_names.csv")) fread("temp/db_names.csv", header = F)$V1,
-  username = c("vbuser", "ruser"),
+  username = c("vbuser", "ruser")
 )
 
 # ----------------------------------------------------------------------- #
