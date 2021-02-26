@@ -15,3 +15,4 @@ mapview
 clipr
 odbc
 DBI
+rhandsontable

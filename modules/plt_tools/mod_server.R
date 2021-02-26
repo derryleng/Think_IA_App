@@ -11,102 +11,65 @@ tbl_names <- list(
   tbl_Path_Leg_Transition_3 = "08_Populate_tbl_Path_Leg_Transition_3.csv"
 )
 
-plt_tools_server <- function(input, output, session, ...) {
+tbl_template <- list(
+  tbl_Runway = data.table(
+    Runway_Name = NA,
+    Airfield_Name = NA,
+    Heading = NA,
+    Runway_Group = NA,
+    Approach_Direction = NA
+  ),
+  tbl_Volumes = data.table(
+    Volume_Name = NA,
+    Min_Altitude = NA,
+    Max_Altitude = NA,
+    Start_Dist_From_Threshold = NA,
+    End_Dist_From_Threshold = NA,
+    Lateral_Dist_Left = NA,
+    Lateral_Dist_Right = NA
+  ),
+  tbl_Path_Leg = data.table(
+    Path_Leg_Name = NA,
+    Landing_Runway = NA,
+    Is_Intercept_Leg = NA,
+    Is_ILS_Leg = NA,
+    Is_Landing_Leg = NA,
+    Path_Leg_Type = NA
+  ),
+  tbl_Path_Leg_Transition = data.table(
+    Current_Path_Leg = NA,
+    New_Path_Leg = NA,
+    Min_Heading = NA,
+    Max_Heading = NA,
+    Volume_Name = NA,
+    Min_Sustained_RoCD = NA,
+    Runway_Name = NA,
+    Associated_Runway = NA
+  )
+)
+
+plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   ns <- session$ns
+  
+  tbl_Adaptation_Data <- reactive({
+    as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  })
   
   # Blank templates
   
   tbl <- reactiveValues(
     loaded = F,
-    tbl_Runway = data.table(
-      Runway_Name = NA,
-      Airfield_Name = NA,
-      Heading = NA,
-      Runway_Group = NA,
-      Approach_Direction = NA
-    ),
-    tbl_Volumes = data.table(
-      Volume_Name = NA,
-      Min_Altitude = NA,
-      Max_Altitude = NA,
-      Start_Dist_From_Threshold = NA,
-      End_Dist_From_Threshold = NA,
-      Lateral_Dist_Left = NA,
-      Lateral_Dist_Right = NA
-    ),
-    tbl_Volumes_2 = data.table(
-      Volume_Name = NA,
-      Min_Altitude = NA,
-      Max_Altitude = NA,
-      Start_Dist_From_Threshold = NA,
-      End_Dist_From_Threshold = NA,
-      Lateral_Dist_Left = NA,
-      Lateral_Dist_Right = NA
-    ),
-    tbl_Volumes_3 = data.table(
-      Volume_Name = NA,
-      Min_Altitude = NA,
-      Max_Altitude = NA,
-      Start_Dist_From_Threshold = NA,
-      End_Dist_From_Threshold = NA,
-      Lateral_Dist_Left = NA,
-      Lateral_Dist_Right = NA
-    ),
-    tbl_Path_Leg = data.table(
-      Path_Leg_Name = NA,
-      Landing_Runway = NA,
-      Is_Intercept_Leg = NA,
-      Is_ILS_Leg = NA,
-      Is_Landing_Leg = NA,
-      Path_Leg_Type = NA
-    ),
-    tbl_Path_Leg_2 = data.table(
-      Path_Leg_Name = NA,
-      Landing_Runway = NA,
-      Is_Intercept_Leg = NA,
-      Is_ILS_Leg = NA,
-      Is_Landing_Leg = NA,
-      Path_Leg_Type = NA
-    ),
-    tbl_Path_Leg_3 = data.table(
-      Path_Leg_Name = NA,
-      Landing_Runway = NA,
-      Is_Intercept_Leg = NA,
-      Is_ILS_Leg = NA,
-      Is_Landing_Leg = NA,
-      Path_Leg_Type = NA
-    ),
-    tbl_Path_Leg_Transition = data.table(
-      Current_Path_Leg = NA,
-      New_Path_Leg = NA,
-      Min_Heading = NA,
-      Max_Heading = NA,
-      Volume_Name = NA,
-      Min_Sustained_RoCD = NA,
-      Runway_Name = NA,
-      Associated_Runway = NA
-    ),
-    tbl_Path_Leg_Transition_2 = data.table(
-      Current_Path_Leg = NA,
-      New_Path_Leg = NA,
-      Min_Heading = NA,
-      Max_Heading = NA,
-      Volume_Name = NA,
-      Min_Sustained_RoCD = NA,
-      Runway_Name = NA,
-      Associated_Runway = NA
-    ),
-    tbl_Path_Leg_Transition_3 = data.table(
-      Current_Path_Leg = NA,
-      New_Path_Leg = NA,
-      Min_Heading = NA,
-      Max_Heading = NA,
-      Volume_Name = NA,
-      Min_Sustained_RoCD = NA,
-      Runway_Name = NA,
-      Associated_Runway = NA
-    )
+    tbl_Runway = tbl_template$tbl_Runway,
+    tbl_Volumes = tbl_template$tbl_Volumes,
+    tbl_Volumes_2 = tbl_template$tbl_Volumes,
+    tbl_Volumes_3 = tbl_template$tbl_Volumes,
+    tbl_Path_Leg = tbl_template$tbl_Path_Leg,
+    tbl_Path_Leg_2 = tbl_template$tbl_Path_Leg,
+    tbl_Path_Leg_3 = tbl_template$tbl_Path_Leg,
+    tbl_Path_Leg_Transition = tbl_template$tbl_Path_Leg_Transition,
+    tbl_Path_Leg_Transition_2 = tbl_template$tbl_Path_Leg_Transition,
+    tbl_Path_Leg_Transition_3 = tbl_template$tbl_Path_Leg_Transition
   )
   
   # Load UI elements
@@ -117,43 +80,83 @@ plt_tools_server <- function(input, output, session, ...) {
     
     output$editor_view <- renderUI({
       div(
-        div(style = "height: 15px;"),
+        style = "display: flex; flex-direction: column; flex-basis: 100%; gap: 30px",
         div(
-          style = "display: flex; justify-content: flex-start; gap: 5px;",
-          div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Additional Variants:"),
-          div(style = "height: 34px;", numericInput(ns("plt_variants"), NULL, value = 0, min = 0, max = 2, step = 1))
-        ),
-        div(style = "height: 15px;"),
-        tabBox(
-          width = NULL,
-          tabPanel(
-            title = "Runways",
-            rHandsontableOutput(outputId = ns("DT_tbl_Runway"))
+          style = "flex: 1; overflow-x: auto",
+          div(style = "height: 15px;"),
+          
+          div(
+            style = "display: flex; justify-content: flex-start; gap: 5px;",
+            div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Additional Variants:"),
+            div(style = "height: 34px;", numericInput(ns("plt_variants"), NULL, value = 0, min = 0, max = 2, step = 1))
           ),
-          tabPanel(
-            title = "Volumes",
-            rHandsontableOutput(outputId = ns("DT_tbl_Volumes")),
-            hidden(
-              rHandsontableOutput(outputId = ns("DT_tbl_Volumes_2")),
-              rHandsontableOutput(outputId = ns("DT_tbl_Volumes_3"))
-            )
-          ),
-          tabPanel(
-            title = "Path Legs",
-            rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg")),
-            hidden(
-              rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_2")),
-              rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_3"))
-            )
-          ),
-          tabPanel(
-            title = "Path Leg Transitions",
-            rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_Transition")),
-            hidden(
-              rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_Transition_2")),
-              rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_Transition_3"))
+          
+          div(style = "height: 15px;"),
+          tabBox(
+            width = NULL,
+            tabPanel(
+              title = "Runways",
+              rHandsontableOutput(outputId = ns("DT_tbl_Runway"))
+            ),
+            tabPanel(
+              title = "Volumes",
+              rHandsontableOutput(outputId = ns("DT_tbl_Volumes")),
+              hidden(
+                rHandsontableOutput(outputId = ns("DT_tbl_Volumes_2")),
+                rHandsontableOutput(outputId = ns("DT_tbl_Volumes_3"))
+              )
+            ),
+            tabPanel(
+              title = "Path Legs",
+              rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg")),
+              hidden(
+                rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_2")),
+                rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_3"))
+              )
+            ),
+            tabPanel(
+              title = "Path Leg Transitions",
+              rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_Transition")),
+              hidden(
+                rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_Transition_2")),
+                rHandsontableOutput(outputId = ns("DT_tbl_Path_Leg_Transition_3"))
+              )
             )
           )
+        ),
+        div(
+          style = "flex: 1; height: calc(100vh - 265px);",
+          div(
+            style = "display: flex; background: #D51067; border-radius: 6px 6px 0 0; margin-top: -40px",
+            div(style = "padding: 10px; color: white", tags$b("PLT Adaptation Preview")),
+            dropdown(
+              div(style = "font-weight: bold; padding-bottom: 10px", "Runways"),
+              pickerInput_customised(ns("toggle_tbl_Runway"), NULL, choices = NULL),
+              style = "minimal", icon = icon("road"),
+              tooltip = tooltipOptions(title = "Runways", placement = "right")
+            ),
+            dropdown(
+              div(style = "font-weight: bold; padding-bottom: 10px", "Volumes"),
+              pickerInput_customised(ns("toggle_tbl_Volumes"), "Variant 1", choices = NULL),
+              hidden(
+                pickerInput_customised(ns("toggle_tbl_Volumes_2"), "Variant 2", choices = NULL),
+                pickerInput_customised(ns("toggle_tbl_Volumes_3"), "Variant 3", choices = NULL)
+              ),
+              style = "minimal", icon = icon("vector-square"),
+              tooltip = tooltipOptions(title = "Volumes", placement = "right")
+            ),
+            dropdown(
+              div(style = "font-weight: bold; padding-bottom: 10px", "Path Legs"),
+              pickerInput_customised(ns("toggle_tbl_Path_Leg"), "Variant 1", choices = NULL),
+              hidden(
+                pickerInput_customised(ns("toggle_tbl_Path_Leg_2"), "Variant 2", choices = NULL),
+                pickerInput_customised(ns("toggle_tbl_Path_Leg_3"), "Variant 3", choices = NULL)
+              ),
+              style = "minimal", icon = icon("route"),
+              tooltip = tooltipOptions(title = "Path Legs", placement = "right")
+            )
+          ),
+          leafletOutput(ns("map"), height = "100%")
         )
       )
     })
@@ -377,13 +380,21 @@ plt_tools_server <- function(input, output, session, ...) {
       shinyjs::hide("DT_tbl_Volumes_3")
       shinyjs::hide("DT_tbl_Path_Leg_3")
       shinyjs::hide("DT_tbl_Path_Leg_Transition_3")
+      shinyjs::hide("toggle_tbl_Volumes_2")
+      shinyjs::hide("toggle_tbl_Path_Leg_2")
+      shinyjs::hide("toggle_tbl_Volumes_3")
+      shinyjs::hide("toggle_tbl_Path_Leg_3")
     } else if (input$plt_variants == 1) {
       shinyjs::show("DT_tbl_Volumes_2")
       shinyjs::show("DT_tbl_Path_Leg_2")
       shinyjs::show("DT_tbl_Path_Leg_Transition_2")
+      shinyjs::show("toggle_tbl_Volumes_2")
+      shinyjs::show("toggle_tbl_Path_Leg_2")
       shinyjs::hide("DT_tbl_Volumes_3")
       shinyjs::hide("DT_tbl_Path_Leg_3")
       shinyjs::hide("DT_tbl_Path_Leg_Transition_3")
+      shinyjs::hide("toggle_tbl_Volumes_3")
+      shinyjs::hide("toggle_tbl_Path_Leg_3")
     } else if (input$plt_variants == 2) {
       shinyjs::show("DT_tbl_Volumes_2")
       shinyjs::show("DT_tbl_Path_Leg_2")
@@ -391,23 +402,156 @@ plt_tools_server <- function(input, output, session, ...) {
       shinyjs::show("DT_tbl_Volumes_3")
       shinyjs::show("DT_tbl_Path_Leg_3")
       shinyjs::show("DT_tbl_Path_Leg_Transition_3")
+      shinyjs::show("toggle_tbl_Volumes_2")
+      shinyjs::show("toggle_tbl_Path_Leg_2")
+      shinyjs::show("toggle_tbl_Volumes_3")
+      shinyjs::show("toggle_tbl_Path_Leg_3")
     } else if (x > 2 | x < 0) {
       updateTextInput(session, "plt_variants", value = 0)
     }
   })
   
+  # Hots
   
+  hot_tbl_Runway <- reactive({
+    req(input$DT_tbl_Runway)
+    return(hot_to_r(input$DT_tbl_Runway))
+  })
   
-  # observeEvent(input$editor_insert_row_above, {
-  #   
-  #   input$tabs_plt_editor
-  #   
-  #   row <- input$DT_tbl_Runway_row_selected
-  #   if (length(row) > 0) {
-  #     proxy_tbl_Runway <- dataTableProxy("DT_tbl_Runway")
-  #     
-  #   }
-  # })
+  hot_tbl_Volumes <- reactive({
+    req(input$DT_tbl_Volumes)
+    return(hot_to_r(input$DT_tbl_Volumes))
+  })
   
+  hot_tbl_Volumes_2 <- reactive({
+    req(input$DT_tbl_Volumes_2)
+    return(hot_to_r(input$DT_tbl_Volumes_2))
+  })
+  
+  hot_tbl_Volumes_3 <- reactive({
+    req(input$DT_tbl_Volumes_3)
+    return(hot_to_r(input$DT_tbl_Volumes_3))
+  })
+  
+  hot_tbl_Path_Leg <- reactive({
+    req(input$DT_tbl_Path_Leg)
+    return(hot_to_r(input$DT_tbl_Path_Leg))
+  })
+  
+  hot_tbl_Path_Leg_2 <- reactive({
+    req(input$DT_tbl_Path_Leg_2)
+    return(hot_to_r(input$DT_tbl_Path_Leg_2))
+  })
+  
+  hot_tbl_Path_Leg_3 <- reactive({
+    req(input$DT_tbl_Path_Leg_3)
+    return(hot_to_r(input$DT_tbl_Path_Leg_3))
+  })
+
+  # Update map toggles based on hots
+  
+  observeEvent(hot_tbl_Runway(), {
+    req(hot_tbl_Runway())
+    updatePickerInput(session, "toggle_tbl_Runway", choices = hot_tbl_Runway()$Runway_Name)
+  })
+  
+  observeEvent(hot_tbl_Volumes(), {
+    req(hot_tbl_Volumes())
+    updatePickerInput(session, "toggle_tbl_Volumes", choices = hot_tbl_Volumes()$Volume_Name)
+  })
+  
+  observeEvent(hot_tbl_Volumes_2(), {
+    req(hot_tbl_Volumes_2())
+    updatePickerInput(session, "toggle_tbl_Volumes_2", choices = hot_tbl_Volumes_2()$Volume_Name)
+  })
+  
+  observeEvent(hot_tbl_Volumes_3(), {
+    req(hot_tbl_Volumes_3())
+    updatePickerInput(session, "toggle_tbl_Volumes_3", choices = hot_tbl_Volumes_3()$Volume_Name)
+  })
+  
+  observeEvent(hot_tbl_Path_Leg(), {
+    req(hot_tbl_Path_Leg())
+    updatePickerInput(session, "toggle_tbl_Path_Leg", choices = hot_tbl_Path_Leg()$Path_Leg_Name)
+  })
+  
+  observeEvent(hot_tbl_Path_Leg_2(), {
+    req(hot_tbl_Path_Leg_2())
+    updatePickerInput(session, "toggle_tbl_Path_Leg_2", choices = hot_tbl_Path_Leg_2()$Path_Leg_Name)
+  })
+  
+  observeEvent(hot_tbl_Path_Leg_3(), {
+    req(hot_tbl_Path_Leg_3())
+    updatePickerInput(session, "toggle_tbl_Path_Leg_3", choices = hot_tbl_Path_Leg_3()$Path_Leg_Name)
+  })
+  
+  # Preview map
+  
+  output$map <- renderLeaflet({
+    x <- leaflet(options = leafletOptions(zoomControl = F, preferCanvas = T)) %>%
+      setView(lng = 0, lat = 0, zoom = 3)
+    tile_providers <- list(
+      `Esri Satellite` = "Esri.WorldImagery",
+      `CartoDB Light` = "CartoDB.Positron",
+      `CartoDB Light 2` = "CartoDB.PositronNoLabels",
+      `CartoDB Dark` = "CartoDB.DarkMatter",
+      `CartoDB Dark 2` = "CartoDB.DarkMatterNoLabels",
+      `OSM Mapnik` = "OpenStreetMap.Mapnik"
+    )
+    for (i in 1:length(tile_providers)) {
+      x <- x %>% addProviderTiles(providers[[tile_providers[[i]]]], options = providerTileOptions(noWrap = T), group = names(tile_providers)[i])
+    }
+    x <- x %>% addLayersControl(baseGroups = names(tile_providers), options = layersControlOptions(collapsed = T))
+  })
+  
+  observeEvent(input$toggle_tbl_Runway, {
+    
+  })
+  
+  observeEvent(input$toggle_tbl_Volumes, {
+    p <- leafletProxy("map") %>% clearGroup("Volumes")
+    for (i in input$toggle_tbl_Volumes) {
+      v_i <- hot_tbl_Volumes()[Volume_Name %in% i][1]
+      # v2_i <- usp_GI_Latlong_From_XY(
+      #   c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
+      #   c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left),
+      #   tbl_Adaptation_Data()
+      # )
+      v2_i <- data.table(
+        PositionLongitude=c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
+        PositionLatitude=c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left)
+      )
+      p_i <- Polygon(
+        data.table(
+          Longitude = v2_i$PositionLongitude*180/pi,
+          Latitude = v2_i$PositionLatitude*180/pi
+        )
+      )
+      p %>% addPolygons(
+        data = p_i,
+        group = "Volumes"
+      )
+    }
+  })
+  
+  observeEvent(input$toggle_tbl_Volumes_2, {
+    
+  })
+  
+  observeEvent(input$toggle_tbl_Volumes_3, {
+    
+  })
+  
+  observeEvent(input$toggle_tbl_Path_Leg, {
+    
+  })
+  
+  observeEvent(input$toggle_tbl_Path_Leg_2, {
+    
+  })
+  
+  observeEvent(input$toggle_tbl_Path_Leg_3, {
+    
+  })
   
 }
