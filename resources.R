@@ -27,7 +27,15 @@ read_SQL_File <- function(filepath){
 Asterix_Filename_To_Date <- function(Log_Filename) {
   # This is a very specific function for filename strings containing yyyymmdd
   # If there are other blocks of >=8 numbers in filename this may get confused!
-  return(format(as.Date(gsub("^.*([2]{1}[0]{1}[0-9]{2}[0-1]{1}[0-9]{1}[0-3]{1}[0-9]{1}).*$", "\\1", basename(Log_Filename)), format = "%Y%m%d"), "%d/%m/%Y"))
+  if (grepl("^.*[2]{1}[0]{1}[0-9]{2}[0-1]{1}[0-9]{1}[0-3]{1}[0-9]{1}.*$", basename(Log_Filename))) {
+    return(format(as.Date(gsub("^.*([2]{1}[0]{1}[0-9]{2}[0-1]{1}[0-9]{1}[0-3]{1}[0-9]{1}).*$", "\\1", basename(Log_Filename)), format = "%Y%m%d"), "%d/%m/%Y"))
+  } else if (grepl("^TS[0-9]{1}.*[0-3]{1}[0-9]{1}[0-1]{1}[0-9]{1}[2]{1}[0]{1}[0-9]{2}$")) {
+    return(format(as.Date(gsub("^TS[0-9]{1}.*([0-3]{1}[0-9]{1}[0-1]{1}[0-9]{1}[0-9]{2})$", "\\1", basename(Log_Filename)), format = "%d%m%y"), "%d/%m/%Y"))
+  } else {
+    stop("Unrecognised filename format - cannnot parse date!")
+  }
+  
+  
 }
 
 runway_Opposite_End <- function(rwy) {
