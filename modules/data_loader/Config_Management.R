@@ -139,6 +139,9 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
   dbWriteTable(dbi_con, "tbl_Volume", volumes, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(volumes), " rows to tbl_Volume")
   
+  polygons$Point_X <- as.numeric(polygons$Point_X)
+  polygons$Point_Y <- as.numeric(polygons$Point_Y)
+  
   message("[",Sys.time(),"] ", "Appending ", nrow(polygons), " rows to tbl_Polygon...")
   dbWriteTable(dbi_con, "tbl_Polygon", polygons, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(polygons), " rows to tbl_Polygon")
@@ -553,6 +556,7 @@ Populate_tbl_Reference_TBS_Table_Time <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Reference_TBS_Table_Time")
 }
 
+#configDir="C:\\Users\\Catherine\\Dropbox (Think Research)\\Think IA App\\Toronto_IA_Config_Dev_App_Test"
 import_Config <- function(configDir, dbi_con, load_legacy_wake = T, load_DW_volumes = T) {
   # Important! The functions must be called in correct order due to dependencies!
   message("[",Sys.time(),"] ", "Import config from: ", configDir)
