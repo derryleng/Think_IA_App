@@ -471,11 +471,50 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
   )
   
   if (nrow(out) > 0) {
+    
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
     out2 <- generateFPID(out, dbi_con)
     message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
+    
+    # # FOR TROUBLESHOOTING ONLY
+    # 
+    # swag <- data.table(
+    #   start_row = numeric(),
+    #   end_row = numeric(),
+    #   start_time = character(),
+    #   end_time = character(),
+    #   duration = numeric()
+    # )
+    # 
+    # yolo <- c(0, seq(1000, nrow(out2) - nrow(out2) %% 1000, 1000), nrow(out2))
+    # 
+    # for (i in 1:length(yolo)) {
+    #   
+    #   s <- yolo[i] + 1
+    #   f <- yolo[i+1]
+    #   
+    #   swag$start_row[i] <- s
+    #   swag$end_row[i] <- f
+    #   
+    #   message("[",Sys.time(),"] ","Appending ", s, " to ", f, " rows to tbl_Radar_Track_Point...")
+    #   
+    #   t1 <- Sys.time()
+    #   
+    #   dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out2[s:f], append = T)
+    #   
+    #   t2 <- Sys.time()
+    #   
+    #   swag$start_time[i] <- as.character(t1)
+    #   swag$end_time[i] <- as.character(t2)
+    #   swag$duration[i] <- round(as.numeric(difftime(t2, t1, units = "secs")), 0)
+    #   
+    #   message("[",Sys.time(),"] ","Appended ", s, " to ", f, " rows to tbl_Radar_Track_Point")
+    #   
+    # }
+    
     dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out2, append = T)
     message("[",Sys.time(),"] ", "Successfully appended ", nrow(out2), " rows to tbl_Radar_Track_Point")
+    
   } else {
     message("[",Sys.time(),"] ", "Exited without change to database.")
   }
