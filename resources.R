@@ -507,6 +507,32 @@ usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adapta
   
 }
 
+# Synopsis:	This procedure calculates NODE X/Y coordinates from runway
+# relative coordinates.
+# 
+# Runway relative coordinates are X/Y coordinates in metres, but relative to
+# runway threshold for the specified runway.  The conversion involves a
+# rotation to the axis direction of the centre-line and a translation to the
+# NODE X/Y coordinates of the runway threshold.
+
+usp_GI_Runway_To_XY <- function(Runway_Name, Runway_X, Runway_Y, tbl_Runway) {
+  
+  # Get the runway threshold data.
+  Runway_Threshold_X_Pos <- tbl_Runway[Runway_Name == Runway_Name]$Threshold_X_Pos
+  Runway_Threshold_Y_Pos <- tbl_Runway[Runway_Name == Runway_Name]$Threshold_Y_Pos
+  
+  # We want to rotate the coordinate system by the runway heading offset in the Node
+  # system, which is NOT the true runway heading!  This is calculated using the x/y
+  # position of the two threshold coordinates at the two ends of the tarmac.
+  Theta <- tbl_Runway[Runway_Name == Runway_Name]$NODE_Heading_Offset
+  
+  # Calculate the coordinates.
+  Node_X = (Runway_X * cos(Theta) + Runway_Y * sin(Theta)) + Runway_Threshold_X_Pos
+  Node_Y = (-Runway_X * sin(Theta) + Runway_Y * cos(Theta)) + Runway_Threshold_Y_Pos
+  
+  return(data.table(Node_X = Node_X, Node_Y = Node_Y))
+}
+
 # ----------------------------------------------------------------------- #
 # Database Functions ------------------------------------------------------
 # ----------------------------------------------------------------------- #

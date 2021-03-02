@@ -52,9 +52,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   ns <- session$ns
   
-  tbl_Adaptation_Data <- reactive({
-    as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-  })
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  
+  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
   
   # Blank templates
   
@@ -129,12 +129,12 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
           div(
             style = "display: flex; background: #D51067; border-radius: 6px 6px 0 0; margin-top: -40px",
             div(style = "padding: 10px; color: white", tags$b("PLT Adaptation Preview")),
-            dropdown(
-              div(style = "font-weight: bold; padding-bottom: 10px", "Runways"),
-              pickerInput_customised(ns("toggle_tbl_Runway"), NULL, choices = NULL),
-              style = "minimal", icon = icon("road"),
-              tooltip = tooltipOptions(title = "Runways", placement = "right")
-            ),
+            # dropdown(
+            #   div(style = "font-weight: bold; padding-bottom: 10px", "Runways"),
+            #   pickerInput_customised(ns("toggle_tbl_Runway"), NULL, choices = NULL),
+            #   style = "minimal", icon = icon("road"),
+            #   tooltip = tooltipOptions(title = "Runways", placement = "right")
+            # ),
             dropdown(
               div(style = "font-weight: bold; padding-bottom: 10px", "Volumes"),
               pickerInput_customised(ns("toggle_tbl_Volumes"), "Variant 1", choices = NULL),
@@ -144,16 +144,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
               ),
               style = "minimal", icon = icon("vector-square"),
               tooltip = tooltipOptions(title = "Volumes", placement = "right")
-            ),
-            dropdown(
-              div(style = "font-weight: bold; padding-bottom: 10px", "Path Legs"),
-              pickerInput_customised(ns("toggle_tbl_Path_Leg"), "Variant 1", choices = NULL),
-              hidden(
-                pickerInput_customised(ns("toggle_tbl_Path_Leg_2"), "Variant 2", choices = NULL),
-                pickerInput_customised(ns("toggle_tbl_Path_Leg_3"), "Variant 3", choices = NULL)
-              ),
-              style = "minimal", icon = icon("route"),
-              tooltip = tooltipOptions(title = "Path Legs", placement = "right")
             )
           ),
           leafletOutput(ns("map"), height = "100%")
@@ -381,20 +371,16 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       shinyjs::hide("DT_tbl_Path_Leg_3")
       shinyjs::hide("DT_tbl_Path_Leg_Transition_3")
       shinyjs::hide("toggle_tbl_Volumes_2")
-      shinyjs::hide("toggle_tbl_Path_Leg_2")
       shinyjs::hide("toggle_tbl_Volumes_3")
-      shinyjs::hide("toggle_tbl_Path_Leg_3")
     } else if (input$plt_variants == 1) {
       shinyjs::show("DT_tbl_Volumes_2")
       shinyjs::show("DT_tbl_Path_Leg_2")
       shinyjs::show("DT_tbl_Path_Leg_Transition_2")
       shinyjs::show("toggle_tbl_Volumes_2")
-      shinyjs::show("toggle_tbl_Path_Leg_2")
       shinyjs::hide("DT_tbl_Volumes_3")
       shinyjs::hide("DT_tbl_Path_Leg_3")
       shinyjs::hide("DT_tbl_Path_Leg_Transition_3")
       shinyjs::hide("toggle_tbl_Volumes_3")
-      shinyjs::hide("toggle_tbl_Path_Leg_3")
     } else if (input$plt_variants == 2) {
       shinyjs::show("DT_tbl_Volumes_2")
       shinyjs::show("DT_tbl_Path_Leg_2")
@@ -403,21 +389,14 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       shinyjs::show("DT_tbl_Path_Leg_3")
       shinyjs::show("DT_tbl_Path_Leg_Transition_3")
       shinyjs::show("toggle_tbl_Volumes_2")
-      shinyjs::show("toggle_tbl_Path_Leg_2")
       shinyjs::show("toggle_tbl_Volumes_3")
-      shinyjs::show("toggle_tbl_Path_Leg_3")
     } else if (x > 2 | x < 0) {
       updateTextInput(session, "plt_variants", value = 0)
     }
   })
   
   # Hots
-  
-  hot_tbl_Runway <- reactive({
-    req(input$DT_tbl_Runway)
-    return(hot_to_r(input$DT_tbl_Runway))
-  })
-  
+
   hot_tbl_Volumes <- reactive({
     req(input$DT_tbl_Volumes)
     return(hot_to_r(input$DT_tbl_Volumes))
@@ -433,27 +412,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     return(hot_to_r(input$DT_tbl_Volumes_3))
   })
   
-  hot_tbl_Path_Leg <- reactive({
-    req(input$DT_tbl_Path_Leg)
-    return(hot_to_r(input$DT_tbl_Path_Leg))
-  })
-  
-  hot_tbl_Path_Leg_2 <- reactive({
-    req(input$DT_tbl_Path_Leg_2)
-    return(hot_to_r(input$DT_tbl_Path_Leg_2))
-  })
-  
-  hot_tbl_Path_Leg_3 <- reactive({
-    req(input$DT_tbl_Path_Leg_3)
-    return(hot_to_r(input$DT_tbl_Path_Leg_3))
-  })
-
   # Update map toggles based on hots
-  
-  observeEvent(hot_tbl_Runway(), {
-    req(hot_tbl_Runway())
-    updatePickerInput(session, "toggle_tbl_Runway", choices = hot_tbl_Runway()$Runway_Name)
-  })
   
   observeEvent(hot_tbl_Volumes(), {
     req(hot_tbl_Volumes())
@@ -468,21 +427,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   observeEvent(hot_tbl_Volumes_3(), {
     req(hot_tbl_Volumes_3())
     updatePickerInput(session, "toggle_tbl_Volumes_3", choices = hot_tbl_Volumes_3()$Volume_Name)
-  })
-  
-  observeEvent(hot_tbl_Path_Leg(), {
-    req(hot_tbl_Path_Leg())
-    updatePickerInput(session, "toggle_tbl_Path_Leg", choices = hot_tbl_Path_Leg()$Path_Leg_Name)
-  })
-  
-  observeEvent(hot_tbl_Path_Leg_2(), {
-    req(hot_tbl_Path_Leg_2())
-    updatePickerInput(session, "toggle_tbl_Path_Leg_2", choices = hot_tbl_Path_Leg_2()$Path_Leg_Name)
-  })
-  
-  observeEvent(hot_tbl_Path_Leg_3(), {
-    req(hot_tbl_Path_Leg_3())
-    updatePickerInput(session, "toggle_tbl_Path_Leg_3", choices = hot_tbl_Path_Leg_3()$Path_Leg_Name)
   })
   
   # Preview map
@@ -502,10 +446,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       x <- x %>% addProviderTiles(providers[[tile_providers[[i]]]], options = providerTileOptions(noWrap = T), group = names(tile_providers)[i])
     }
     x <- x %>% addLayersControl(baseGroups = names(tile_providers), options = layersControlOptions(collapsed = T))
-  })
-  
-  observeEvent(input$toggle_tbl_Runway, {
-    
   })
   
   observeEvent(input$toggle_tbl_Volumes, {
@@ -539,18 +479,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   })
   
   observeEvent(input$toggle_tbl_Volumes_3, {
-    
-  })
-  
-  observeEvent(input$toggle_tbl_Path_Leg, {
-    
-  })
-  
-  observeEvent(input$toggle_tbl_Path_Leg_2, {
-    
-  })
-  
-  observeEvent(input$toggle_tbl_Path_Leg_3, {
     
   })
   

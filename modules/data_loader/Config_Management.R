@@ -67,80 +67,97 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath, header = F)
   
-  if (x[1,1] %in% c("Volume", "Point")) {
+  # if (x[1,1] %in% c("Volume", "Point")) {
+  #   
+  #   volumes_names <- as.character(x[V1 == "Volume"][1])
+  #   volumes <- x[V1 == "Volume"][-1]
+  #   names(volumes) <- volumes_names
+  #   volumes$Min_Altitude <- as.numeric(volumes$Min_Altitude) * fnc_GI_Ft_To_M()
+  #   volumes$Max_Altitude <- as.numeric(volumes$Max_Altitude) * fnc_GI_Ft_To_M()
+  #   volumes$Volume <- NULL
+  #   
+  #   polygons_names <- as.character(x[V1 == "Point"][1])
+  #   polygons <- x[V1 == "Point"][-1]
+  #   names(polygons) <- polygons_names
+  #   polygons$Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  #   polygons$Point_X <- as.numeric(polygons$Point_X) * fnc_GI_Nm_To_M()
+  #   polygons$Point_Y <- as.numeric(polygons$Point_Y) * fnc_GI_Nm_To_M()
+  #   polygons$Runway_Name <- volumes[polygons$Volume_Name, on="Volume_Name"]$Runway_Name
+  #   
+  #   tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  #   theta <- tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$NODE_Heading_Offset
+  #   polygons$Point_X <- (polygons$Point_X * cos(theta) + polygons$Point_Y * sin(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_X_Pos
+  #   polygons$Point_Y <- (-polygons$Point_X * sin(theta) + polygons$Point_Y * cos(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_Y_Pos
+  #   
+  #   tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  #   Converted_LatLon <- usp_GI_Latlong_From_XY(polygons$Point_X, polygons$Point_Y, tbl_Adaptation_Data)
+  #   
+  #   polygons$Latitude <- Converted_LatLon$PositionLatitude
+  #   polygons$Longitude <- Converted_LatLon$PositionLongitude
+  #   polygons$Point <- NULL
+  #   polygons$Runway_Name <- NULL
+  #   
+  # } else {
     
-    volumes_names <- as.character(x[V1 == "Volume"][1])
-    volumes <- x[V1 == "Volume"][-1]
-    names(volumes) <- volumes_names
-    volumes$Min_Altitude <- as.numeric(volumes$Min_Altitude) * fnc_GI_Ft_To_M()
-    volumes$Max_Altitude <- as.numeric(volumes$Max_Altitude) * fnc_GI_Ft_To_M()
-    volumes$Volume <- NULL
+  names(x) <- as.character(x[1])
+  x <- x[-1]
+  
+  volumes <- data.table()
+  polygons <- data.table()
+  
+  Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  
+  for (i in 1:nrow(x)) {
     
-    polygons_names <- as.character(x[V1 == "Point"][1])
-    polygons <- x[V1 == "Point"][-1]
-    names(polygons) <- polygons_names
-    polygons$Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
-    polygons$Point_X <- as.numeric(polygons$Point_X) * fnc_GI_Nm_To_M()
-    polygons$Point_Y <- as.numeric(polygons$Point_Y) * fnc_GI_Nm_To_M()
-    polygons$Runway_Name <- volumes[polygons$Volume_Name, on="Volume_Name"]$Runway_Name
-    
-    tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
-    theta <- tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$NODE_Heading_Offset
-    polygons$Point_X <- (polygons$Point_X * cos(theta) + polygons$Point_Y * sin(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_X_Pos
-    polygons$Point_Y <- (-polygons$Point_X * sin(theta) + polygons$Point_Y * cos(theta)) + tbl_Runway[polygons$Runway_Name, on="Runway_Name"]$Threshold_Y_Pos
-    
-    tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-    Converted_LatLon <- usp_GI_Latlong_From_XY(polygons$Point_X, polygons$Point_Y, tbl_Adaptation_Data)
-    
-    polygons$Latitude <- Converted_LatLon$PositionLatitude
-    polygons$Longitude <- Converted_LatLon$PositionLongitude
-    polygons$Point <- NULL
-    polygons$Runway_Name <- NULL
-    
-  } else {
-    
-    names(x) <- as.character(x[1])
-    x <- x[-1]
-    
-    volumes <- data.table()
-    polygons <- data.table()
-    
-    Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
-    
-    for (i in 1:nrow(x)) {
-      
-      volumes <- rbind(
-        volumes,
-        data.table(
-          Volume_Name = x$Volume_Name[i],
-          Runway_Name = gsub("^([A-Z0-9]{1,})_.*$", "R\\1", x$Volume_Name[i]),
-          Volume_Type = x$Volume_Type[i],
-          Min_Altitude = x$Min_Altitude[i],
-          Max_Altitude = x$Max_Altitude[i]
-        )
+    volumes <- rbind(
+      volumes,
+      data.table(
+        Volume_Name = x$Volume_Name[i],
+        Runway_Name = gsub("^([A-Z0-9]{1,})_.*$", "R\\1", x$Volume_Name[i]),
+        Volume_Type = x$Volume_Type[i],
+        Min_Altitude = as.numeric(x$Min_Altitude[i]) * fnc_GI_Ft_To_M(),
+        Max_Altitude = as.numeric(x$Max_Altitude[i]) * fnc_GI_Ft_To_M()
       )
-      
-      polygons <- rbind(
-        polygons,
-        data.table(
-          Volume_Name = rep(x$Volume_Name[i], 5),
-          Airfield_Name = rep(Airfield_Name, 5),
-          Point_Sequence = 1:5,
-          Point_X = c(x$Start_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i]),
-          Point_Y = c(x$Lateral_Dist_Left[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Left[i], x$Lateral_Dist_Left[i])
-        )
-      )
-      
-    }
+    )
+    
+    polygons_i <- data.table(
+      Volume_Name = rep(x$Volume_Name[i], 5),
+      Airfield_Name = rep(Airfield_Name, 5),
+      Point_Sequence = 1:5,
+      Point_X = as.numeric(c(x$Start_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i])) * fnc_GI_Nm_To_M(),
+      Point_Y = as.numeric(c(x$Lateral_Dist_Left[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Left[i], x$Lateral_Dist_Left[i])) * fnc_GI_Nm_To_M()
+    )
+    
+    grid_i <- usp_GI_Runway_To_XY(
+      gsub("^([A-Z0-9]{1,})_.*$", "R\\1", polygons$Volume_Name[i]),
+      polygons$Point_X,
+      polygons$Point_Y,
+      tbl_Runway
+    )
+    
+    updated_i <- usp_GI_LatLong_From_XY(
+      grid_i$Node_X,
+      grid_i$Node_Y,
+      tbl_Adaptation_Data
+    )
+    
+    polygons_i$Point_X <- grid_i$Node_X
+    polygons_i$Point_Y <- grid_i$Node_Y
+    polygons_i$Latitude <- updated_i$PositionLatitude
+    polygons_i$Longitude <- updated_i$PositionLongitude
+    
+    polygons <- rbind(
+      polygons,
+      polygons_i
+    )
     
   }
+    
+  # }
   
   message("[",Sys.time(),"] ", "Appending ", nrow(volumes), " rows to tbl_Volume...")
   dbWriteTable(dbi_con, "tbl_Volume", volumes, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(volumes), " rows to tbl_Volume")
-  
-  polygons$Point_X <- as.numeric(polygons$Point_X)
-  polygons$Point_Y <- as.numeric(polygons$Point_Y)
   
   message("[",Sys.time(),"] ", "Appending ", nrow(polygons), " rows to tbl_Polygon...")
   dbWriteTable(dbi_con, "tbl_Polygon", polygons, append = T)

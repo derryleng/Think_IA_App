@@ -10,9 +10,9 @@ data_loader_ui <- function(id) {
       solidHeader = T,
       width = NULL,
       div(
-        style = "max-height: 30vh; overflow-y: auto;",
-        h5("NOTE: Please ensure your user has database write permission."),
-        textOutput(ns("console_output"))
+        style = "display: flex; flex-direction: column-reverse; max-height: 30vh; overflow-y: auto;",
+        textOutput(ns("console_output")),
+        h5("NOTE: Please ensure your user has database write permission.")
       )
     ),
     
