@@ -370,6 +370,10 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
 
 process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_con) {
   
+  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={Node_Replacement_ARTAS_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+  # tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  # LogFilePath <- "C:\\Users\\NodeReplacement\\Documents\\Node_Replacement\\ALL TS1 Data\\TS1-030121.csv"
+  
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
   
@@ -479,39 +483,39 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     # # FOR TROUBLESHOOTING ONLY
     # 
     # swag <- data.table(
-    #   start_row = numeric(),
-    #   end_row = numeric(),
-    #   start_time = character(),
-    #   end_time = character(),
-    #   duration = numeric()
+    #   start_row = rep(NA, length(yolo)-1),
+    #   end_row = NA,
+    #   start_time = NA,
+    #   end_time = NA,
+    #   duration = NA
     # )
     # 
     # yolo <- c(0, seq(1000, nrow(out2) - nrow(out2) %% 1000, 1000), nrow(out2))
     # 
-    # for (i in 1:length(yolo)) {
-    #   
+    # for (i in 1:(length(yolo)-1)) {
+    # 
     #   s <- yolo[i] + 1
     #   f <- yolo[i+1]
-    #   
+    # 
     #   swag$start_row[i] <- s
     #   swag$end_row[i] <- f
-    #   
+    # 
     #   message("[",Sys.time(),"] ","Appending ", s, " to ", f, " rows to tbl_Radar_Track_Point...")
-    #   
+    # 
     #   t1 <- Sys.time()
-    #   
+    # 
     #   dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out2[s:f], append = T)
-    #   
+    # 
     #   t2 <- Sys.time()
-    #   
+    # 
     #   swag$start_time[i] <- as.character(t1)
     #   swag$end_time[i] <- as.character(t2)
     #   swag$duration[i] <- round(as.numeric(difftime(t2, t1, units = "secs")), 0)
-    #   
+    # 
     #   message("[",Sys.time(),"] ","Appended ", s, " to ", f, " rows to tbl_Radar_Track_Point")
-    #   
+    # 
     # }
-    
+    # 
     dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out2, append = T)
     message("[",Sys.time(),"] ", "Successfully appended ", nrow(out2), " rows to tbl_Radar_Track_Point")
     
