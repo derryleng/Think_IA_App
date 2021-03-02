@@ -408,7 +408,7 @@ usp_GI_Latlong_From_XY <- function(Position_X, Position_Y, tbl_Adaptation_Data) 
     while (abs(Phi_i_Plus1[k] - Phi_i) > Latitude_Accuracy & Count >= 0) {
       Phi_i <- Phi_i_Plus1[k]
       
-      Psi_i <- log( tan(Phi_i / 2 + pi / 4) * (1 - e * sin(Phi_i)) / (1 + e * sin(Phi_i))^(e / 2) )
+      Psi_i <- log( tan(Phi_i / 2 + pi / 4) * ((1 - e * sin(Phi_i)) / (1 + e * sin(Phi_i)))^(e / 2) )
       
       Phi_i_Plus1[k] <- Phi_i - (Psi_i - Psi[k]) * cos(Phi_i) * (1 - e^2 * sin(Phi_i)^2) / (1 - e^2)
       
@@ -515,16 +515,16 @@ usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adapta
 # rotation to the axis direction of the centre-line and a translation to the
 # NODE X/Y coordinates of the runway threshold.
 
-usp_GI_Runway_To_XY <- function(Runway_Name, Runway_X, Runway_Y, tbl_Runway) {
+usp_GI_Runway_To_XY <- function(Runway_Nom, Runway_X, Runway_Y, tbl_Runway) {
   
   # Get the runway threshold data.
-  Runway_Threshold_X_Pos <- tbl_Runway[Runway_Name == Runway_Name]$Threshold_X_Pos
-  Runway_Threshold_Y_Pos <- tbl_Runway[Runway_Name == Runway_Name]$Threshold_Y_Pos
+  Runway_Threshold_X_Pos <- tbl_Runway[Runway_Name == Runway_Nom]$Threshold_X_Pos
+  Runway_Threshold_Y_Pos <- tbl_Runway[Runway_Name == Runway_Nom]$Threshold_Y_Pos
   
   # We want to rotate the coordinate system by the runway heading offset in the Node
   # system, which is NOT the true runway heading!  This is calculated using the x/y
   # position of the two threshold coordinates at the two ends of the tarmac.
-  Theta <- tbl_Runway[Runway_Name == Runway_Name]$NODE_Heading_Offset
+  Theta <- tbl_Runway[Runway_Name == Runway_Nom]$NODE_Heading_Offset
   
   # Calculate the coordinates.
   Node_X = (Runway_X * cos(Theta) + Runway_Y * sin(Theta)) + Runway_Threshold_X_Pos

@@ -52,9 +52,13 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   ns <- session$ns
   
-  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  tbl_Adaptation_Data <- reactive({
+    as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  })
   
-  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  tbl_Runway <- reactive({
+    as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  })
   
   # Blank templates
   

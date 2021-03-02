@@ -106,6 +106,8 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
   polygons <- data.table()
   
   Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
   
   for (i in 1:nrow(x)) {
     
@@ -129,13 +131,13 @@ Populate_Airspace_Volumes <- function(LogFilePath, dbi_con) {
     )
     
     grid_i <- usp_GI_Runway_To_XY(
-      gsub("^([A-Z0-9]{1,})_.*$", "R\\1", polygons$Volume_Name[i]),
-      polygons$Point_X,
-      polygons$Point_Y,
+      gsub("^([A-Z0-9]{1,})_.*$", "R\\1", polygons_i$Volume_Name[1]),
+      polygons_i$Point_X,
+      polygons_i$Point_Y,
       tbl_Runway
     )
     
-    updated_i <- usp_GI_LatLong_From_XY(
+    updated_i <- usp_GI_Latlong_From_XY(
       grid_i$Node_X,
       grid_i$Node_Y,
       tbl_Adaptation_Data
