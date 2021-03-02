@@ -78,7 +78,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(
       session,
       "db_database",
-      choices = fread("temp/db_names.csv", header = F)$V1
+      choices = fread("temp/db_names.csv", header = F, sep = NULL)$V1
     )
   })
   
