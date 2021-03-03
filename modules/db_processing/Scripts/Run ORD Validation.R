@@ -8,7 +8,7 @@
 
 # Summary
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-# Version: v0
+# Version: v0A (Alpha)
 #
 # Authors: George Clark
 # 
@@ -22,7 +22,7 @@
 # Version History
 # ------------------------------------------------------------------------------------------------------------------------------------------ # 
 #
-# v0: 
+# v0A: First Integration within the Think IA App Git Environment. 
 #     
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
@@ -41,20 +41,20 @@ Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Source Global Configuration Files (Requires Shiny Integration)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-source(file.path("0. Global Functions & Parameters", "0.0. Imports.R"))
-source(file.path("0. Global Functions & Parameters", "0.1. Global Parameters.R"))
-source(file.path("0. Global Functions & Parameters", "0.2. Global Functions.R"))
+source(file.path("0. Global Functions & Parameters", "Imports.R"), local = T)
+source(file.path("0. Global Functions & Parameters", "Global Parameters.R"), local = T)
+source(file.path("0. Global Functions & Parameters", "Global Functions.R"), local = T)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Source Function Files
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-source(file.path("5. Algorithm Processing", "5.2. ORD", "ORD Functions.R"), local = T) # ORD Functions
-#source(file.path("5. Algorithm Processing", "5.2. ORD", "Segment Functions.R"), local = T) # Segment Functions
-source(file.path("5. Algorithm Processing", "5.2. ORD", "All Pair Reference Data.R"), local = T) # All Pair Reference Data Functions
-source(file.path("5. Algorithm Processing", "5.2. ORD", "ORD-WAD Observation.R"), local = T) # ORD Observation Functions
-source(file.path("5. Algorithm Processing", "5.2. ORD", "ORD Aircraft Profile.R"), local= T) # ORD Aircraft Profile Functions
-source(file.path("5. Algorithm Processing", "5.2. ORD", "ORD IAS-GSPD Profile.R"), local= T) # ORD Segment/IAS/GS Profile Functions
-source(file.path("5. Algorithm Processing", "5.2. ORD", "ORD-WAD Prediction.R"), local= T) # ORD Prediction Functions
-source(file.path("5. Algorithm Processing", "5.2. ORD", "Setup IA Performance Model.R"), local= T) # ORD Prediction Functions
+source(file.path("3. ORD Processing", "ORD Functions.R"), local = T) # ORD Functions
+# ----------------------------------------------------------------------------------------------------------------------------------------- #
+source(file.path("3. ORD Processing", "All Pair Reference Data.R"), local = T) # All Pair Reference Data Functions
+source(file.path("3. ORD Processing", "ORD-WAD Observation.R"), local = T) # ORD Observation Functions
+source(file.path("3. ORD Processing", "ORD Aircraft Profile.R"), local= T) # ORD Aircraft Profile Functions
+source(file.path("3. ORD Processing", "ORD IAS-GSPD Profile.R"), local= T) # ORD Segment/IAS/GS Profile Functions
+source(file.path("3. ORD Processing", "ORD-WAD Prediction.R"), local= T) # ORD Prediction Functions
+source(file.path("3. ORD Processing", "Setup IA Performance Model.R"), local= T) # Setup Performance Model Functions
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
