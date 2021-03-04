@@ -2,6 +2,7 @@ server <- function(input, output, session) {
   
   # Stop app on session end
   session$onSessionEnded(function() {
+    odbcCloseAll()
     stopApp()
   })
   
@@ -21,6 +22,7 @@ server <- function(input, output, session) {
     db_connect_click(db_connect_click() + 1)
   })
   
+  # Legacy database connection
   con <- eventReactive(db_connect_click(), {
     if (db_connect_click()) {
       connection_string <- sprintf(
@@ -31,6 +33,7 @@ server <- function(input, output, session) {
     }
   })
   
+  # New database connection
   dbi_con <- eventReactive(db_connect_click(), {
     if (db_connect_click()) {
       connection_string <- sprintf(
@@ -80,6 +83,7 @@ server <- function(input, output, session) {
       "db_database",
       choices = fread("temp/db_names.csv", header = F, sep = NULL)$V1
     )
+    odbcClose(con)
   })
   
   # ----------------------------------------------------------------------- #

@@ -34,8 +34,6 @@ Asterix_Filename_To_Date <- function(Log_Filename) {
   } else {
     stop("Unrecognised filename format - cannnot parse date!")
   }
-  
-  
 }
 
 runway_Opposite_End <- function(rwy) {

@@ -1,21 +1,29 @@
-load_packages <- function(req_file, silent = F) {
+load_packages <- function(req_file, update = F, silent = F) {
+  
   # req_file - .txt file containing list of required packages (one per line)
   req <- scan(req_file, character(), quiet = T)
+  
+  if (update) {
+    update.packages(repos = "https://cloud.r-project.org", ask = F)
+  }
+  
   if (length(req) > 0) {
     missing_packages <- req[!(req %in% installed.packages()[,"Package"])]
     if (length(missing_packages) > 0) {
-      # update.packages(repos = "https://cloud.r-project.org", ask = F)
       install.packages(missing_packages, repos = "https://cloud.r-project.org", dependencies = T, clean = T)
     }
   }
+  
   if (silent) {
     suppressPackageStartupMessages(invisible(lapply(req, library, character.only = T)))
   } else {
     lapply(req, library, character.only = T)
   }
+  
   if (!webshot::is_phantomjs_installed()) {
     webshot::install_phantomjs()
   }
+  
 }
 
 # Loads packages in req.txt
