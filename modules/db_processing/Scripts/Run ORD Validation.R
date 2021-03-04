@@ -34,8 +34,7 @@
 setwd(dirname(rstudioapi::getSourceEditorContext()$path)) # this will need editing to find wd outside of RStudio
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-# Start Time
-Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -44,6 +43,9 @@ Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
 source(file.path("0. Global Functions & Parameters", "Imports.R"), local = T)
 source(file.path("0. Global Functions & Parameters", "Global Parameters.R"), local = T)
 source(file.path("0. Global Functions & Parameters", "Global Functions.R"), local = T)
+
+# Start Time
+Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Source Function Files
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -64,8 +66,8 @@ Database_Type <- "Validation"
 Database <- "LVNL_UTMA_Validation"
 IP <- "192.168.1.39"
 con <- Get_RODBC_Database_Connection(IP, Database)
-PROC_Period <- "Month"
-PROC_Criteria <- "07/2019"
+PROC_Period <- "Day"
+PROC_Criteria <- "12/07/2019"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 Testing <- T
 LP_Primary_Key <- Get_LP_Primary_Key(Database_Type)

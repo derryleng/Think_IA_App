@@ -75,11 +75,11 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
   ORD_GS_Profile <- arrange(ORD_GS_Profile, !!sym(LPID_Var), desc(This_Pair_Role), Section_Number)
   
     # First Calculate Compression for ORD
-    Landing_Pair <- Get_Forecast_Compression(ORD_GS_Profile, Landing_Pair, LP_Primary_Key, 
-                             Prefix = "ORD",
-                             Comp_End_Var = "Delivery_Distance",
-                             Comp_Start_Var = "Local_Stabilisation_Distance",
-                             Sep_Dist_Var = "ORD_Separation_Distance")
+    Landing_Pair <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, Landing_Pair, LP_Primary_Key, 
+                                                Prefix = "ORD",
+                                                Comp_End_Var = "Delivery_Distance",
+                                                Comp_Start_Var = "Local_Stabilisation_Distance",
+                                                Sep_Dist_Var = "ORD_Separation_Distance")
     
     # Calculate Error Variables
     Landing_Pair <- Get_Prediction_Error_Variables(Landing_Pair, "ORD")
@@ -524,10 +524,6 @@ Generate_ORD_Calculation <- function(){
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-test <- Debug_Test_Variable(ZCOMP_ORD_Prediction, LP_Primary_Key, Type = "Numerical", Parameter = "Forecast_ORD_Compression") %>%
-  filter(SQL_ORD_Separation_Distance < ORD_Separation_Distance)
 
 
 

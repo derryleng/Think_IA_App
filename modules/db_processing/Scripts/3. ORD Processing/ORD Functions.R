@@ -272,18 +272,18 @@ Get_Follower_Interpolated_RTTs <- function(LPR, Radar, Leader_Time_Var){
            First_Path_Leg = Path_Leg, First_ILS_Locus_RTT = ILS_Locus_RTT, First_Range_To_ILS = Range_To_ILS)
   Radar2 <- filter(Radar2, Flag == 1) %>% group_by(Flight_Plan_ID) %>% mutate(ID = row_number()) %>% ungroup() %>% filter(ID == 1) %>% 
     rename(Second_Track_Distance = Range_To_Threshold, Second_Track_Time = Track_Time, 
-           Second_Path_Leg = Path_Leg, Second_ILS_Locus_RTT = ILS_Locus_RTT, Second_Range_To_ILS = Range_To_ILS)
-            %>% select(-Leader_Time)
+           Second_Path_Leg = Path_Leg, Second_ILS_Locus_RTT = ILS_Locus_RTT, Second_Range_To_ILS = Range_To_ILS) %>%
+            select(-Leader_Time)
   
   #### MAYBE ADD: IF NA RANGE TO THRESHOLD AND ON INTERCEPT LEG - REPLACE WITH ILS LOCUS RTT + RANGE TO ILS
-  Radar1 <- mutate(Radar1, First_Track_Distance = 
-                     ifelse(is.na(First_Track_Distance) & (str_detect(First_Path_Leg, "Int") | str_detect(First_Path_Leg, "ILS")) & First_Range_To_ILS < Max_Range_To_ILS, 
-                            First_ILS_Locus_RTT,
-                            First_Track_Distance))
-  Radar1 <- mutate(Radar1, Second_Track_Distance = 
-                     ifelse(is.na(Second_Track_Distance) & (str_detect(Second_Path_Leg, "Int") | str_detect(Second_Path_Leg, "ILS")) & Second_Range_To_ILS < Max_Range_To_ILS, 
-                            Second_ILS_Locus_RTT,
-                            Second_Track_Distance))
+  #Radar1 <- mutate(Radar1, First_Track_Distance = 
+  #                   ifelse(is.na(First_Track_Distance) & (str_detect(First_Path_Leg, "Int") | str_detect(First_Path_Leg, "ILS")) & First_Range_To_ILS < Max_Range_To_ILS, 
+  #                          First_ILS_Locus_RTT,
+  #                          First_Track_Distance))
+  #Radar1 <- mutate(Radar1, Second_Track_Distance = 
+  #                   ifelse(is.na(Second_Track_Distance) & (str_detect(Second_Path_Leg, "Int") | str_detect(Second_Path_Leg, "ILS")) & Second_Range_To_ILS < Max_Range_To_ILS, 
+  #                          Second_ILS_Locus_RTT,
+  #                          Second_Track_Distance))
   ##########################################################################################################
   
   # Join the Two Sets together
@@ -2371,4 +2371,304 @@ Get_LP_Primary_Key <- function(Database_Type){
   # Name of Landing Pair Primary Key for Validation/Verification
   if(Database_Type == "Validation"){return("Landing_Pair_ID")}
   if(Database_Type == "Verification"){return("ORD_Tool_Calculation_ID")}
+}
+
+
+# Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles 
+# With Joined values for Compression Start and End.
+Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var){
+  
+  # ------------------------ #
+  ### --- Setup
+  # ------------------------ #
+  
+  # Hardcoded Compression Metric: 1 = Distance difference, 2 = Distance,Speed,WE
+  Metric_Type <- 1
+  
+  # Variable Names
+  Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
+  Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
+  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
+  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
+  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
+  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  
+  # ------------------------ #
+  ### --- Processing
+  # ------------------------ #
+  
+  # Get the Leader Flying Stats
+  Leader_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Leader(GS_Profile, Landing_Pair, LPID_Var, 
+                                                                   Comp_Start_Var,
+                                                                   Delivery_Var = Comp_End_Var,
+                                                                   Prefix)
+  
+  # Select relevant fields from Leader Stats
+  Leader_Stats <- select(Leader_Stats, 
+                         !!sym(LPID_Var),
+                         !!sym(Lead_Flying_Dist_Var),
+                         !!sym(Lead_Flying_Time_Var),
+                         !!sym(Lead_Spd_Var),
+                         !!sym(Lead_WE_Var))
+  
+  # Join the relevant Leader Stats to Landing Pair
+  Landing_Pair <- left_join(Landing_Pair, Leader_Stats, by = setNames(LPID_Var, LPID_Var))
+  
+  # Now calculate the Follower flying stats based on the Leader flying times we just calculated
+  Follower_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Follower(GS_Profile, Landing_Pair, LPID_Var,
+                                                                       Delivery_Var = Comp_End_Var,
+                                                                       Sep_Dist_Var,
+                                                                       Target_Time_Var = Lead_Flying_Time_Var,
+                                                                       Prefix)
+  
+  # Select the relevant fields from Follower stats.
+  Follower_Stats <- select(Follower_Stats, 
+                           !!sym(LPID_Var),
+                           !!sym(Foll_Flying_Dist_Var),
+                           !!sym(Foll_Flying_Time_Var),
+                           !!sym(Foll_Spd_Var),
+                           !!sym(Foll_WE_Var))
+  
+  # ------------------------ #
+  ### --- Results & Output
+  # ------------------------ #
+  
+  ## Join with Landing Pair Data
+  Landing_Pair <- left_join(Landing_Pair, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
+  
+  # TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
+  Landing_Pair <- mutate(Landing_Pair,
+                      Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
+                      !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
+                      !!sym(Foll_Spd_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var)),
+                      !!sym(Foll_WE_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var))) %>%
+    select(-Temp_Flag)
+  
+  # Calculate Compression
+  Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix)
+  
+  # Return results
+  return(Landing_Pair)
+  
+  
+}
+
+
+Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile, Landing_Pair, LP_Primary_Key, Comp_Start_Var, Delivery_Var, Prefix){
+  
+  # ------------------------ #
+  ### --- Setup
+  # ------------------------ #
+  
+  # Use LPID_Var as Primary Key for now
+  LPID_Var <- LP_Primary_Key
+  
+  # Variable Names
+  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
+  Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
+  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
+  
+  # Split GS Profile into Leader and Follower
+  GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
+  
+  # Get Start/End Leader Distance from Landing Pair
+  Distances <- select(Landing_Pair, !!sym(LPID_Var),
+                      "Compression_Start" := !!sym(Comp_Start_Var),
+                      "Compression_End" := !!sym(Delivery_Var)) 
+  
+  # Join on the distances data ready for Calculations
+  GS_Profile_Leader <- inner_join(GS_Profile_Leader, Distances, by = setNames(LPID_Var, LPID_Var))
+  
+  # ------------------------ #
+  ### --- Processing
+  # ------------------------ #
+  
+  # Get flags for all segments within compression range, and one for start and end
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, 
+                              In_Range_Flag = ifelse(Start_Dist >= Compression_End & End_Dist < Compression_Start, 1, 0),
+                              Compression_End_Flag = ifelse(In_Range_Flag == 1 & End_Dist <= Compression_End, 1, 0),
+                              Compression_Start_Flag = ifelse(In_Range_Flag == 1 & Start_Dist >= Compression_Start, 1, 0))
+  
+  # Filter all segments not within the Compression range
+  GS_Profile_Leader <- filter(GS_Profile_Leader, In_Range_Flag != 0)
+  
+  # Find the GSPD and IAS differences for adjustment
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, GSPD_Difference = Start_GS - End_GS)
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, IAS_Difference = Start_IAS - End_IAS)
+  
+  # Adjust Leader Start/End Section values: Compression End Section.
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Compression_End - End_Dist)/(Start_Dist - End_Dist))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_GS = ifelse(Compression_End_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_IAS = ifelse(Compression_End_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_Dist = ifelse(Compression_End_Flag == 1, Compression_End, End_Dist))
+  
+  # Adjust Leader Start/End Section values: Compression Start Section.
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Start_Dist - Compression_Start)/(Start_Dist - End_Dist))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_GS = ifelse(Compression_Start_Flag == 1, Start_GS - (GSPD_Difference * Distance_Ratio), Start_GS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_IAS = ifelse(Compression_Start_Flag == 1, Start_IAS - (IAS_Difference * Distance_Ratio), Start_IAS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_Dist = ifelse(Compression_Start_Flag == 1, Compression_Start, Start_Dist))
+  
+  # Calculate the Leader Section Flying Times/Distance
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS),
+                              Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
+  
+  # Calculate the Start and End Wind Effects
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_WE = Start_GS - Start_IAS)
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_WE = End_GS - End_IAS)
+  
+  # Calculate the aggregate Mean Leader IAS/Wind Effect Trapezium rule calculations
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Mean_Leader_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Forecast_Mean_Leader_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2) 
+  
+  # Get the Leader Stats: Flying Time, Flying Disance, Mean IAS and Mean WE (Trapezium)
+  Leader_Stats <- GS_Profile_Leader %>%
+    group_by(!!sym(LPID_Var)) %>% 
+    summarise(!!sym(Lead_Flying_Time_Var) := sum(Section_Flying_Time, na.rm = F),
+              !!sym(Lead_Flying_Dist_Var) := max((Compression_Start - Compression_End), na.rm = F),
+              !!sym(Lead_Spd_Var) := sum(Mean_Leader_IAS, na.rm = F),
+              !!sym(Lead_WE_Var) := sum(Forecast_Mean_Leader_Wind_Effect, na.rm = F)) %>% 
+    ungroup() %>%
+    mutate(!!sym(Lead_Spd_Var) := !!sym(Lead_Spd_Var) / !!sym(Lead_Flying_Time_Var),
+           !!sym(Lead_WE_Var) := !!sym(Lead_WE_Var) / !!sym(Lead_Flying_Time_Var))
+  
+  return(Leader_Stats)
+  
+}
+
+
+Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile, Landing_Pair, LP_Primary_Key, Delivery_Var, Sep_Dist_Var, Target_Time_Var, Prefix){
+  
+  # ------------------------ #
+  ### --- Setup
+  # ------------------------ #
+  
+  # Use LPID_Var as Primary Key for now
+  LPID_Var <- LP_Primary_Key
+  
+  # Variable Names
+  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
+  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
+  
+  # Split GS Profile into Follower
+  GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
+  
+  # Get Start/End Leader Distance from Landing Pair
+  Parameters <- select(Landing_Pair, !!sym(LPID_Var),
+                       "Delivery_Point" := !!sym(Delivery_Var),
+                       "Follower_End_Distance" := !!sym(Sep_Dist_Var),
+                       "Target_Flying_Time" := !!sym(Target_Time_Var)) 
+  
+  # Add The End Distances (Separation Distance + Delivery)
+  Parameters <- mutate(Parameters, Follower_End_Distance = Follower_End_Distance + Delivery_Point)
+  
+  # Join on the distances data ready for Calculations
+  GS_Profile_Follower <- left_join(GS_Profile_Follower, Parameters, by = setNames(LPID_Var, LPID_Var))
+  
+  # ------------------------ #
+  ### --- Processing
+  # ------------------------ #
+  
+  # Get flags for Follower being within travel range and it's end section
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, 
+                                Viable_Flag = ifelse(Start_Dist >= Follower_End_Distance, 1, 0),
+                                Start_Flag = ifelse(Viable_Flag == 1 & End_Dist <= Follower_End_Distance, 1, 0))
+  
+  # Filter for only Viable follower segments
+  GS_Profile_Follower <- filter(GS_Profile_Follower, Viable_Flag == 1)
+  
+  # Find the Follower IAS/GSPD Differences for Partial Section Calculations.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
+  
+  # Adjust Follower end section values. 
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Distance_Ratio = (Follower_End_Distance - End_Dist)/(Start_Dist - End_Dist))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_GS = ifelse(Start_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_IAS = ifelse(Start_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_Dist = ifelse(Start_Flag == 1, Follower_End_Distance, End_Dist))
+  
+  # Find the first pass of the Section Flying Times. The End section time will be updated later.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS))
+  
+  # Get the Cumulative Flying Times for each Follower. For each segment and it's previous segment.
+  GS_Profile_Follower <- group_by(GS_Profile_Follower, !!sym(LPID_Var)) %>% mutate(Cumulative_Time = cumsum(Section_Flying_Time)) %>% ungroup()
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Prev_Cumulative_Time = Cumulative_Time - Section_Flying_Time)
+  
+  # Create flags for all Valid sections and the Follower start section
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, 
+                                Section_Time_Flag = ifelse(Prev_Cumulative_Time <= Target_Flying_Time, 1, 0),
+                                Last_Section_Flag = ifelse(Cumulative_Time >= Target_Flying_Time & Prev_Cumulative_Time < Target_Flying_Time, 1, 0))
+  
+  # Filter only for valid Follower Sections
+  GS_Profile_Follower <- filter(GS_Profile_Follower, Section_Time_Flag == 1)
+  
+  # Adjust Follower Start Section values. Use Time Ratio.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Time_Ratio = (Target_Flying_Time - Prev_Cumulative_Time)/(Cumulative_Time - Prev_Cumulative_Time))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_GS = ifelse(Last_Section_Flag == 1, End_GS + (GSPD_Difference * Time_Ratio), Start_GS))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_IAS = ifelse(Last_Section_Flag == 1, End_IAS + (IAS_Difference * Time_Ratio), Start_IAS))
+  
+  # Adjust Initial section Flying Time, start distance and Cumulative time 
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = ifelse(Last_Section_Flag == 1, (Target_Flying_Time - Prev_Cumulative_Time), Section_Flying_Time))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Time = ifelse(Last_Section_Flag == 1, Target_Flying_Time, Cumulative_Time))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_Dist = ifelse(Last_Section_Flag == 1, End_Dist + (0.5 * Section_Flying_Time * (Start_GS + End_GS)),  Start_Dist),
+                                Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
+  
+  # Calculate the Start/End Follower Wind Effects
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_WE = Start_GS - Start_IAS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_WE = End_GS - End_IAS)
+  
+  # Calculate the aggregate Mean Follower IAS/Wind Effect Trapezium rule calculations
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Mean_Follower_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Forecast_Mean_Follower_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)  
+  
+  # Calculate the Cumulative Follower Flying Distance
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Follower_Distance = Start_Dist - Follower_End_Distance)
+  
+  # Get the Follower Statistics: Follower Flying Distance/Time, Mean IAS, Mean WE (Trapezium rule)
+  Follower_Stats <- GS_Profile_Follower %>%
+    group_by(!!sym(LPID_Var)) %>% 
+    summarise(!!sym(Foll_Flying_Time_Var) := sum(Section_Flying_Time, na.rm = F),
+              !!sym(Foll_Flying_Dist_Var) := sum(Section_Flying_Distance, na.rm = F),
+              !!sym(Foll_Spd_Var) := sum(Mean_Follower_IAS, na.rm = F),
+              !!sym(Foll_WE_Var) := sum(Forecast_Mean_Follower_Wind_Effect, na.rm = F)) %>% 
+    ungroup() %>%
+    mutate(!!sym(Foll_Spd_Var) := !!sym(Foll_Spd_Var) / !!sym(Foll_Flying_Time_Var),
+           !!sym(Foll_WE_Var) := !!sym(Foll_WE_Var) / !!sym(Foll_Flying_Time_Var))
+  
+  
+  return(Follower_Stats)
+  
+  
+}
+
+
+Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix){
+  
+  # Get Output Variable name
+  Comp_Var <- paste0("Forecast_", Prefix, "_Compression")
+  
+  # Get input variable names
+  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
+  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
+  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
+  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  
+  # Type 1: Simple Predicted Distance Difference
+  if (Metric_Type == 1){Landing_Pair <- mutate(Landing_Pair, !!sym(Comp_Var) := !!sym(Foll_Flying_Dist_Var) - !!sym(Lead_Flying_Dist_Var))}
+  
+  # Type 2: Predicted Leader Flying Distance & Forecast Leader/Follower Speeds/WEs
+  if (Metric_Type == 2){Landing_Pair <- Landing_Pair %>%
+    mutate(!!sym(Comp_Var) := (!!sym(Lead_Flying_Dist_Var) / (!!sym(Lead_Spd_Var) + !!sym(Lead_WE_Var))) * 
+             ((!!sym(Foll_Spd_Var) + !!sym(Foll_WE_Var)) - (!!sym(Lead_Spd_Var) + !!sym(Lead_WE_Var))))}
+  
+  return(Landing_Pair)
+  
 }
