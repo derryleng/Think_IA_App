@@ -176,15 +176,4 @@ Get_2D_Scalar_Product <- function(amp1, ang1, amp2, ang2){
 
 # ----------------------------------------------- #
 
-# ----------------------------------------------- #
-# 0.2.3. Arbritrary Check Functions
-# ----------------------------------------------- #
-# Includes 
-# ----------------------------------------------- #
-
-Load_Adaptation_Table <- function(con, Table_Name){
-  # Currently use RODBC. If we change package then all adaptation loads occur here.
-  Table <- sqlQuery(con, paste0("SELECT * FROM ", Table_Name), stringsAsFactors = F)
-  return(Table)
-}
 

@@ -2399,8 +2399,12 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   ### --- Processing
   # ------------------------ #
   
+  # Split GS Profile into Leader/Follower
+  GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
+  GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
+  
   # Get the Leader Flying Stats
-  Leader_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Leader(GS_Profile, Landing_Pair, LPID_Var, 
+  Leader_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Leader(GS_Profile_Leader, Landing_Pair, LPID_Var, 
                                                                    Comp_Start_Var,
                                                                    Delivery_Var = Comp_End_Var,
                                                                    Prefix)
@@ -2417,7 +2421,7 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   Landing_Pair <- left_join(Landing_Pair, Leader_Stats, by = setNames(LPID_Var, LPID_Var))
   
   # Now calculate the Follower flying stats based on the Leader flying times we just calculated
-  Follower_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Follower(GS_Profile, Landing_Pair, LPID_Var,
+  Follower_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Follower(GS_Profile_Follower, Landing_Pair, LPID_Var,
                                                                        Delivery_Var = Comp_End_Var,
                                                                        Sep_Dist_Var,
                                                                        Target_Time_Var = Lead_Flying_Time_Var,
@@ -2456,7 +2460,7 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
 }
 
 
-Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile, Landing_Pair, LP_Primary_Key, Comp_Start_Var, Delivery_Var, Prefix){
+Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile_Leader, Landing_Pair, LP_Primary_Key, Comp_Start_Var, Delivery_Var, Prefix){
   
   # ------------------------ #
   ### --- Setup
@@ -2470,9 +2474,6 @@ Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile, Landing
   Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
   Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
   Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
-  
-  # Split GS Profile into Leader and Follower
-  GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
   
   # Get Start/End Leader Distance from Landing Pair
   Distances <- select(Landing_Pair, !!sym(LPID_Var),
@@ -2539,7 +2540,7 @@ Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile, Landing
 }
 
 
-Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile, Landing_Pair, LP_Primary_Key, Delivery_Var, Sep_Dist_Var, Target_Time_Var, Prefix){
+Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile_Follower, Landing_Pair, LP_Primary_Key, Delivery_Var, Sep_Dist_Var, Target_Time_Var, Prefix){
   
   # ------------------------ #
   ### --- Setup
@@ -2553,9 +2554,6 @@ Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile, Landi
   Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
   Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
   Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
-  
-  # Split GS Profile into Follower
-  GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
   
   # Get Start/End Leader Distance from Landing Pair
   Parameters <- select(Landing_Pair, !!sym(LPID_Var),

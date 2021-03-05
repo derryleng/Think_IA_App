@@ -66,8 +66,8 @@ Database_Type <- "Validation"
 Database <- "LVNL_UTMA_Validation"
 IP <- "192.168.1.39"
 con <- Get_RODBC_Database_Connection(IP, Database)
-PROC_Period <- "Day"
-PROC_Criteria <- "12/07/2019"
+PROC_Period <- "Month"
+PROC_Criteria <- "07/2019"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 Testing <- T
 LP_Primary_Key <- Get_LP_Primary_Key(Database_Type)
