@@ -117,6 +117,34 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
   })
   
   observeEvent(input$load_config, {
+    showModal(modalDialog(
+      div(
+        style = "text-align: center",
+        h3("MODIFY DATABASE WARNING")
+      ),
+      hr(),
+      div(
+        style = "text-align: center",
+        tags$b("Do you wish to proceed?")
+      ),
+      h5("Loading Config"),
+      HTML("<li>", isolate(config_files()), "</li>"),
+      "Current config tables will be cleared.",
+      h5("Database"),
+      as.character(dbGetQuery(isolate(dbi_con), "SELECT DB_NAME()")),
+      size = "s",
+      footer = div(
+        class = "centered",
+        modalButton("Cancel"),
+        div(style = "width: 15px"),
+        actionButton(ns("load_config_confirm"), "Confirm")
+      ),
+      easyClose = F
+    ))
+  })
+  
+  observeEvent(input$load_config_confirm, {
+    removeModal()
     withCallingHandlers({
       shinyjs::html("console_output", "")
       message("[",Sys.time(),"] ", "Clearing existing configuration data...")

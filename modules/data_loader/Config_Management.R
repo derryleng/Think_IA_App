@@ -32,6 +32,9 @@ Populate_tbl_Runway <- function(LogFilePath, dbi_con) {
   
   x$Threshold_Lat <- as.numeric(x$Threshold_Lat) * fnc_GI_Degs_To_Rads()
   x$Threshold_Lon <- as.numeric(x$Threshold_Lon) * fnc_GI_Degs_To_Rads()
+  x$Heading <- as.numeric(x$Heading) * fnc_GI_Degs_To_Rads()
+  x$Glideslope_Angle <- as.numeric(x$Glideslope_Angle) * fnc_GI_Degs_To_Rads()
+  x$Elevation <- as.numeric(x$Elevation) * fnc_GI_Ft_To_M()
   
   tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
   Converted_XY <- usp_GI_Latlong_To_XY(x$Threshold_Lat, x$Threshold_Lon, tbl_Adaptation_Data)
@@ -255,6 +258,16 @@ Populate_Airspace_Volumes_DW <- function(Route_Fix_Path, Route_Point_Path, dbi_c
     Max_Altitude = 7500 * fnc_GI_Ft_To_M()
   )
   
+  volumes_remove_ind <- sapply( 1:(nrow(volumes) - 1), function(i) {
+    if (gsub("^(.*)[0-9]{1}$", "\\1", volumes$Volume_Name[i]) != gsub("^(.*)[0-9]{1}$", "\\1", volumes$Volume_Name[i+1])) {
+      return(i)
+    } else {
+      return(NA)
+    }
+  }, simplify = T) %>% .[!is.na(.)] %>% c(., nrow(volumes))
+  
+  volumes <- volumes[-volumes_remove_ind]
+  
   message("[",Sys.time(),"] ", "Appending ", nrow(volumes), " rows of additional downwind routes to tbl_Volume...")
   dbWriteTable(dbi_con, "tbl_Volume", volumes, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(volumes), " rows to tbl_Volume")
@@ -265,7 +278,7 @@ Populate_Airspace_Volumes_DW <- function(Route_Fix_Path, Route_Point_Path, dbi_c
     
     data.table(
       Volume_Name = route_point$Volume_Name[k],
-      Airfield_Name = NA,
+      Airfield_Name = "",
       Point_Sequence = 1:5,
       Point_X = c(route_point$LH_Vert_X[k], route_point$LH_Vert_X[k+1], route_point$RH_Vert_X[k+1], route_point$RH_Vert_X[k], route_point$LH_Vert_X[k]),
       Point_Y = c(route_point$LH_Vert_Y[k], route_point$LH_Vert_Y[k+1], route_point$RH_Vert_Y[k+1], route_point$RH_Vert_Y[k], route_point$LH_Vert_Y[k])
@@ -325,7 +338,7 @@ Populate_tbl_Mode_S_Wind_Adaptation <- function(LogFilePath, dbi_con) {
 
 Populate_tbl_Path_Leg <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
-  x <- fread(LogFilePath)
+  x <- fread(LogFilePath, na.strings = c(""))
   if ("Airfield_Name" %!in% names(x)) {
     Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
     x$Airfield_Name <- Airfield_Name
@@ -337,7 +350,7 @@ Populate_tbl_Path_Leg <- function(LogFilePath, dbi_con) {
 
 Populate_tbl_Path_Leg_Transition <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
-  x <- fread(LogFilePath)
+  x <- fread(LogFilePath, na.strings = c(""))
   tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
   
   for (i in 1:nrow(x)) {
@@ -405,9 +418,28 @@ Populate_tbl_Aircraft_Type_To_Wake_Legacy <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath)
   names(x)[1:2] <- c("Aircraft_Type", "Wake") # To match database column names
-  message("[",Sys.time(),"] ", "Appending ", nrow(x), " rows to tbl_Aircraft_Type_To_Wake_Legacy...")
-  dbWriteTable(dbi_con, "tbl_Aircraft_Type_To_Wake_Legacy", x, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Aircraft_Type_To_Wake_Legacy")
+  
+  existing <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy"))
+  
+  x_new <- x[Aircraft_Type %!in% existing$Aircraft_Type]
+  x_old <- x[Aircraft_Type %in% existing$Aircraft_Type]
+  
+  if (nrow(x_old) > 0){
+    for (i in 1:nrow(x_old)) {
+      if (x_old$Wake[i] != existing[Aircraft_Type == x_old$Aircraft_Type[i]]$Wake[1]) {
+        x_new <- rbind(x_new, x_old[i])
+      }
+    }
+  }
+
+  
+  existing_keep <- existing[Aircraft_Type %!in% x_new$Aircraft_Type]
+  
+  out <- rbind(x_new, existing_keep)
+  
+  message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Aircraft_Type_To_Wake_Legacy...")
+  dbWriteTable(dbi_con, "tbl_Aircraft_Type_To_Wake_Legacy", out, overwrite = T)
+  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Aircraft_Type_To_Wake_Legacy")
 }
 
 Populate_tbl_Assumed_Recat_Separation_IAS <- function(LogFilePath, dbi_con) {
@@ -484,6 +516,7 @@ Populate_tbl_ORD_Aircraft_Adaptation <- function(LogFilePath, dbi_con) {
 Populate_tbl_ORD_DBS_Adaptation <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath)
+  x$DBS_Distance <- as.numeric(x$DBS_Distance) * fnc_GI_Nm_To_M()
   x$Min_Safe_Landing_Speed_Lead <- x$Min_Safe_Landing_Speed_Lead * fnc_GI_Kts_To_M_Per_Sec()
   x$Min_Safe_Landing_Speed_Follower <- x$Min_Safe_Landing_Speed_Follower * fnc_GI_Kts_To_M_Per_Sec()
   x$Compression_Commencement_Threshold <- x$Compression_Commencement_Threshold * fnc_GI_Nm_To_M()
