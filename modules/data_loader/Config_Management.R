@@ -30,13 +30,14 @@ Populate_tbl_Runway <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath)
   
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  
   x$Threshold_Lat <- as.numeric(x$Threshold_Lat) * fnc_GI_Degs_To_Rads()
   x$Threshold_Lon <- as.numeric(x$Threshold_Lon) * fnc_GI_Degs_To_Rads()
-  x$Heading <- as.numeric(x$Heading) * fnc_GI_Degs_To_Rads()
+  x$Heading <- as.numeric(x$Heading) * fnc_GI_Degs_To_Rads() + tbl_Adaptation_Data$Mag_Var
   x$Glideslope_Angle <- as.numeric(x$Glideslope_Angle) * fnc_GI_Degs_To_Rads()
   x$Elevation <- as.numeric(x$Elevation) * fnc_GI_Ft_To_M()
   
-  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
   Converted_XY <- usp_GI_Latlong_To_XY(x$Threshold_Lat, x$Threshold_Lon, tbl_Adaptation_Data)
   x$Threshold_X_Pos <- Converted_XY$Position_X
   x$Threshold_Y_Pos <- Converted_XY$Position_Y
