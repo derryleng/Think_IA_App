@@ -1,4 +1,6 @@
-example_1_server <- function(input, output, session, con) {
+# source("modules/db_processing/...", local = T)
+
+db_processing_server <- function(input, output, session, con, dbi_con) {
 	observeEvent(input$dropdown1, {
 	  output$out <- renderText({
 	    if (length(input$dropdown1) > 0) {

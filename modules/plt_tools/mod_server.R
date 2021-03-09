@@ -456,15 +456,16 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     p <- leafletProxy("map") %>% clearGroup("Volumes")
     for (i in input$toggle_tbl_Volumes) {
       v_i <- hot_tbl_Volumes()[Volume_Name %in% i][1]
-      # v2_i <- usp_GI_Latlong_From_XY(
-      #   c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
-      #   c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left),
-      #   tbl_Adaptation_Data()
-      # )
-      v2_i <- data.table(
-        PositionLongitude=c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
-        PositionLatitude=c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left)
+      v2_i <- usp_GI_Latlong_From_XY(
+        c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
+        c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left),
+        tbl_Adaptation_Data()
       )
+      # v2_i <- data.table(
+      #   PositionLongitude=c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
+      #   PositionLatitude=c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left)
+      # )
+      # leaflet() %>% addTiles() %>% addPolygons(data = p_i)
       p_i <- Polygon(
         data.table(
           Longitude = v2_i$PositionLongitude*180/pi,

@@ -1,4 +1,4 @@
-example_1_ui <- function(id) {
+db_processing_ui <- function(id) {
 	ns <- NS(id)
 	div(
 	    box(
