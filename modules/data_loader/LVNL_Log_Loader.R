@@ -120,12 +120,12 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
-  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
+  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign", "SSR_Code"))
   
   message("[",Sys.time(),"] ", "Checking for duplicates within existing data...")
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
-    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]
+    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
   } else {
     out_pass_2 <- out_pass_1
   }
