@@ -370,9 +370,9 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
 
 process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_con) {
   
-  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={Node_Replacement_ARTAS_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
   # tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-  # LogFilePath <- "C:\\Users\\NodeReplacement\\Documents\\Node_Replacement\\ALL TS1 Data\\TS1-030121.csv"
+  # LogFilePath <- "D:\\Fusion Data\\ClientLANA_00001_20210126202539.csv"
   
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
@@ -460,7 +460,10 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
     Lon = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads()} else {x$PositionLongitude},
     Mode_C = ifelse(x$`I062/010/Sac` == 98 & x$`I062/010/Sic` == 160,
-                    as.numeric(x$`I062/SP/CCR/RC`) * fnc_GI_Ft_To_M(),
+                    ifelse(x$`I062/SP/CCR/RC` == "",
+                           as.numeric(99999999),
+                           as.numeric(x$`I062/SP/CCR/RC`) * fnc_GI_Ft_To_M()
+                           ),
                     as.numeric(x$`I062/135/CTL`) * 100 * fnc_GI_Ft_To_M()),
     Track_SPD = sqrt(as.numeric(x$`I062/185/VX`)^2 + as.numeric(x$`I062/185/VY`)^2),
     Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I062/185/VX`), as.numeric(x$`I062/185/VY`)),
