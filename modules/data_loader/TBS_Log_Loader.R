@@ -135,10 +135,10 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
   ]
   
   x <- x[
-    Rept_Sys_X >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
-      Rept_Sys_X <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
-      Rept_Sys_Y >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
-      Rept_Sys_Y <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
+    as.numeric(Rept_Sys_X) >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
+      as.numeric(Rept_Sys_X) <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
+      as.numeric(Rept_Sys_Y) >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
+      as.numeric(Rept_Sys_Y) <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
   ]
   
   if (nrow(x) > 0) {
@@ -303,7 +303,7 @@ process_eTBS_logs_9081 <- function(LogFile, Airfield_Name) {
     
   }), use.names = T, fill = T)
   
-  return(data.table(
+  out <- data.table(
     Airfield = Airfield_Name,
     Landing_Runway = paste0("R", logs$Runway),
     Anemo_Date = format(as.Date(logs$Date), "%d/%m/%y"),
@@ -312,9 +312,14 @@ process_eTBS_logs_9081 <- function(LogFile, Airfield_Name) {
     Anemo_HDG = as.numeric(logs$Runway_Surface_Wind_HDG) * fnc_GI_Degs_To_Rads(),
     Anemo_HW = as.numeric(logs$Runway_Surface_Headwind) * fnc_GI_Kts_To_M_Per_Sec(),
     Anemo_CW = NA
-  ))
+  )
+  
+  #out <- out[!duplicated(out)]
+    
+  return(out)
   
 }
+
 
 process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airfield_Name, dbi_con) {
   

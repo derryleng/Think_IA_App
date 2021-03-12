@@ -355,9 +355,24 @@ Populate_tbl_Path_Leg_Transition <- function(LogFilePath, dbi_con) {
   tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
   
   for (i in 1:nrow(x)) {
-    if (x$Min_Heading[i] != 0 & x$Max_Heading[i] != 360) {
-      x$Min_Heading[i] <- x$Min_Heading[i] + round(tbl_Runway[Runway_Name == x$Runway_Name[i]]$NODE_Heading_Offset[1] / fnc_GI_Degs_To_Rads(), 0)
-      x$Max_Heading[i] <- x$Max_Heading[i] + round(tbl_Runway[Runway_Name == x$Runway_Name[i]]$NODE_Heading_Offset[1] / fnc_GI_Degs_To_Rads(), 0)
+    
+    # if (is.na(x$Runway_Name[i]) & !is.na(x$Associated_Runway[i])) {
+    #   x$Runway_Name[i] <- x$Associated_Runway[i]
+    # } else if (is.na(x$Runway_Name[i]) & is.na(x$Associated_Runway[i])) {
+    #   if (!is.na(x$Volume_Name[i])) {
+    #     x$Runway_Name[i] <- paste0("R", unlist(strsplit(x$Volume_Name[i], "_"))[1])
+    #   } else if (!is.na(x$Current_Path_Leg[i])) {
+    #     x$Runway_Name[i] <- gsub("^.*_R?([0-3]{1}[0-9]{1}[L|R]?).*$", "R\\1", x$Current_Path_Leg[i])
+    #   } else if (!is.na(x$New_Path_Leg[i])) {
+    #     x$Runway_Name[i] <- gsub("^.*_R?([0-3]{1}[0-9]{1}[L|R]?).*$", "R\\1", x$New_Path_Leg[i])
+    #   }
+    # } else {
+    #   warning("Required Runway_Name but none found on row ", i, "!")
+    # }
+    
+    if (x$Min_Heading[i] != 0 & x$Max_Heading[i] != 360 & !is.na(x$Associated_Runway[i])) {
+      x$Min_Heading[i] <- x$Min_Heading[i] + round(tbl_Runway[Runway_Name == x$Associated_Runway[i]]$NODE_Heading_Offset[1] / fnc_GI_Degs_To_Rads(), 0)
+      x$Max_Heading[i] <- x$Max_Heading[i] + round(tbl_Runway[Runway_Name == x$Associated_Runway[i]]$NODE_Heading_Offset[1] / fnc_GI_Degs_To_Rads(), 0)
     }
     if (x$Min_Heading[i] > 0 & x$Max_Heading[i] > 360) {
       x$Min_Heading[i] <- x$Min_Heading[i] - 360
@@ -410,6 +425,7 @@ Populate_tbl_Aircraft_Type_To_Wake <- function(LogFilePath, dbi_con) {
   message("[",Sys.time(),"] ", "Reading ", LogFilePath)
   x <- fread(LogFilePath)
   names(x)[1:2] <- c("Aircraft_Type", "Wake") # To match database column names
+  x[Aircraft_Class == ""]$Aircraft_Class <- NA
   message("[",Sys.time(),"] ", "Appending ", nrow(x), " rows to tbl_Aircraft_type_To_Wake...")
   dbWriteTable(dbi_con, "tbl_Aircraft_type_To_Wake", x, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Aircraft_type_To_Wake")
