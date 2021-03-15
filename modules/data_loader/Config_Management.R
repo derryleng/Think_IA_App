@@ -1160,10 +1160,10 @@ xml_sasai <- function(OutputPath, dbi_con) {
         list_i <- c(list_i, rot_ias = round(runway_wvc_pair_rules_rwy_i$Assumed_ROT_Spacing_IAS, 0))
       }
       if (!is.na(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time)) {
-        list_i <- c(list_i, rot_ias = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time)
+        list_i <- c(list_i, rot_spacing_time = runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Time)
       }
       if (!is.na(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance)) {
-        list_i <- c(list_i, rot_ias = round(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance, 1))
+        list_i <- c(list_i, rot_spacing_distance = format(round(runway_wvc_pair_rules_rwy_i$Reference_ROT_Spacing_Distance, 1), nsmall = 1))
       }
       
       return(list_i)
@@ -1192,7 +1192,7 @@ xml_sasai <- function(OutputPath, dbi_con) {
       leader_wt = wvc_pair_i$Leader_WTC,
       follower_wt = wvc_pair_i$Follower_WTC,
       wake_separation_time = wvc_pair_i$Reference_Wake_Separation_Time,
-      wake_separation_distance = round(wvc_pair_i$Reference_Wake_Separation_Distance, 1)
+      wake_separation_distance = format(round(wvc_pair_i$Reference_Wake_Separation_Distance, 1), nsmall = 1)
     ))
   })
   names(wvc_pair_rules_list) <- rep("wvc_pair_rule", length(wvc_pair_rules_list))
