@@ -13,38 +13,38 @@ tbl_names <- list(
 
 tbl_template <- list(
   tbl_Runway = data.table(
-    Runway_Name = NA,
-    Airfield_Name = NA,
-    Heading = NA,
-    Runway_Group = NA,
-    Approach_Direction = NA
+    Runway_Name = "R00",
+    Airfield_Name = "ZZZZ",
+    Heading = 0,
+    Runway_Group = "RXX",
+    Approach_Direction = "ZZZZ"
   ),
   tbl_Volumes = data.table(
-    Volume_Name = NA,
-    Min_Altitude = NA,
-    Max_Altitude = NA,
-    Start_Dist_From_Threshold = NA,
-    End_Dist_From_Threshold = NA,
-    Lateral_Dist_Left = NA,
-    Lateral_Dist_Right = NA
+    Volume_Name = "VOL00",
+    Min_Altitude = 0,
+    Max_Altitude = 0,
+    Start_Dist_From_Threshold = 0,
+    End_Dist_From_Threshold = 0,
+    Lateral_Dist_Left = 0,
+    Lateral_Dist_Right = 0
   ),
   tbl_Path_Leg = data.table(
-    Path_Leg_Name = NA,
-    Landing_Runway = NA,
-    Is_Intercept_Leg = NA,
-    Is_ILS_Leg = NA,
-    Is_Landing_Leg = NA,
-    Path_Leg_Type = NA
+    Path_Leg_Name = "PL00",
+    Landing_Runway = "R00",
+    Is_Intercept_Leg = F,
+    Is_ILS_Leg = F,
+    Is_Landing_Leg = F,
+    Path_Leg_Type = "XXX"
   ),
   tbl_Path_Leg_Transition = data.table(
-    Current_Path_Leg = NA,
-    New_Path_Leg = NA,
-    Min_Heading = NA,
-    Max_Heading = NA,
-    Volume_Name = NA,
-    Min_Sustained_RoCD = NA,
-    Runway_Name = NA,
-    Associated_Runway = NA
+    Current_Path_Leg = "PL00",
+    New_Path_Leg = "PL01",
+    Min_Heading = 0,
+    Max_Heading = 0,
+    Volume_Name = "VOL00",
+    Min_Sustained_RoCD = 0,
+    Runway_Name = "R00",
+    Associated_Runway = "R00"
   )
 )
 
@@ -86,7 +86,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       div(
         style = "display: flex; flex-direction: column; flex-basis: 100%; gap: 30px",
         div(
-          style = "flex: 1; overflow-x: auto",
+          style = "flex: 1; overflow-x: auto; max-height: calc(75vh)",
           div(style = "height: 15px;"),
           
           div(
@@ -127,30 +127,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
               )
             )
           )
-        ),
-        div(
-          style = "flex: 1; height: calc(100vh - 265px);",
-          div(
-            style = "display: flex; background: #D51067; border-radius: 6px 6px 0 0; margin-top: -40px",
-            div(style = "padding: 10px; color: white", tags$b("PLT Adaptation Preview")),
-            # dropdown(
-            #   div(style = "font-weight: bold; padding-bottom: 10px", "Runways"),
-            #   pickerInput_customised(ns("toggle_tbl_Runway"), NULL, choices = NULL),
-            #   style = "minimal", icon = icon("road"),
-            #   tooltip = tooltipOptions(title = "Runways", placement = "right")
-            # ),
-            dropdown(
-              div(style = "font-weight: bold; padding-bottom: 10px", "Volumes"),
-              pickerInput_customised(ns("toggle_tbl_Volumes"), "Variant 1", choices = NULL),
-              hidden(
-                pickerInput_customised(ns("toggle_tbl_Volumes_2"), "Variant 2", choices = NULL),
-                pickerInput_customised(ns("toggle_tbl_Volumes_3"), "Variant 3", choices = NULL)
-              ),
-              style = "minimal", icon = icon("vector-square"),
-              tooltip = tooltipOptions(title = "Volumes", placement = "right")
-            )
-          ),
-          leafletOutput(ns("map"), height = "100%")
         )
       )
     })
@@ -454,37 +430,53 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   observeEvent(input$toggle_tbl_Volumes, {
     p <- leafletProxy("map") %>% clearGroup("Volumes")
+    points <- configVolume_To_pointSequence(hot_tbl_Volumes(), dbi_con)
     for (i in input$toggle_tbl_Volumes) {
-      v_i <- hot_tbl_Volumes()[Volume_Name %in% i][1]
-      v2_i <- usp_GI_Latlong_From_XY(
-        c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
-        c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left),
-        tbl_Adaptation_Data()
-      )
-      # v2_i <- data.table(
-      #   PositionLongitude=c(v_i$Start_Dist_From_Threshold, v_i$Start_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$End_Dist_From_Threshold, v_i$Start_Dist_From_Threshold),
-      #   PositionLatitude=c(v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Right, v_i$Lateral_Dist_Left, v_i$Lateral_Dist_Left)
-      # )
-      # leaflet() %>% addTiles() %>% addPolygons(data = p_i)
-      p_i <- Polygon(
-        data.table(
-          Longitude = v2_i$PositionLongitude*180/pi,
-          Latitude = v2_i$PositionLatitude*180/pi
-        )
-      )
+      v_i <- points[Volume_Name %in% i]
       p %>% addPolygons(
-        data = p_i,
+        data = Polygon(
+          data.table(
+            Longitude = v_i$Longitude*180/pi,
+            Latitude = v_i$Latitude*180/pi
+          )
+        ),
         group = "Volumes"
       )
     }
   })
   
   observeEvent(input$toggle_tbl_Volumes_2, {
-    
+    p <- leafletProxy("map") %>% clearGroup("Volumes_2")
+    points <- configVolume_To_pointSequence(hot_tbl_Volumes_2(), dbi_con)
+    for (i in input$toggle_tbl_Volumes_2) {
+      v_i <- points[Volume_Name %in% i]
+      p %>% addPolygons(
+        data = Polygon(
+          data.table(
+            Longitude = v_i$Longitude*180/pi,
+            Latitude = v_i$Latitude*180/pi
+          )
+        ),
+        group = "Volumes_2"
+      )
+    }
   })
   
   observeEvent(input$toggle_tbl_Volumes_3, {
-    
+    p <- leafletProxy("map") %>% clearGroup("Volumes_3")
+    points <- configVolume_To_pointSequence(hot_tbl_Volumes_3(), dbi_con)
+    for (i in input$toggle_tbl_Volumes_3) {
+      v_i <- points[Volume_Name %in% i]
+      p %>% addPolygons(
+        data = Polygon(
+          data.table(
+            Longitude = v_i$Longitude*180/pi,
+            Latitude = v_i$Latitude*180/pi
+          )
+        ),
+        group = "Volumes_3"
+      )
+    }
   })
   
 }

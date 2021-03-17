@@ -1,4 +1,3 @@
-App_Test_eTBS_UTMA_Validation_V002a
 App_Test_LVNL_UTMA_Validation
 App_Test_NavCan_Fusion
 App_Test_NavCan_UTMA_Validation_DB2
@@ -6,12 +5,9 @@ IA_CAV
 IA_CAV_1
 IA_CAV_2
 LVNL_PLT_Tools
-LVNL_UTMA_Validation
-LVNL_UTMA_Validation_DBS
-LVNL_UTMA_Validation_TBS_Table
-LVNL_UTMA_Validation_Wake
+NavCan_Fusion_Test
 NavCan_TBS_V2
 NavCan_TBS_V2_Test
 Node_Replacement_ARTAS_Test
 Node_Replacement_TOPSKY_Test
-Users/Roles Test Database
+Users/Roles_Test_Database

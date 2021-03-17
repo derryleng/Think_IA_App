@@ -219,6 +219,57 @@ factoriseCharCols <- function(df) {
   return(df)
 }
 
+# Converts the Start/End Dist of Threshold and Lateral Dist Left/Right to
+# polygon point sequence as contained in the database.
+configVolume_To_pointSequence <- function(x, dbi_con) {
+  # x: Config file 05_Populate_Airspace_Volumes.csv as data.table
+  # dbi_con: database connection
+  
+  Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  
+  polygons <- data.table()
+  
+  for (i in 1:nrow(x)) {
+    
+    polygons_i <- data.table(
+      Volume_Name = rep(x$Volume_Name[i], 5),
+      Airfield_Name = rep(Airfield_Name, 5),
+      Point_Sequence = 1:5,
+      Point_X = as.numeric(c(x$Start_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i])) * fnc_GI_Nm_To_M(),
+      Point_Y = as.numeric(c(x$Lateral_Dist_Left[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Left[i], x$Lateral_Dist_Left[i])) * fnc_GI_Nm_To_M()
+    )
+    
+    grid_i <- usp_GI_Runway_To_XY(
+      gsub("^([A-Z0-9]{1,})_.*$", "R\\1", polygons_i$Volume_Name[1]),
+      polygons_i$Point_X,
+      polygons_i$Point_Y,
+      tbl_Runway
+    )
+    
+    updated_i <- usp_GI_Latlong_From_XY(
+      grid_i$Node_X,
+      grid_i$Node_Y,
+      tbl_Adaptation_Data
+    )
+    
+    polygons_i$Point_X <- grid_i$Node_X
+    polygons_i$Point_Y <- grid_i$Node_Y
+    polygons_i$Latitude <- updated_i$PositionLatitude
+    polygons_i$Longitude <- updated_i$PositionLongitude
+    
+    polygons <- rbind(
+      polygons,
+      polygons_i
+    )
+    
+  }
+  
+  return(polygons)
+  
+}
+
 # ----------------------------------------------------------------------- #
 # Functions (Imported) ----------------------------------------------------
 # ----------------------------------------------------------------------- #
