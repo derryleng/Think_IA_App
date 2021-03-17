@@ -39,7 +39,7 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
     } else if (input$logs_type == "Cat62 Fusion (NAVCAN)") {
       process_NavCan_Fusion_Cat62(LogFilePaths[i], tbl$Adaptation_Data, dbi_con)
     } else if (input$logs_type == "Surveillance radar (LVNL)") {
-      process_LVNL_Surv(LogFilePaths[i], tbl$Adaptation_Data, Runway, dbi_con)
+      process_LVNL_Surv(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Flight Plan logs (LVNL)") {
       process_LVNL_FP(LogFilePaths[i], dbi_con)
     } else if (input$logs_type == "QNH logs (LVNL)") {
