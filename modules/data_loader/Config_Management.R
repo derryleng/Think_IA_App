@@ -34,6 +34,8 @@ Populate_tbl_Runway <- function(LogFilePath, dbi_con) {
   
   x$Threshold_Lat <- as.numeric(x$Threshold_Lat) * fnc_GI_Degs_To_Rads()
   x$Threshold_Lon <- as.numeric(x$Threshold_Lon) * fnc_GI_Degs_To_Rads()
+  x$Corresponding_Rwy_Lat <- as.numeric(x$Corresponding_Rwy_Lat) * fnc_GI_Degs_To_Rads()
+  x$Corresponding_Rwy_Lon <- as.numeric(x$Corresponding_Rwy_Lon) * fnc_GI_Degs_To_Rads()
   x$Heading <- as.numeric(x$Heading) * fnc_GI_Degs_To_Rads() + tbl_Adaptation_Data$Mag_Var
   x$Glideslope_Angle <- as.numeric(x$Glideslope_Angle) * fnc_GI_Degs_To_Rads()
   x$Elevation <- as.numeric(x$Elevation) * fnc_GI_Ft_To_M()
@@ -42,17 +44,35 @@ Populate_tbl_Runway <- function(LogFilePath, dbi_con) {
   x$Threshold_X_Pos <- Converted_XY$Position_X
   x$Threshold_Y_Pos <- Converted_XY$Position_Y
   
-  Corresponding_Rwy <- runway_Opposite_End(x$Runway_Name)
+  Converted_XY <- usp_GI_Latlong_To_XY(x$Corresponding_Rwy_Lat, x$Corresponding_Rwy_Lon, tbl_Adaptation_Data)
+  x$Corresponding_Threshold_X_Pos <- Converted_XY$Position_X
+  x$Corresponding_Threshold_Y_Pos <- Converted_XY$Position_Y
+  
+  #Corresponding_Rwy <- runway_Opposite_End(x$Runway_Name)
+
+  # for (i in 1:nrow(x)) {
+  #   x$NODE_Heading_Offset[i] <- -atan(
+  #     (as.numeric(x$Threshold_Y_Pos[i]) - x[Runway_Name == Corresponding_Rwy[i]]$Threshold_Y_Pos) /
+  #       (as.numeric(x$Threshold_X_Pos[i]) - x[Runway_Name == Corresponding_Rwy[i]]$Threshold_X_Pos)
+  #   )
+  # }
+  
   for (i in 1:nrow(x)) {
     x$NODE_Heading_Offset[i] <- -atan(
-      (as.numeric(x$Threshold_Y_Pos[i]) - x[Runway_Name == Corresponding_Rwy[i]]$Threshold_Y_Pos) /
-        (as.numeric(x$Threshold_X_Pos[i]) - x[Runway_Name == Corresponding_Rwy[i]]$Threshold_X_Pos)
+      (as.numeric(x$Threshold_Y_Pos[i]) - x$Corresponding_Threshold_Y_Pos[i]) /
+        (as.numeric(x$Threshold_X_Pos[i]) - x$Corresponding_Threshold_X_Pos[i])
     )
   }
   
-  message("[",Sys.time(),"] ", "Appending ", nrow(x), " rows to tbl_Runway...")
-  dbWriteTable(dbi_con, "tbl_Runway", x, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(x), " rows to tbl_Runway")
+  out <- x[,-c("Corresponding_Rwy_Lat",
+               "Corresponding_Rwy_Lon",
+               "Corresponding_Threshold_X_Pos",
+               "Corresponding_Threshold_Y_Pos"
+               )]
+    
+  message("[",Sys.time(),"] ", "Appending ", nrow(out), " rows to tbl_Runway...")
+  dbWriteTable(dbi_con, "tbl_Runway", out, append = T)
+  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Runway")
 }
 
 Populate_tbl_Mode_S_Wind_Localiser_Capture <- function(LogFilePath, dbi_con) {
