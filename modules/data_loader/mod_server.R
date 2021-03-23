@@ -33,7 +33,7 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
     } else if (input$logs_type == "Alt Flight Plan logs (NAVCAN)") {
       process_NavCan_FPAlt(LogFilePaths[i], dbi_con)
     } else if (input$logs_type == "Ground radar (NAVCAN)") {
-      process_NavCan_GR(LogFilePaths[i], tbl$Runway, dbi_con)
+      process_NavCan_GR(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Surface wind and QNH (NAVCAN)") {
       process_NavCan_SurfaceWindQNH(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "Cat62 Fusion (NAVCAN)") {
