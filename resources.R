@@ -121,51 +121,18 @@ generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   tracks$Flight_Plan_ID <- NULL
   tracks$Flight_Plan_ID <- character()
   
-  #   for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
-  #     tracks[
-  #       Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
-  #         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-  #         Callsign == fp[Flight_Plan_ID == j]$Callsign &
-  #         grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-  #     ]$Flight_Plan_ID <- j
-  #   }
-  #   
-  #   return(tracks)
-  #   
-  # }
-  
-  for (i in 1:nrow(tracks)) {
-    
-    fpid <- if (tracks$Callsign[i] == "") {
-      
-      fp[
-        FP_Date == tracks$Track_Date[i] & 
-          abs(FP_Time - tracks$Track_Time[i]) < 7200 &
-          grepl(paste0("^[0]?", tracks$SSR_Code[i], "$"), SSR_Code)
-      ]$Flight_Plan_ID[1]
-      
-    } else {
-      
-      fp[
-        FP_Date == tracks$Track_Date[i] & 
-          abs(FP_Time - tracks$Track_Time[i]) < 7200 &
-          Callsign == tracks$Callsign[i] &
-          grepl(paste0("^[0]?", tracks$SSR_Code[i], "$"), SSR_Code)
-      ]$Flight_Plan_ID[1]
-      
+    for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
+      tracks[
+        Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
+          abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+          Callsign == fp[Flight_Plan_ID == j]$Callsign &
+          grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+      ]$Flight_Plan_ID <- j
     }
-    
-    #message(i, " ", fpid)
-    
-    #if (!is.na(fpid)) break
-    
-    tracks$Flight_Plan_ID[i] <- fpid
-    
+
+    return(tracks)
+
   }
-  
-  return(tracks)
-  
-}
 
 generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
