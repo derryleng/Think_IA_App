@@ -368,7 +368,7 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
 
 }
 
-process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_con) {
+process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
   
   # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
   # tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
@@ -425,12 +425,14 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     "I062/SP/CCR/RC"
   )[1:length(names(x))]
   
-  nrow1 <- nrow(x)
-  x <- x[!(is.na(`I062/135/CTL`) | `I062/135/CTL` == "") & !(is.na(`I062/390/CSN/CSN`) & is.na(x$`I062/380/ID/ID`))]
-  nrow2 <- nrow(x)
-  message("[",Sys.time(),"] ", "Removed ", nrow1 - nrow2, " rows with NULL values in I062/135/CTL or both I062/390/CSN/CSN and I062/380/ID/ID)")
+  # nrow1 <- nrow(x)
+  # x <- x[!(is.na(`I062/135/CTL`) | `I062/135/CTL` == "") & !(is.na(`I062/390/CSN/CSN`) & is.na(x$`I062/380/ID/ID`))]
+  # nrow2 <- nrow(x)
+  # message("[",Sys.time(),"] ", "Removed ", nrow1 - nrow2, " rows with NULL values in I062/135/CTL or both I062/390/CSN/CSN and I062/380/ID/ID)")
   
   if (nrow(x) > 0) {
+    
+    x[x == ""] <- NA
 
     if (tbl_Adaptation_Data$Use_Local_Coords) {
       x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
@@ -438,6 +440,13 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
       x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I062/100/X`), as.numeric(x$`I062/100/Y`), tbl_Adaptation_Data))
     }
 
+    x <- x[
+      Position_X >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
+        Position_X <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
+        Position_Y >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
+        Position_Y <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
+    ]
+    
     x$`I062/380/GSP/GSP` <- ifelse(as.numeric(x$`I062/295/GSP/GSP`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/GSP/GSP`)
     x$`I062/380/IAR/IAR` <- ifelse(as.numeric(x$`I062/295/IAR/IAR`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/IAR/IAR`)
     x$`I062/380/MHG/MHG` <- ifelse(as.numeric(x$`I062/295/MHG/MHG`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/MHG/MHG`)
@@ -460,7 +469,7 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
     Lon = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads()} else {x$PositionLongitude},
     Mode_C = ifelse(x$`I062/010/Sac` == 98 & x$`I062/010/Sic` == 160,
-                    ifelse(x$`I062/SP/CCR/RC` == "",
+                    ifelse(is.na(x$`I062/SP/CCR/RC`),
                            as.numeric(99999999),
                            as.numeric(x$`I062/SP/CCR/RC`) * fnc_GI_Ft_To_M()
                            ),
@@ -482,7 +491,7 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
   if (nrow(out) > 0) {
     
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    out2 <- generateFPID(out, dbi_con)
+    out2 <- generateFPID_fusion(out, dbi_con)
     message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
     
     # # FOR TROUBLESHOOTING ONLY
