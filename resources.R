@@ -218,7 +218,7 @@ generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
     }
     
     tracks[paste(Track_Date, SSR_Code, Callsign, "-", Track_Number) == i]$Flight_Plan_ID <- fpid
-    message(i, " ", fpid)
+    #message(i, " ", fpid)
   }
   
   tracks$Flight_Plan_ID <- as.numeric(tracks$Flight_Plan_ID)

@@ -120,19 +120,48 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
-  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign", "SSR_Code"))
+  out_pass_1 <- unique(out, by = c("FP_Date", "FP_Time", "Callsign", "SSR_Code"))
+  
+  out_pass_2 <- data.table()
+  
+  for (d in unique(out_pass_1$FP_Date)){
+    out_pass_1_d <- out_pass_1[FP_Date == d]
+    
+    out_pass_2_d <- rbindlist(lapply(unique(out_pass_1_d[,paste(FP_Date, Callsign, SSR_Code)]), function(i) {
+      #message("[",Sys.time(),"] ", i, " Processing")
+      fp_i <- out_pass_1_d[paste(FP_Date, Callsign, SSR_Code) == i]
+      if (nrow(fp_i) == 1) {
+        message("[",Sys.time(),"] ", i, " Processed")
+        return(fp_i)
+      } else if (nrow(fp_i) > 1) {
+        j <- 1
+        while (j < nrow(fp_i)) {
+          if (abs(fp_i$FP_Time[j+1] - fp_i$FP_Time[j]) < 7200) {
+            fp_i <- fp_i[-j]
+          } else {
+            j <- j + 1
+          }
+        }
+      }
+      #message("[",Sys.time(),"] ", i, " Processed")
+    }))
+    
+    out_pass_2 <- rbind(out_pass_2, out_pass_2_d)
+    
+  }
+
   
   message("[",Sys.time(),"] ", "Checking for duplicates within existing data...")
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
-    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
+    out_pass_3 <- out_pass_2[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
   } else {
-    out_pass_2 <- out_pass_1
+    out_pass_3 <- out_pass_2
   }
   
-  message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_2), " rows to tbl_Flight_Plan...")
-  dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_2, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_2), " rows to tbl_Flight_Plan")
+  message("[",Sys.time(),"] ", "Appending ", nrow(out_pass_3), " rows to tbl_Flight_Plan...")
+  dbWriteTable(dbi_con, "tbl_Flight_Plan", out_pass_3, append = T)
+  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out_pass_3), " rows to tbl_Flight_Plan")
   
 }
 
