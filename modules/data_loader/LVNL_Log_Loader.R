@@ -126,12 +126,12 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   
   for (d in unique(out_pass_1$FP_Date)){
     out_pass_1_d <- out_pass_1[FP_Date == d]
-    
+    message("[",Sys.time(),"] ", d, " Processing")
     out_pass_2_d <- rbindlist(lapply(unique(out_pass_1_d[,paste(FP_Date, Callsign, SSR_Code)]), function(i) {
       #message("[",Sys.time(),"] ", i, " Processing")
       fp_i <- out_pass_1_d[paste(FP_Date, Callsign, SSR_Code) == i]
       if (nrow(fp_i) == 1) {
-        message("[",Sys.time(),"] ", i, " Processed")
+        #message("[",Sys.time(),"] ", i, " Processed")
         return(fp_i)
       } else if (nrow(fp_i) > 1) {
         j <- 1
@@ -147,7 +147,7 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
     }))
     
     out_pass_2 <- rbind(out_pass_2, out_pass_2_d)
-    
+    #message("[",Sys.time(),"] ", d, " Processed")
   }
 
   
