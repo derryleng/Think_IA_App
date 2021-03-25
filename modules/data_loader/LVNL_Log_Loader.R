@@ -121,6 +121,7 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
   out_pass_1 <- unique(out, by = c("FP_Date", "FP_Time", "Callsign", "SSR_Code"))
+  out_pass_1 <- out_pass_1[order(FP_Date,FP_Time )]
   
   out_pass_2 <- data.table()
   
@@ -130,10 +131,7 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
     out_pass_2_d <- rbindlist(lapply(unique(out_pass_1_d[,paste(FP_Date, Callsign, SSR_Code)]), function(i) {
       #message("[",Sys.time(),"] ", i, " Processing")
       fp_i <- out_pass_1_d[paste(FP_Date, Callsign, SSR_Code) == i]
-      if (nrow(fp_i) == 1) {
-        #message("[",Sys.time(),"] ", i, " Processed")
-        return(fp_i)
-      } else if (nrow(fp_i) > 1) {
+      if (nrow(fp_i) > 1) {
         j <- 1
         while (j < nrow(fp_i)) {
           if (abs(fp_i$FP_Time[j+1] - fp_i$FP_Time[j]) < 7200) {
@@ -143,6 +141,7 @@ process_LVNL_FP <- function(LogFilePath, dbi_con) {
           }
         }
       }
+      return(fp_i)
       #message("[",Sys.time(),"] ", i, " Processed")
     }))
     
