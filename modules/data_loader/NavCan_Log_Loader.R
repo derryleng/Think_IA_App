@@ -187,15 +187,47 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
     SID = x$SID
   )
   
-  out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
+  out <- out[!is.na(FP_Date) & !is.na(FP_Time) & (!is.na(Callsign) | !is.na(SSR_Code))]
+  out$Callsign <- as.character(out$Callsign)
+  out[is.na(Callsign)]$Callsign <- ""
+  out$SSR_Code <- as.character(out$SSR_Code)
+  out[is.na(SSR_Code)]$SSR_Code <- ""
+  
+  out <- out[order(FP_Date, FP_Time)]
+  
+  out_2 <- data.table()
+  
+  for (d in unique(out$FP_Date)){
+    out_d <- out[FP_Date == d]
+    message("[",Sys.time(),"] ", d, " Processing")
+    out_2_d <- rbindlist(lapply(unique(out_d[,paste(FP_Date, Callsign, SSR_Code)]), function(i) {
+      #message("[",Sys.time(),"] ", i, " Processing")
+      fp_i <- out_d[paste(FP_Date, Callsign, SSR_Code) == i]
+      if (nrow(fp_i) > 1) {
+        j <- 1
+        while (j < nrow(fp_i)) {
+          if (abs(fp_i$FP_Time[j+1] - fp_i$FP_Time[j]) < 7200) {
+            fp_i <- fp_i[-j]
+          } else {
+            j <- j + 1
+          }
+        }
+      }
+      return(fp_i)
+      #message("[",Sys.time(),"] ", i, " Processed")
+    }))
+    
+    out_2 <- rbind(out_2, out_2_d)
+    #message("[",Sys.time(),"] ", d, " Processed")
+  }
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
-  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
+  out_pass_1 <- unique(out_2, by = c("FP_Date","FP_Time", "Callsign", "SSR_Code"))
   
   message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
-    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]
+    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
   } else {
     out_pass_2 <- out_pass_1
   }
