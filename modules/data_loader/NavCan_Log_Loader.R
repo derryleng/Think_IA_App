@@ -418,44 +418,87 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
              data.table(grep("^52,225.*$", logs, value = T))[, tstrsplit(V1, ",", fixed = T)])
   message("[",Sys.time(),"] ", "Found ", nrow(x), " valid CAT62 lines.")
   
-  names(x) <- c(
-    "I062/010/Sac",
-    "I062/010/Sic",
-    "I062/040/TrackNum",
-    "I062/060/Mode3A",
-    "I062/070/Time",
-    "I062/100/X",
-    "I062/100/Y",
-    "I062/105/Lat",
-    "I062/105/Lon",
-    "I062/135/QNH",
-    "I062/135/CTL",
-    "I062/185/VX",
-    "I062/185/VY",
-    "I062/295/MDA/MDA",
-    "I062/295/MHG/MHG",
-    "I062/295/TAS/TAS",
-    "I062/295/BVR/BVR",
-    "I062/295/RAN/RAN",
-    "I062/295/TAR/TAR",
-    "I062/295/TAN/TAN",
-    "I062/295/GSP/GSP",
-    "I062/295/IAR/IAR",
-    "I062/295/BPS/BPS",
-    "I062/380/ADR/ADR",
-    "I062/380/ID/ID",
-    "I062/380/MHG/MHG",
-    "I062/380/TAS/TAS",
-    "I062/380/BVR/BVR",
-    "I062/380/RAN/RAN",
-    "I062/380/TAR/RateOfTurn",
-    "I062/380/TAN/TAN",
-    "I062/380/GSP/GSP",
-    "I062/380/IAR/IAR",
-    "I062/380/BPS/BPS",
-    "I062/390/CSN/CSN",
-    "I062/SP/CCR/RC"
-  )[1:length(names(x))]
+  if (x$V1[1] == "52" & x$V2[1] == "205" ){
+    names(x) <- c(
+      "I062/010/Sac",
+      "I062/010/Sic",
+      "I062/040/TrackNum",
+      "I062/060/Mode3A",
+      "I062/070/Time",
+      "I062/100/X",
+      "I062/100/Y",
+      "I062/105/Lat",
+      "I062/105/Lon",
+      "I062/135/QNH",
+      "I062/135/CTL",
+      "I062/185/VX",
+      "I062/185/VY",
+      "I062/295/MDA/MDA",
+      "I062/295/MHG/MHG",
+      "I062/295/TAS/TAS",
+      "I062/295/BVR/BVR",
+      "I062/295/RAN/RAN",
+      "I062/295/TAR/TAR",
+      "I062/295/TAN/TAN",
+      "I062/295/GSP/GSP",
+      "I062/295/IAR/IAR",
+      "I062/295/BPS/BPS",
+      "I062/380/ADR/ADR",
+      "I062/380/ID/ID",
+      "I062/380/MHG/MHG",
+      "I062/380/TAS/TAS",
+      "I062/380/BVR/BVR",
+      "I062/380/RAN/RAN",
+      "I062/380/TAR/RateOfTurn",
+      "I062/380/TAN/TAN",
+      "I062/380/GSP/GSP",
+      "I062/380/IAR/IAR",
+      "I062/380/BPS/BPS",
+      "I062/390/CSN/CSN",
+      "I062/SP/CCR/RC",
+      "I062/220/ROCD"
+    )[1:length(names(x))]
+  } else {
+    names(x) <- c(
+      "I062/010/Sac",
+      "I062/010/Sic",
+      "I062/040/TrackNum",
+      "I062/060/Mode3A",
+      "I062/070/Time",
+      "I062/100/X",
+      "I062/100/Y",
+      "I062/105/Lat",
+      "I062/105/Lon",
+      "I062/135/QNH",
+      "I062/135/CTL",
+      "I062/185/VX",
+      "I062/185/VY",
+      "I062/295/MDA/MDA",
+      "I062/295/MHG/MHG",
+      "I062/295/TAS/TAS",
+      "I062/295/BVR/BVR",
+      "I062/295/RAN/RAN",
+      "I062/295/TAR/TAR",
+      "I062/295/TAN/TAN",
+      "I062/295/GSP/GSP",
+      "I062/295/IAR/IAR",
+      "I062/295/BPS/BPS",
+      "I062/380/ADR/ADR",
+      "I062/380/ID/ID",
+      "I062/380/MHG/MHG",
+      "I062/380/TAS/TAS",
+      "I062/380/BVR/BVR",
+      "I062/380/RAN/RAN",
+      "I062/380/TAR/RateOfTurn",
+      "I062/380/TAN/TAN",
+      "I062/380/GSP/GSP",
+      "I062/380/IAR/IAR",
+      "I062/380/BPS/BPS",
+      "I062/390/CSN/CSN",
+      "I062/SP/CCR/RC"
+    )[1:length(names(x))]
+  }
+
   
   # nrow1 <- nrow(x)
   # x <- x[!(is.na(`I062/135/CTL`) | `I062/135/CTL` == "") & !(is.na(`I062/390/CSN/CSN`) & is.na(x$`I062/380/ID/ID`))]
@@ -519,6 +562,9 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
     Mode_S_Roll_Angle = as.numeric(x$`I062/380/RAN/RAN`) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * fnc_GI_Mbar_To_Pa()
   )
+  if (x$`I062/010/Sac`[1] == "52" & x$`I062/010/Sic`[1] == "205") {
+    out <- add_column(out, Vertical_Rate = as.numeric(x$`I062/220/ROCD`) * fnc_GI_Ft_Per_Min_To_M_Per_Sec(), .after = "Track_HDG")
+  }
   
   if (nrow(out) > 0) {
     
