@@ -84,7 +84,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     
     output$editor_view <- renderUI({
       div(
-        style = "display: flex; flex-direction: column; flex-basis: 100%; gap: 30px",
+        style = "display: flex; flex-direction: column; flex-basis: 100%; gap: 30px;",
         div(
           style = "flex: 1; overflow-x: auto; max-height: calc(75vh)",
           div(style = "height: 15px;"),
@@ -171,22 +171,69 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       if (!is.null(tbl$tbl_Path_Leg_Transition_3)) rhandsontable(tbl$tbl_Path_Leg_Transition_3)
     })
     
+    output$analysis_view <- renderUI({
+      div(
+        h3("PLT Running"),
+        
+        checkboxGroupInput(
+          ns("plt_analysis_variants"), label = "Variant Selection", 
+          choices = list("Variant 1" = 1, "Variant 2" = 2, "Variant 3" = 3),
+          selected = 1
+        ),
+        
+        actionButton(ns("plt_analysis_run"), "Run PLT Analysis"),
+        
+        hr(),
+        
+        h3("Summary Stats"),
+        
+        actionButton(ns("summary_show"), "Output summary stats"),
+        
+        DT::dataTableOutput(outputId = ns("plt_summary_table")),
+        
+        hr(),
+        
+        h3("Detailed Analysis"),
+        
+        actionButton(ns("detailed_show"), "Update table"),
+        
+        DT::dataTableOutput(outputId = ns("plt_detailed_table")),
+        
+        actionButton(ns("pltvis_flights_view"), "View selected flights"),
+        
+        h3("Display options"),
+        
+        checkboxInput(ns("pltvis_tracks_check"), "Tracks"),
+        
+        checkboxInput(ns("pltvis_tracks_ind"), "Indicator activation point"),
+        
+        leafletOutput(ns("pltvis_map"), height = "563px"),
+        
+        # Plotly plots
+        # Indicator activation time histogram
+        # Indicator activation time vs QNH
+        # Lateral distance from localiser when first tracked
+        # Altitude when first tracked
+        
+      )
+    })
+    
   })
   
   # Create New Adaptation
   
   observeEvent(input$editor_template, {
     tbl$loaded <- T
-    tbl$tbl_Runway <- tbl$tbl_Runway[0]
-    tbl$tbl_Volumes <- tbl$tbl_Volumes[0]
-    tbl$tbl_Volumes_2 <- tbl$tbl_Volumes_2[0]
-    tbl$tbl_Volumes_3 <- tbl$tbl_Volumes_3[0]
-    tbl$tbl_Path_Leg <- tbl$tbl_Path_Leg[0]
-    tbl$tbl_Path_Leg_2 <- tbl$tbl_Path_Leg_2[0]
-    tbl$tbl_Path_Leg_3 <- tbl$tbl_Path_Leg_3[0]
-    tbl$tbl_Path_Leg_Transition <- tbl$tbl_Path_Leg_Transition[0]
-    tbl$tbl_Path_Leg_Transition_2 <- tbl$tbl_Path_Leg_Transition_2[0]
-    tbl$tbl_Path_Leg_Transition_3 <- tbl$tbl_Path_Leg_Transition_3[0]
+    tbl$tbl_Runway <- tbl_template$tbl_Runway
+    tbl$tbl_Volumes <- tbl_template$tbl_Volumes
+    tbl$tbl_Volumes_2 <- tbl_template$tbl_Volumes
+    tbl$tbl_Volumes_3 <- tbl_template$tbl_Volumes
+    tbl$tbl_Path_Leg <- tbl_template$tbl_Path_Leg
+    tbl$tbl_Path_Leg_2 <- tbl_template$tbl_Path_Leg
+    tbl$tbl_Path_Leg_3 <- tbl_template$tbl_Path_Leg
+    tbl$tbl_Path_Leg_Transition <- tbl_template$tbl_Path_Leg_Transition
+    tbl$tbl_Path_Leg_Transition_2 <- tbl_template$tbl_Path_Leg_Transition
+    tbl$tbl_Path_Leg_Transition_3 <- tbl_template$tbl_Path_Leg_Transition
   })
   
   # Load Existing Adaptation
@@ -281,7 +328,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       showModal(modalDialog(
         title = div(class = "centered", "WARNING: Files Not Found"),
         HTML("<li>", paste0(missing_tbl, collapse = "</li><li>"), "</li>"),
-        size = "s",
+        size = "m",
         footer = div(class = "centered", modalButton("Dismiss")),
         easyClose = F
       ))
