@@ -22,7 +22,7 @@ load_packages <- function(req_file, install = T, update = F, silent = F) {
   }
 }
 
-load_packages("req.txt", silent = T)
+load_packages("req.txt", silent = F)
 
 invisible(lapply(list.files(path = "modules/", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T), source))
 

@@ -1,3 +1,6 @@
+source("modules/plt_tools/SummaryStats_DL.R")
+
+# Must be set to same name as input config files
 tbl_names <- list(
   tbl_Runway = "03_Populate_tbl_Runway.csv",
   tbl_Volumes = "05_Populate_Airspace_Volumes.csv",
@@ -10,6 +13,8 @@ tbl_names <- list(
   tbl_Path_Leg_Transition_2 = "08_Populate_tbl_Path_Leg_Transition_2.csv",
   tbl_Path_Leg_Transition_3 = "08_Populate_tbl_Path_Leg_Transition_3.csv"
 )
+
+# Template ----------------------------------------------------------------
 
 tbl_template <- list(
   tbl_Runway = data.table(
@@ -48,6 +53,42 @@ tbl_template <- list(
   )
 )
 
+map_template <- function() {
+  x <- leaflet(options = leafletOptions(zoomControl = F, preferCanvas = T)) %>%
+    setView(lng = 0, lat = 0, zoom = 3)
+  tile_providers <- list(
+    `Esri Satellite` = "Esri.WorldImagery",
+    `CartoDB Light` = "CartoDB.Positron",
+    `CartoDB Light 2` = "CartoDB.PositronNoLabels",
+    `CartoDB Dark` = "CartoDB.DarkMatter",
+    `CartoDB Dark 2` = "CartoDB.DarkMatterNoLabels",
+    `OSM Mapnik` = "OpenStreetMap.Mapnik"
+  )
+  for (i in 1:length(tile_providers)) {
+    x <- x %>% addProviderTiles(providers[[tile_providers[[i]]]], options = providerTileOptions(noWrap = T), group = names(tile_providers)[i])
+  }
+  x <- x %>% addLayersControl(baseGroups = names(tile_providers), options = layersControlOptions(collapsed = T))
+  return(x)
+}
+
+plt_analysis_error_modal <- function(msg) {
+  showModal(modalDialog(
+    div(
+      style = "text-align: center",
+      h3("PLT Analysis Error")
+    ),
+    hr(),
+    div(
+      style = "text-align: center",
+      tags$b(msg)
+    ),
+    size = "s",
+    easyClose = T
+  ))
+}
+
+# Server ------------------------------------------------------------------
+
 plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   ns <- session$ns
@@ -59,8 +100,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   tbl_Runway <- reactive({
     as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
   })
-  
-  # Blank templates
   
   tbl <- reactiveValues(
     loaded = F,
@@ -75,26 +114,27 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     tbl_Path_Leg_Transition_2 = tbl_template$tbl_Path_Leg_Transition,
     tbl_Path_Leg_Transition_3 = tbl_template$tbl_Path_Leg_Transition
   )
-  
-  # Load UI elements
-  
+
+  # Load UI elements --------------------------------------------------------   
+
   observe({
     
     req(tbl$loaded)
     
+    shinyjs::show("editor_export")
+    
     output$editor_view <- renderUI({
       div(
-        style = "display: flex; flex-direction: column; flex-basis: 100%; gap: 30px;",
+        style = "display: flex;",
+        
         div(
-          style = "flex: 1; overflow-x: auto; max-height: calc(75vh)",
+          style = "flex: 1; height: 600px; min-width: 50%; max-width: 50%;",
           div(style = "height: 15px;"),
-          
           div(
             style = "display: flex; justify-content: flex-start; gap: 5px;",
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Additional Variants:"),
             div(style = "height: 34px;", numericInput(ns("plt_variants"), NULL, value = 0, min = 0, max = 2, step = 1))
           ),
-          
           div(style = "height: 15px;"),
           tabBox(
             width = NULL,
@@ -127,7 +167,33 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
               )
             )
           )
+        ),
+        
+        div(
+          style = "flex: 1; height: 600px; padding-top: 40px;",
+          div(
+            style = "display: flex; background: #D51067; margin-top: -40px",
+            div(style = "padding: 10px; color: white", tags$b("PLT Adaptation Preview")),
+            # dropdown(
+            #   div(style = "font-weight: bold; padding-bottom: 10px", "Runways"),
+            #   pickerInput_customised(ns("toggle_tbl_Runway"), NULL, choices = NULL),
+            #   style = "minimal", icon = icon("road"),
+            #   tooltip = tooltipOptions(title = "Runways", placement = "right")
+            # ),
+            dropdown(
+              div(style = "font-weight: bold; padding-bottom: 10px", "Volumes"),
+              pickerInput_customised(ns("toggle_tbl_Volumes"), "Variant 1", choices = NULL),
+              hidden(
+                pickerInput_customised(ns("toggle_tbl_Volumes_2"), "Variant 2", choices = NULL),
+                pickerInput_customised(ns("toggle_tbl_Volumes_3"), "Variant 3", choices = NULL)
+              ),
+              style = "minimal", icon = icon("vector-square"),
+              tooltip = tooltipOptions(title = "Volumes", placement = "right")
+            )
+          ),
+          leafletOutput(ns("map"), height = "563px")
         )
+        
       )
     })
     
@@ -171,56 +237,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       if (!is.null(tbl$tbl_Path_Leg_Transition_3)) rhandsontable(tbl$tbl_Path_Leg_Transition_3)
     })
     
-    output$analysis_view <- renderUI({
-      div(
-        h3("PLT Running"),
-        
-        checkboxGroupInput(
-          ns("plt_analysis_variants"), label = "Variant Selection", 
-          choices = list("Variant 1" = 1, "Variant 2" = 2, "Variant 3" = 3),
-          selected = 1
-        ),
-        
-        actionButton(ns("plt_analysis_run"), "Run PLT Analysis"),
-        
-        hr(),
-        
-        h3("Summary Stats"),
-        
-        actionButton(ns("summary_show"), "Output summary stats"),
-        
-        DT::dataTableOutput(outputId = ns("plt_summary_table")),
-        
-        hr(),
-        
-        h3("Detailed Analysis"),
-        
-        actionButton(ns("detailed_show"), "Update table"),
-        
-        DT::dataTableOutput(outputId = ns("plt_detailed_table")),
-        
-        actionButton(ns("pltvis_flights_view"), "View selected flights"),
-        
-        h3("Display options"),
-        
-        checkboxInput(ns("pltvis_tracks_check"), "Tracks"),
-        
-        checkboxInput(ns("pltvis_tracks_ind"), "Indicator activation point"),
-        
-        leafletOutput(ns("pltvis_map"), height = "563px"),
-        
-        # Plotly plots
-        # Indicator activation time histogram
-        # Indicator activation time vs QNH
-        # Lateral distance from localiser when first tracked
-        # Altitude when first tracked
-        
-      )
-    })
-    
   })
   
-  # Create New Adaptation
+  # Create New Adaptation ---------------------------------------------------
   
   observeEvent(input$editor_template, {
     tbl$loaded <- T
@@ -236,7 +255,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     tbl$tbl_Path_Leg_Transition_3 <- tbl_template$tbl_Path_Leg_Transition
   })
   
-  # Load Existing Adaptation
+  # Load Existing Adaptation ------------------------------------------------
   
   shinyDirChoose(input, "editor_load", roots=getVolumes()(), session=session, restrictions = system.file(package = 'base'))
   
@@ -336,7 +355,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     
   })
   
-  # Export
+  # Export ------------------------------------------------------------------
   
   shinyDirChoose(input, "editor_export", roots=getVolumes()(), session=session, restrictions = system.file(package = 'base'))
   
@@ -387,7 +406,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     
   })
   
-  # Show/hide additional variant tables
+  # Show/hide additional variant tables -------------------------------------
   
   observeEvent(input$plt_variants, {
     if (input$plt_variants == 0) {
@@ -422,7 +441,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }
   })
   
-  # Hots
+  # Hots --------------------------------------------------------------------
 
   hot_tbl_Volumes <- reactive({
     req(input$DT_tbl_Volumes)
@@ -439,7 +458,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     return(hot_to_r(input$DT_tbl_Volumes_3))
   })
   
-  # Update map toggles based on hots
+  # Update map toggles based on hots ----------------------------------------
   
   observeEvent(hot_tbl_Volumes(), {
     req(hot_tbl_Volumes())
@@ -456,23 +475,10 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     updatePickerInput(session, "toggle_tbl_Volumes_3", choices = hot_tbl_Volumes_3()$Volume_Name)
   })
   
-  # Preview map
+  # Hot volume preview map --------------------------------------------------
   
   output$map <- renderLeaflet({
-    x <- leaflet(options = leafletOptions(zoomControl = F, preferCanvas = T)) %>%
-      setView(lng = 0, lat = 0, zoom = 3)
-    tile_providers <- list(
-      `Esri Satellite` = "Esri.WorldImagery",
-      `CartoDB Light` = "CartoDB.Positron",
-      `CartoDB Light 2` = "CartoDB.PositronNoLabels",
-      `CartoDB Dark` = "CartoDB.DarkMatter",
-      `CartoDB Dark 2` = "CartoDB.DarkMatterNoLabels",
-      `OSM Mapnik` = "OpenStreetMap.Mapnik"
-    )
-    for (i in 1:length(tile_providers)) {
-      x <- x %>% addProviderTiles(providers[[tile_providers[[i]]]], options = providerTileOptions(noWrap = T), group = names(tile_providers)[i])
-    }
-    x <- x %>% addLayersControl(baseGroups = names(tile_providers), options = layersControlOptions(collapsed = T))
+    map_template()
   })
   
   observeEvent(input$toggle_tbl_Volumes, {
@@ -524,6 +530,179 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
         group = "Volumes_3"
       )
     }
+  })
+  
+  # PLT Analysis Tools ------------------------------------------------------
+  
+  output$analysis_view <- renderUI({
+    div(
+      h3("PLT Running"),
+      
+      checkboxGroupInput(
+        ns("plt_analysis_variants"), label = "Variant Selection", 
+        choices = list("Variant 1" = 1, "Variant 2" = 2, "Variant 3" = 3),
+        selected = 1
+      ),
+      
+      actionButton(ns("plt_analysis_run"), "Run PLT Analysis"),
+      
+      hr(),
+      
+      h3("Summary Stats"),
+      
+      actionButton(ns("summary_show"), "Output summary stats"),
+      
+      uiOutput(ns("summary_stats_ui")),
+      
+      hr(),
+      
+      h3("Detailed Analysis"),
+      
+      actionButton(ns("detailed_show"), "Update table"),
+      
+      uiOutput(ns("detailed_analysis_ui"))
+      
+    )
+  })
+  
+  # Run PLT Analysis
+  observeEvent(input$plt_analysis_run, {
+    
+    variants <- isolate(input$plt_analysis_variants)
+    
+    tbl_basenames <- c("tbl_Volumes", "tbl_Path_Leg", "tbl_Path_Leg_Transition")
+    
+    all_tables_populated <- T
+    
+    if (length(variants) == 0) {
+      plt_analysis_error_modal("Please select at least one variant.")
+      all_tables_populated <- F
+    }
+    
+    if (nrow(tbl_Runway()) == 0) {
+      plt_analysis_error_modal("tbl_Runway not populated.")
+      all_tables_populated <- F
+    }
+    
+    if (1 %in% variants) {
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Volume")) == 0) {
+        plt_analysis_error_modal("tbl_Volume not populated.")
+        all_tables_populated <- F
+      }
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Path_Leg")) == 0) {
+        plt_analysis_error_modal("tbl_Path_Leg not populated.")
+        all_tables_populated <- F
+      }
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Path_Leg_Transition")) == 0) {
+        plt_analysis_error_modal("tbl_Path_Leg_Transition not populated.")
+        all_tables_populated <- F
+      }
+    }
+    
+    if (2 %in% variants) {
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Volume_2")) == 0) {
+        plt_analysis_error_modal("tbl_Volume_2 not populated.")
+        all_tables_populated <- F
+      }
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Path_Leg_2")) == 0) {
+        plt_analysis_error_modal("tbl_Path_Leg_2 not populated.")
+        all_tables_populated <- F
+      }
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Path_Leg_Transition_2")) == 0) {
+        plt_analysis_error_modal("tbl_Path_Leg_Transition_2 not populated.")
+        all_tables_populated <- F
+      }
+    }
+    
+    if (3 %in% variants) {
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Volume_3")) == 0) {
+        plt_analysis_error_modal("tbl_Volume_3 not populated.")
+        all_tables_populated <- F
+      }
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Path_Leg_3")) == 0) {
+        plt_analysis_error_modal("tbl_Path_Leg_3 not populated.")
+        all_tables_populated <- F
+      }
+      if (nrow(dbGetQuery(dbi_con, "SELECT TOP (1) * FROM tbl_Path_Leg_Transition_3")) == 0) {
+        plt_analysis_error_modal("tbl_Path_Leg_Transition_3 not populated.")
+        all_tables_populated <- F
+      }
+    }
+    
+    if (all_tables_populated) {
+      for (k in variants) {
+        message("Executing UTMA_PLT_Validation_Run_Variant_", k, ".sql")
+        dbSendQuery(dbi_con, read_SQL_File(paste0("modules/plt_tools/UTMA_PLT_Validation_Run_Variant_", k, ".sql")))
+      }
+    }
+
+  })
+  
+  observeEvent(input$summary_show, {
+    output$summary_stats_ui <- renderUI({
+      div(
+        div(style = "height: 15px;"),
+        
+        DT::dataTableOutput(outputId = ns("plt_summary_table"))
+      )
+    })
+    output$plt_summary_table <- DT::renderDataTable({
+      datatable_customised_2(Output_Summary_Stats(dbi_con))
+    }, server = T)
+  })
+  
+  observeEvent(input$detailed_show, {
+    output$detailed_analysis_ui <- renderUI({
+      div(
+        div(style = "height: 15px;"),
+        
+        DT::dataTableOutput(outputId = ns("plt_detailed_table")),
+        
+        # div(style = "height: 15px;"),
+        # pickerInput_customised(ns("pltvis_flights_select"), "Flight Plan ID", NULL),
+        
+        actionButton(ns("pltvis_flights_view"), "View selected flights"),
+        
+        div(style = "height: 15px;"),
+        
+        checkboxGroupInput(
+          ns("pltvis_options"), label = "Display options", 
+          choices = list("Tracks" = 1, "Indicator activation point" = 2)
+        ),
+        
+        div(
+          style = "display: flex",
+          leafletOutput(ns("pltvis_map_1"), height = "563px"),
+          leafletOutput(ns("pltvis_map_2"), height = "563px"),
+          leafletOutput(ns("pltvis_map_3"), height = "563px")
+        )
+        
+        # Plotly plots
+        # Indicator activation time histogram
+        # Indicator activation time vs QNH
+        # Lateral distance from localiser when first tracked
+        # Altitude when first tracked
+      )
+    })
+    
+    # # Link detailed table row selection with pickerInput
+    # observeEvent(input$plt_detailed_table_rows_selected, {
+    #   updatePickerInput(session, "pltvis_flights_select", selected = vw_PLT_Detailed_Analysis$Flight_Plan_ID[input$plt_detailed_table_rows_selected])
+    # })
+    
+    vw_PLT_Detailed_Analysis <- dbGetQuery(dbi_con, "SELECT * FROM vw_PLT_Detailed_Analysis")
+    
+    updatePickerInput(session, "pltvis_flights_select", choices = vw_PLT_Detailed_Analysis$Flight_Plan_ID)
+    
+    output$plt_detailed_table <- DT::renderDataTable({
+      datatable_customised_2(vw_PLT_Detailed_Analysis, selection = "multiple")
+    }, server = T)
+    
+    # Need (cartesian) lat lon in vw_Radar_Track_Point_Derived
+    output$pltvis_map_1 <- renderLeaflet(map_template())
+    output$pltvis_map_2 <- renderLeaflet(map_template())
+    output$pltvis_map_3 <- renderLeaflet(map_template())
+    
   })
   
 }
