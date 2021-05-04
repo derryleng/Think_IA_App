@@ -30,7 +30,7 @@ sidebarWidth <- "160px"
 sidebarSettings <- list(
   data_loader = c("Data Loader", "database"),
   plt_tools = c("PLT Tools", "route"),
-  db_processing = c("Database Processing", "hourglass-half"),
+  # db_processing = c("Database Processing", "hourglass-half"),
   db_explorer = c("Database Explorer", "list-alt"),
   track_visualiser = c("Track Visualiser", "search-location"),
   optimised_runway_delivery = c("ORD", "plane-arrival")
