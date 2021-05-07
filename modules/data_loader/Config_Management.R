@@ -689,7 +689,7 @@ xml_airspace <- function(OutputPath, dbi_con) {
   })
   names(path_legs_list) <- rep("path_leg", length(path_legs_list))
 
-  volumes <- tbl_Volume[Runway_Name %in% runways$Runway_Name]
+  volumes <- tbl_Volume[Runway_Name %in% runways$Runway_Name | Airfield_Name %in% tbl_Airfield$Airfield_Name | is.na(Airfield_Name)]
   volumes$Min_Altitude <- volumes$Min_Altitude / fnc_GI_Ft_To_M()
   volumes$Max_Altitude <- volumes$Max_Altitude / fnc_GI_Ft_To_M()
 
