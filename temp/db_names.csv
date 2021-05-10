@@ -7,7 +7,6 @@ App_Test_NavCan_UTMA_Validation_DB2_VB
 IA_CAV
 IA_CAV_1
 IA_CAV_2
-LVNL_Adaptation_Test
 LVNL_PLT_Tools
 NavCan_Fusion_Test
 NavCan_TBS_V2
@@ -15,4 +14,6 @@ NavCan_TBS_V2_Test
 NavCan_TBS_V3
 Node_Replacement_ARTAS_Test
 Node_Replacement_TOPSKY_Test
+Noise_Emissions_Modelling
+Patch_Creation
 Users/Roles_Test_Database
