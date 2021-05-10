@@ -63,6 +63,7 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
   #
   # ----------------------------------------------- #
   
+  ORD_Operator <- NA
   ORD_Aircraft <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation")
   ORD_Wake <- Load_Adaptation_Table(con, "tbl_ORD_Wake_Adaptation")
   ORD_DBS <- Load_Adaptation_Table(con, "tbl_ORD_DBS_Adaptation")
@@ -80,12 +81,13 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
   if (LP_Primary_Key == Get_LP_Primary_Key("Validation")){
     
     # Create List of IDs To Keep for Prediction
-    Landing_Pair <- filter(Landing_Pair, ORD_Prediction_Flag == 0)
+    #Landing_Pair <- filter(Landing_Pair, ORD_Prediction_Flag == 0)
     
     # If WAD Enabled, Get the WAD Prediction Filter Flags
     if(WAD_Enabled){
-      Landing_Pair <- Create_Filter_Flag_Prediction(Landing_Pair, "WAD")
-    WAD_Prediction_IDs <- filter(Landing_Pair, WAD_Prediction_Flag == 0)$Landing_Pair_ID}
+      #Landing_Pair <- Create_Filter_Flag_Prediction(Landing_Pair, "WAD")
+    #WAD_Prediction_IDs <- filter(Landing_Pair, WAD_Prediction_Flag == 0)$Landing_Pair_ID
+      }
   
   }
   
@@ -98,6 +100,8 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
   # adaptation parameter names.
   # ----------------------------------------------- #
   
+  ORD_Operator_Leader <- NA
+  ORD_Operator_Follower <- NA
   ORD_Aircraft_Leader <- Select_ORD_LF_Adaptation(ORD_Aircraft, "Aircraft", "Leader")
   ORD_Aircraft_Follower <- Select_ORD_LF_Adaptation(ORD_Aircraft, "Aircraft", "Follower")
   ORD_Wake_Leader <- Select_ORD_LF_Adaptation(ORD_Wake, "Wake", "Leader")
@@ -112,14 +116,14 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
   # ----------------------------------------------- #
   
   Aircraft_Profile_Leader <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, "Leader", ORD_Profile_Selection,
-                                                    ORD_Aircraft_Leader, ORD_Wake_Leader, ORD_DBS_Leader, ORD_Runway)
+                                                    ORD_Operator_Leader, ORD_Aircraft_Leader, ORD_Wake_Leader, ORD_DBS_Leader, ORD_Runway)
   
   Aircraft_Profile_Leader <- Calculate_Landing_Stabilisation_Speed(Aircraft_Profile_Leader, LPID_Var)
   Aircraft_Profile_Leader <- Calculate_Start_Initial_Decel_Distance(Aircraft_Profile_Leader)
   Aircraft_Profile_Leader <- Calculate_Final_Decel_Distance(Aircraft_Profile_Leader)
   
   Aircraft_Profile_Follower <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, "Follower", ORD_Profile_Selection,
-                                                    ORD_Aircraft_Follower, ORD_Wake_Follower, ORD_DBS_Follower, ORD_Runway)
+                                                    ORD_Operator_Follower, ORD_Aircraft_Follower, ORD_Wake_Follower, ORD_DBS_Follower, ORD_Runway)
   
   Aircraft_Profile_Follower <- Calculate_Landing_Stabilisation_Speed(Aircraft_Profile_Follower, LPID_Var)
   Aircraft_Profile_Follower <- Calculate_Start_Initial_Decel_Distance(Aircraft_Profile_Follower)
@@ -229,7 +233,7 @@ Compare_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, PROC_Period, PROC_
                                    Landing_Pair_ID,
                                    This_Pair_Role,
                                    Landing_Stabilisation_Speed,
-                                   Final_Deceleration_Distance,
+                                   Final_Deceleration_Distance = Start_Final_Deceleration_Distance,
                                    Start_Initial_Deceleration_Distance)
   
   # Join on R and SQL results ready for comparing

@@ -64,6 +64,7 @@ Generate_ORD_Observation <- function(con, LP_Primary_Key, Landing_Pair, Radar, S
   # ----------------------------------------------- #
   
   # ORD Adaptation
+  ORD_Operator <- NA ## Added for PWS
   ORD_Aircraft <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation")
   ORD_Wake <- Load_Adaptation_Table(con, "tbl_ORD_Wake_Adaptation")
   ORD_DBS <- Load_Adaptation_Table(con, "tbl_ORD_DBS_Adaptation")
@@ -94,11 +95,11 @@ Generate_ORD_Observation <- function(con, LP_Primary_Key, Landing_Pair, Radar, S
   # ----------------------------------------------- #
   
   # Get the Local Stabilisation Thresholds
-  LSTs <- Get_Compression_Distances(Landing_Pair, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, "LST") %>% 
+  LSTs <- Get_Compression_Distances(Landing_Pair, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, "LST") %>% 
     select(-Leader_Flight_Plan_ID)
   
   # Temporary Hardcode to match Validation Outputs (Will Remove)
-  LSTs <- mutate(LSTs, Local_Stabilisation_Distance = 4 * NM_to_m)
+  #LSTs <- mutate(LSTs, Local_Stabilisation_Distance = 4 * NM_to_m)
   
   # Join on the CCTs and the LSTs
   Landing_Pair <- left_join(Landing_Pair, LSTs, by = c("Landing_Pair_ID"))

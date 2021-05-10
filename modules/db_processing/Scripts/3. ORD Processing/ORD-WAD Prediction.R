@@ -143,7 +143,7 @@ Construct_ORD_Prediction <- function(LP_Primary_Key, Landing_Pair){
 Compare_ORD_Prediction <- function(con, LP_Primary_Key, PROC_Period, PROC_Criteria, Landing_Pair){
   
   # Filter for ORD PRediction Flag
-  Landing_Pair <- filter(Landing_Pair, ORD_Prediction_Flag == 0)
+  Landing_Pair <- filter(Landing_Pair, Observation_Flag == 0)
   
   # Setup Queries for ORD/WAD Prediction
   ORD_Prediction_SQL_Query <- "SELECT 

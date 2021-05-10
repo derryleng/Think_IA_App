@@ -32,6 +32,7 @@ Get_Value_If_Equal_2Var <- function(Data, New_Var, Dep_Var, Check_Var_1, Check_V
   
 }
 
+
 Get_Not_In_Trail <- function(Landing_Pair){
   Landing_Pair <- filter(Landing_Pair, Landing_Pair_Type == "Not_In_Trail")
   return(Landing_Pair)
@@ -77,8 +78,20 @@ Order_Landing_Pairs <- function(LPR, LPID_Var){
 }
 
 # Function to join the correct ORD adaptation
-Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORD_AC, ORD_W, ORD_DBS){
+Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORD_OP, ORD_AC, ORD_W, ORD_DBS){
   #LP <- left_join(LP, ORD_Runway_Reduced, by=c("Landing_Runway"="Runway_Name"))
+  
+  # Operator level added for PWS
+  if (ORD_Profile_Selection == "Operator"){
+    LP <- mutate(LP, AC_Operator_Pair = paste0(Aircraft_Type, "-", Operator))
+    ORD_OP <- mutate(ORD_OP, AC_Operator_Pair = paste0(Aircraft_Type, "-", Operator)) %>% select-c("Aircraft_Type", "Operator")
+    LP0 <- inner_join(LP, ORD_OP, by = c("AC_Operator_Pair"))
+    LP1 <- filter(LP, AC_Operator_Pair %!in% ORD_AC$AC_Operator_Pair)
+    LP1 <- inner_join(LP1, ORD_AC, by=c("Aircraft_Type"))
+    LP2 <- filter(LP1, Aircraft_Type %!in% ORD_AC$Aircraft_Type)
+    LP2 <- inner_join(LP2, ORD_W, by=c("Wake_Cat"))
+    LP <- rbind(LP0, LP1, LP2) %>% select(-AC_Operator_Pair)
+  }
   
   if (ORD_Profile_Selection == "Aircraft_Type"){
     LP1 <- inner_join(LP, ORD_AC, by=c("Aircraft_Type"))
@@ -100,7 +113,7 @@ Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORD_AC, ORD_W, ORD_DB
 
 # Function to Get Correct Compression Distances (LST/CCT) For ORD Observation. This
 # means ORD Aircraft Profile can be run in correct order for Prediction.
-Get_Compression_Distances <- function(LP, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, Distance){
+Get_Compression_Distances <- function(LP, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, Distance){
 
   ORD_Aircraft_1 <- select(ORD_Aircraft, Aircraft_Type,
                            Local_Stabilisation_Distance = Local_Stabilisation_Distance_Lead,
@@ -116,7 +129,7 @@ Get_Compression_Distances <- function(LP, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_P
                Aircraft_Type = Leader_Aircraft_Type,
                Wake_Cat = Leader_Recat_Wake_Cat,
                DBS_All_Sep_Distance)
-  LP <- Join_ORD_Adaptation(LP, ORD_Profile_Selection, ORD_Aircraft_1, ORD_Wake_1, ORD_DBS_1)
+  LP <- Join_ORD_Adaptation(LP, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft_1, ORD_Wake_1, ORD_DBS_1)
   if (Distance == "LST"){LP <- select(LP, Landing_Pair_ID, Leader_Flight_Plan_ID, Local_Stabilisation_Distance)}
   if (Distance == "CCT"){LP <- select(LP, Landing_Pair_ID, Leader_Flight_Plan_ID, Compression_Commencement_Threshold)}
   
@@ -173,10 +186,15 @@ Get_Follower_ILS_Join_Time <- function(Data, Radar, Path_Legs, PLTorGWCS){
 Get_ORD_Prediction_Time <- function(Data, Radar, Path_Legs){
   
   # Order Radar Time Ascending
-  Radar <- Order_Radar(Radar)
+  Radar <- Order_Radar(INP_Radar)
+  
+  # Get Path Leg Type
+  Path_Leg_Reduced <- select(Path_Legs, Path_Leg_Name, Path_Leg_Type)
+  Radar <- left_join(Radar, Path_Leg_Reduced, by = c("Path_Leg" = "Path_Leg_Name"))
   
   # Add Flag for Path Leg
-  Radar <- mutate(Radar, Flag = ifelse(!is.na(Path_Leg), 1, 0))
+  Radar <- mutate(Radar, Flag = ifelse(!is.na(Path_Leg) & Path_Leg_Type != "Down_Wind", 1, 0))
+  #Radar <- mutate(Radar, Flag = ifelse(!is.na(Path_Leg), 1, 0))
   
   # Get the Variables
   FPID <- "Follower_Flight_Plan_ID"
@@ -600,34 +618,171 @@ Get_LF_Ref_Parameters <- function(Landing_Pair, Flight_Plan, Runways, ACTW, ACTW
   
 }
 
-Get_Pair_Ref_Parameter <- function(Landing_Pair, Ref_Source, RecatorLegacy, Param_Type, Constraint){
+Get_Pair_Ref_Parameter <- function(con, Landing_Pair, Ref_Source_Type, RecatorLegacy, Constraint, ACT_Enabled, Operator_Enabled){
   
-  # Get the Variable Names
-  ColNum <- ncol(Ref_Source)
+  # Operation settings
+  
+  # Get the Wake Category Variable names (Aircraft Type/Operator variables are named consistently).
   Lead_Wake_Var <- paste0("Leader_", RecatorLegacy, "_Wake_Cat") 
   Foll_Wake_Var <- paste0("Follower_", RecatorLegacy, "_Wake_Cat")
   Lead_Wake_Var2 <- ifelse(RecatorLegacy == "Recat", "Leader_WTC", "Leader_WVI") # Should probably change the DB to make these the same
   Foll_Wake_Var2 <- ifelse(RecatorLegacy == "Recat", "Follower_WTC", "Follower_WVI")
-  Outp_Var <- paste0("Reference_", RecatorLegacy, "_", Constraint, "_", Param_Type)
-  Ref_Var <- colnames(Ref_Source)[ColNum]
   
-  # Rename Variable at Ref_Source using Index (Assuming third column)
-  Ref_Source <- rename(Ref_Source, !!sym(Outp_Var) := !!sym(Ref_Var))
+  # Get the Final Output Variable name
+  Final_Outp_Var <- paste0("Reference_", RecatorLegacy, "_", Constraint, "_", Ref_Source_Type)
   
-  # Join on and Rename 
-  if(Constraint == "Wake_Separation"){
-    Landing_Pair <- left_join(Landing_Pair, Ref_Source, 
-                              by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var), 
-                                     setNames(Foll_Wake_Var2, Foll_Wake_Var)))}
+  # Group Constraints by Pairing Level (Currently only supports Wake Separation/ROT Spacing)
+  if (Constraint %in% c("Wake_Separation")){Level <- "Type"}
+  if (Constraint %in% c("ROT_Spacing", "Non_Wake_Separation", "Spacing")){Level <- "Runway, Type"}
+  if (Constraint %in% c("Runway_Dependent")){Level <- "Runway Pair, Type"}
   
-  if(Constraint == "ROT_Spacing"){
-    Landing_Pair <- left_join(Landing_Pair, Ref_Source, 
-                              by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var), 
-                                     setNames(Foll_Wake_Var2, Foll_Wake_Var),
-                                     setNames("Runway", "Follower_Landing_Runway")))}
   
+  # Load the reference data to be joined depending on New/Old operations (RecatorLegacy), 
+  # Separation/Spacing Constraint (Constraint) and time/ias/distance parameter (Ref_Source_Type)
+  if (RecatorLegacy == "Legacy"){
+    
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_DBS_Wake_Turbulence")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_TBS_Wake_Turbulence")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Legacy_Wake_Separation_IAS")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Legacy_ROT_Spacing_Dist")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Legacy_ROT_Spacing_Time")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Legacy_ROT_Spacing_IAS")}
+    
+  }
+  
+  # NOTE: Operator and ACT can be independent (may be the case for ROT times for example)
+  if (RecatorLegacy == "Recat"){
+    
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Dist")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Time")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Recat_Separation_IAS")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Dist")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Time")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_ROT_Spacing_IAS")}
+    
+  }
+  
+  
+  # For New operations only: if ACT_Enabled then get Aircraft type pair parameters (e.g. PWS Wake)
+  if (ACT_Enabled == T){
+    
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Dist")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Time")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Assumed_ACTP_Wake_Separation_IAS")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_ROT_Spacing_Dist")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_ROT_Spacing_Time")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Assumed_ACTP_ROT_Spacing_IAS")}
+    
+  }
+  
+  # For New operations only, and only if we decide to calibrate operator/type pairs.
+  if (Operator_Enabled == T){
+    
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_Wake_Separation_Dist")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_Wake_Separation_Time")}
+    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Assumed_AC_Operator_Wake_Separation_IAS")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_ROT_Spacing_Dist")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_ROT_Spacing_Time")}
+    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Assumed_AC_Operator_ROT_Spacing_IAS")}
+    
+  }
+  
+  
+  # Create placeholder column for which the hierarchy is applied
+  Landing_Pair <- mutate(Landing_Pair, Placeholder = NA)
+  
+  # Begin vlaue assignment based on hierarchy: Operator -> Aircraft -> Wake
+  # Only uses data if it has been loaded
+  # Structure for thre tiers very similar so only below tier described
+  if (exists("Ref_Source_2")){
+    
+    # Rename the desired variable to the new variable name for this tier
+    Outp_Var_2 <- paste0("Reference_", "AC_Operator", "_", Constraint, "_", Ref_Source_Type)
+    Ref_Var_2 <- colnames(Ref_Source_2)[ncol(Ref_Source_2)]
+    Ref_Source_2 <- rename(Ref_Source_2, !!sym(Outp_Var_2) := !!sym(Ref_Var))
+    
+    # If a Wake separation, join by aircraft types and operators
+    if (Level == "Type"){
+      Landing_Pair <- left_join(Landing_Pair, Ref_Source_2, 
+                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"), 
+                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
+                                       setNames("Leader_Operator", "Leader_Operator"), 
+                                       setNames("Follower_Operator", "Follower_Operator")))
+    }
+    
+    # If a runway pair grouping join by Aircraft Types, Operators and any Landing Runway (Follower used, Not-in-trails are NA for now)
+    # Note: May need to add Runway Pair ROT Distances - unsure of scope for now
+    if (Level == "Runway, Type"){
+      Landing_Pair <- left_join(Landing_Pair, Ref_Source_2, 
+                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"), 
+                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
+                                       setNames("Leader_Operator", "Leader_Operator"), 
+                                       setNames("Follower_Operator", "Follower_Operator"),
+                                       setNames("Runway", "Follower_Landing_Runway"))) %>%
+        mutate(!!sym(Outp_Var_2) := ifelse(Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Outp_Var_2)))
+    }
+    
+    # Replace NA values in placeholder with Non-NA values from this tier, remove tier variable
+    Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var_2, Placeholder))) %>%
+      select(-!!sym(Outp_Var_2))
+    
+  }
+  
+  if (exists("Ref_Source_1")){
+    
+    Outp_Var_1 <- paste0("Reference_", "ACTP", "_", Constraint, "_", Ref_Source_Type)
+    Ref_Var_1 <- colnames(Ref_Source_1)[ncol(Ref_Source_1)]
+    Ref_Source_1 <- rename(Ref_Source_1, !!sym(Outp_Var_1) := !!sym(Ref_Var_1))
+    
+    
+    if (Level == "Type"){
+      Landing_Pair <- left_join(Landing_Pair, Ref_Source_1, 
+                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"), 
+                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft")))
+    }
+    
+    if (Level == "Runway, Type"){
+      Landing_Pair <- left_join(Landing_Pair, Ref_Source_1, 
+                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"), 
+                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
+                                       setNames("Runway", "Follower_Landing_Runway")))
+    }
+    
+    Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var_1), Placeholder)) %>%
+      select(-!!sym(Outp_Var_1))
+    
+  }
+  
+  if (exists("Ref_Source")){
+    
+    Outp_Var <- Final_Outp_Var
+    Ref_Var <- colnames(Ref_Source)[ncol(Ref_Source)]
+    Ref_Source <- rename(Ref_Source, !!sym(Outp_Var) := !!sym(Ref_Var))
+    
+    if (Level == "Type"){
+      Landing_Pair <- left_join(Landing_Pair, Ref_Source, 
+                                by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var), 
+                                       setNames(Foll_Wake_Var2, Foll_Wake_Var)))
+    }
+    
+    if (Level == "Runway, Type"){
+      Landing_Pair <- left_join(Landing_Pair, Ref_Source, 
+                                by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var), 
+                                       setNames(Foll_Wake_Var2, Foll_Wake_Var),
+                                       setNames("Runway", "Follower_Landing_Runway")))
+    }
+    
+    Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var), Placeholder)) %>%
+      select(-!!sym(Outp_Var))
+    
+    
+  }
+  
+  # Rename the placeholder variable
+  Landing_Pair <- rename(Landing_Pair, !!sym(Final_Outp_Var) := "Placeholder")
   
   return(Landing_Pair)
+  
 }
 
 Get_Dependent_Runway_Offset_Changes <- function(Landing_Pair, Runway_Offsets){
@@ -672,12 +827,15 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   if(Level == "DBS"){Unique_Var <- "DBS_Distance"}
   if(Level == "Wake"){Unique_Var <- "Wake_Cat"}
   if(Level == "Aircraft"){Unique_Var <- "Aircraft_Type"}
+  if(Level == "Operator"){Unique_Var <- "Aircraft_Type"  ## Added for PWS
+                          Unique_Var2 <- "Operator"}
   
   # Get Other Variable Names
   LSS_Type_Var <- paste0("Landing_Stabilisation_Speed_Type_", LorF)
   VRef_Var <- paste0("Min_Safe_Landing_Speed_", LorF)
   Gusting_Var <- paste0("Apply_Gusting_", LorF)
   LSD_Var <- paste0("Local_Stabilisation_Distance_", LorF)
+  End_Fin_Decel_Var <- paste0("End_Final_Deceleration_Distance_", LorF) ## Added for PWS
   SPS_Var <- paste0("Steady_Procedural_Speed_", LorF)
   Fin_Decel_Var <- paste0("Final_Deceleration_", LorF)
   End_Init_Decel_Var <- paste0("End_Initial_Deceleration_Distance_", LorF)
@@ -693,56 +851,118 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   if (Level == "Aircraft" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_follower"}
   # -------------------------------------------------------------------------------------------------- #
   
+  # TEMP: Harcoded Operation Choice. Update ASAP
+  Operation <- "IA"
+  
   # Select Appropriate Variables
-  Ref_Data <- select(Ref_Data,
-                     !!sym(Unique_Var),
-                     "Compression_Commencement_Threshold",
-                     "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
-                     "VRef" := !!sym(VRef_Var),
-                     "Apply_Gusting" := !!sym(Gusting_Var),
-                     "Local_Stabilisation_Distance" := !!sym(LSD_Var),
-                     "Steady_Procedural_Speed" := !!sym(SPS_Var),
-                     "Final_Deceleration" := !!sym(Fin_Decel_Var),
-                     "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
-                     "Initial_Procedural_Speed" := !!sym(IPS_Var),
-                     "Initial_Deceleration" := !!sym(Init_Decel_Var))
+  if (Operation == "IA"){
+    Ref_Data <- select(Ref_Data,
+                       !!sym(Unique_Var),
+                       "Compression_Commencement_Threshold",
+                       "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
+                       "VRef" := !!sym(VRef_Var),
+                       "Apply_Gusting" := !!sym(Gusting_Var),
+                       "Local_Stabilisation_Distance" := !!sym(LSD_Var),
+                       "Steady_Procedural_Speed" := !!sym(SPS_Var),
+                       "Final_Deceleration" := !!sym(Fin_Decel_Var),
+                       "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
+                       "Initial_Procedural_Speed" := !!sym(IPS_Var),
+                       "Initial_Deceleration" := !!sym(Init_Decel_Var))
+  }
+  
+  if (Operation == "IA PWS" & Level != "Operator"){
+    Ref_Data <- select(Ref_Data,
+                       !!sym(Unique_Var),
+                       "Compression_Commencement_Threshold",
+                       "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
+                       "VRef" := !!sym(VRef_Var),
+                       "Apply_Gusting" := !!sym(Gusting_Var),
+                       "Local_Stabilisation_Distance" := !!sym(LSD_Var),
+                       "End_Final_Deceleration_Distance" := !!sym(End_Fin_Decel_Var),
+                       "Steady_Procedural_Speed" := !!sym(SPS_Var),
+                       "Final_Deceleration" := !!sym(Fin_Decel_Var),
+                       "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
+                       "Initial_Procedural_Speed" := !!sym(IPS_Var),
+                       "Initial_Deceleration" := !!sym(Init_Decel_Var))
+    
+  }
+  
+  if (Operation == "IA PWS" & Level == "Operator"){
+    Ref_Data <- select(Ref_Data,
+                       !!sym(Unique_Var),
+                       !!sym(Unique_Var2),
+                       "Compression_Commencement_Threshold",
+                       "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
+                       "VRef" := !!sym(VRef_Var),
+                       "Apply_Gusting" := !!sym(Gusting_Var),
+                       "Local_Stabilisation_Distance" := !!sym(LSD_Var),
+                       "End_Final_Deceleration_Distance" := !!sym(End_Fin_Decel_Var),
+                       "Steady_Procedural_Speed" := !!sym(SPS_Var),
+                       "Final_Deceleration" := !!sym(Fin_Decel_Var),
+                       "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
+                       "Initial_Procedural_Speed" := !!sym(IPS_Var),
+                       "Initial_Deceleration" := !!sym(Init_Decel_Var))
+    
+  }
+  
   
   return(Ref_Data)
 
 }
 
-Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Runway){
+Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Runway){
   
   # Get Variable Names
   ID_Var <- LPID_Var
   FPID <- paste0(LorF, "_Flight_Plan_ID") # Not Currently Used - Need to Add to Verification
   AC_Type_Var <- paste0(LorF, "_Aircraft_Type")
+  Operator_Var <- paste0(LorF, "_Operator") ## Added for PWS
   Wake_Var <- paste0(LorF, "_Recat_Wake_Cat")
   RW_Var <- paste0(LorF, "_Landing_Runway")
   TPR_Var <- substr(LorF, 1, 1)
   SW_Var <- "Forecast_AGI_Surface_Headwind"
   if(LPID_Var == "ORD_Tool_Calculation_ID"){SW_Var <- paste0(LorF, "_", SW_Var)}
   
+  # TEMP: Hardcoded Operation
+  Operation <- "IA"
+  Operation <- ifelse(Operation == "IA PWS" & ORD_Profile_Selection == "Operator", "IA PWS 2", Operation)
+  
   # Select Relevant Variables
-  Aircraft_Profile <- select(Landing_Pair,
-                             !!sym(ID_Var),
-                             "Aircraft_Type" := !!sym(AC_Type_Var),
-                             "Wake_Cat" := !!sym(Wake_Var),
-                             "DBS_All_Sep_Distance",
-                             "Surface_Headwind" := !!sym(SW_Var),
-                             "Landing_Runway" := !!sym(RW_Var))
+  if (Operation %in% c("IA", "IA PWS")){
+    Aircraft_Profile <- select(Landing_Pair,
+                               !!sym(ID_Var),
+                               "Aircraft_Type" := !!sym(AC_Type_Var),
+                               "Wake_Cat" := !!sym(Wake_Var),
+                               "DBS_All_Sep_Distance",
+                               "Surface_Headwind" := !!sym(SW_Var),
+                               "Landing_Runway" := !!sym(RW_Var))
+  }
+  
+  if (Operation == "IA PWS 2"){
+    Aircraft_Profile <- select(Landing_Pair,
+                               !!sym(ID_Var),
+                               "Aircraft_Type" := !!sym(AC_Type_Var),
+                               "Operator" := !!sym(Operator_Var),
+                               "Wake_Cat" := !!sym(Wake_Var),
+                               "DBS_All_Sep_Distance",
+                               "Surface_Headwind" := !!sym(SW_Var),
+                               "Landing_Runway" := !!sym(RW_Var))
+  }
   
   # Add "This_Pair_Role" Column
   Aircraft_Profile <- mutate(Aircraft_Profile, This_Pair_Role = TPR_Var)
   
   # Join on the ORD Adaptation using Join_ORD_Adaptation
-  Aircraft_Profile <- Join_ORD_Adaptation(Aircraft_Profile, ORD_Profile_Selection, ORD_Aircraft, ORD_Wake, ORD_DBS)
+  Aircraft_Profile <- Join_ORD_Adaptation(Aircraft_Profile, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS)
   
   # Get a Reduced ORD Runway Table
   ORD_Runway_Reduced <- select(ORD_Runway, Runway_Name, Thousand_Ft_Gate, Gust_Adjustment)
   
   # Join on Reduced Runway Table
   Aircraft_Profile <- left_join(Aircraft_Profile, ORD_Runway_Reduced, by = c("Landing_Runway" = "Runway_Name"))
+  
+  # if doing IA (Not PWS), Set End_Final_Deceleration_Distance to Thousand_Ft_Gate
+  if (Operation == "IA"){Aircraft_Profile <- mutate(Aircraft_Profile, End_Final_Deceleration_Distance = Thousand_Ft_Gate)}
   
   # Update Gust Adjustment Value based on Apply Gusting: Set former to 0 if latter is 0
   Aircraft_Profile <- mutate(Aircraft_Profile, Gust_Adjustment = ifelse(Apply_Gusting == 1, Gust_Adjustment, 0))
@@ -780,9 +1000,9 @@ Get_ORD_Runway_Parameters <- function(Aircraft_Profile, Landing_Pair, LPID_Var, 
   
   # Get the Adjusted Final Deceleration/IAS Values for Airbus Aircraft
   Aircraft_Profile <- mutate(Aircraft_Profile,
-                             Adjusted_Final_Decel = (Landing_Stabilisation_Speed - Steady_Procedural_Speed) / (Thousand_Ft_Gate - Final_Deceleration_Distance),
-                             IAS_3DME = Adjusted_Final_Decel * ((3 * NM_to_m) - Final_Deceleration_Distance) + Steady_Procedural_Speed,
-                             IAS_4DME = Adjusted_Final_Decel * ((4 * NM_to_m) - Final_Deceleration_Distance) + Steady_Procedural_Speed)
+                             Adjusted_Final_Decel = (Landing_Stabilisation_Speed - Steady_Procedural_Speed) / (End_Final_Deceleration_Distance - Start_Final_Deceleration_Distance),
+                             IAS_3DME = Adjusted_Final_Decel * ((3 * NM_to_m) - Start_Final_Deceleration_Distance) + Steady_Procedural_Speed,
+                             IAS_4DME = Adjusted_Final_Decel * ((4 * NM_to_m) - Start_Final_Deceleration_Distance) + Steady_Procedural_Speed)
   
   return(Aircraft_Profile)
   
@@ -859,6 +1079,8 @@ Create_Filter_Flag_Observation <- function(Landing_Pair, ORD_Aircraft, ORD_Profi
   
   # Add to Flag if only In Trail Pairs being Considered
   if (In_Trail_Only){Landing_Pair <- mutate(Landing_Pair, Observation_Flag = ifelse(Landing_Pair_Type == "Not_In_Trail", 1, Observation_Flag))}
+  
+  return(Landing_Pair)
     
 } 
 
@@ -1078,12 +1300,14 @@ Calculate_Start_Initial_Decel_Distance <- function(ORD_Aircraft_Profile){
   return(ORD_Aircraft_Profile)
 }
 
-# Calculate Final Deceleration Distance.
+# Calculate Start Final Deceleration Distance.
 Calculate_Final_Decel_Distance <- function(ORD_Aircraft_Profile){
-  ORD_Aircraft_Profile <- mutate(ORD_Aircraft_Profile,
-                                 Final_Deceleration_Distance = ifelse(Local_Stabilisation_Distance > (Thousand_Ft_Gate + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration),
-                                                                      Local_Stabilisation_Distance,
-                                                                      Thousand_Ft_Gate + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration))
+  
+    ORD_Aircraft_Profile <- mutate(ORD_Aircraft_Profile,
+                                   Start_Final_Deceleration_Distance = ifelse(Local_Stabilisation_Distance > (End_Final_Deceleration_Distance + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration),
+                                                                              Local_Stabilisation_Distance,
+                                                                              End_Final_Deceleration_Distance + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration))
+  
   return(ORD_Aircraft_Profile)
 }
 
@@ -1467,7 +1691,7 @@ Set_IAS_Profile_Section_1 <- function(Aircraft_Profile, Section_No){
                              Profile_Type = "C",
                              Start_IAS = Landing_Stabilisation_Speed,
                              End_IAS = Landing_Stabilisation_Speed,
-                             Start_Dist = Thousand_Ft_Gate,
+                             Start_Dist = End_Final_Deceleration_Distance,
                              End_Dist = 0)
   return(Aircraft_Profile)
 }
@@ -1550,7 +1774,7 @@ Set_IAS_Profile_Section_1c_C <- function(Aircraft_Profile, Section_No){
                              Profile_Type = "C",
                              Start_IAS = Landing_Stabilisation_Speed + Gust_Adjustment_1c,
                              End_IAS = Landing_Stabilisation_Speed + Gust_Adjustment_1c,
-                             Start_Dist = Thousand_Ft_Gate,
+                             Start_Dist = End_Final_Deceleration_Distance,
                              End_Dist = 2 * NM_to_m)
   return(Aircraft_Profile)
 }
@@ -1563,7 +1787,7 @@ Set_IAS_Profile_Section_1d <- function(Aircraft_Profile, Section_No){
                              Profile_Type = "C",
                              Start_IAS = Landing_Stabilisation_Speed + Gust_Adjustment_1d,
                              End_IAS = Landing_Stabilisation_Speed + Gust_Adjustment_1d,
-                             Start_Dist = Thousand_Ft_Gate,
+                             Start_Dist = End_Final_Deceleration_Distance,
                              End_Dist = 2 * NM_to_m)
   return(Aircraft_Profile)
 }
@@ -1575,8 +1799,8 @@ Set_IAS_Profile_Section_2 <- function(Aircraft_Profile, Section_No){
                              Profile_Type = "A",
                              Start_IAS = Steady_Procedural_Speed,
                              End_IAS = Landing_Stabilisation_Speed,
-                             Start_Dist = Final_Deceleration_Distance,
-                             End_Dist = Thousand_Ft_Gate)
+                             Start_Dist = Start_Final_Deceleration_Distance,
+                             End_Dist = End_Final_Deceleration_Distance)
   return(Aircraft_Profile)
 }
 
@@ -1588,7 +1812,7 @@ Set_IAS_Profile_Section_2a <- function(Aircraft_Profile, Section_No){
                              Start_IAS = IAS_3DME + Gust_Adjustment_2a,
                              End_IAS = Landing_Stabilisation_Speed + Gust_Adjustment_2a,
                              Start_Dist = 3 * NM_to_m,
-                             End_Dist = Thousand_Ft_Gate)
+                             End_Dist = End_Final_Deceleration_Distance)
   return(Aircraft_Profile)
 }
 
@@ -1611,7 +1835,7 @@ Set_IAS_Profile_Section_2c <- function(Aircraft_Profile, Section_No){
                              Profile_Type = "A",
                              Start_IAS = Steady_Procedural_Speed + Gust_Adjustment_2c,
                              End_IAS = IAS_4DME + Gust_Adjustment_2c,
-                             Start_Dist = Final_Deceleration_Distance,
+                             Start_Dist = Start_Final_Deceleration_Distance,
                              End_Dist = 4 * NM_to_m)
   return(Aircraft_Profile)
 }
@@ -1624,7 +1848,7 @@ Set_IAS_Profile_Section_3 <- function(Aircraft_Profile, Section_No){
                              Start_IAS = Steady_Procedural_Speed,
                              End_IAS = Steady_Procedural_Speed,
                              Start_Dist = End_Initial_Deceleration_Distance,
-                             End_Dist = Final_Deceleration_Distance)
+                             End_Dist = Start_Final_Deceleration_Distance)
   return(Aircraft_Profile)
 }
 
@@ -2670,3 +2894,55 @@ Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix){
   return(Landing_Pair)
   
 }
+
+
+
+
+#################################--#####################################################
+
+
+# Generic Section 1 setting
+Set_IAS_Profile_Section_1_PWS <- function(Aircraft_Profile, Section_No){
+  Aircraft_Profile <- mutate(Aircraft_Profile, Section_Number = Section_No,
+                             Profile_Section = "1",
+                             Profile_Type = "C",
+                             Start_IAS = Landing_Stabilisation_Speed,
+                             End_IAS = Landing_Stabilisation_Speed,
+                             Start_Dist = End_Final_Deceleration_Distance,
+                             End_Dist = 0)
+  return(Aircraft_Profile)
+}
+
+
+# Generic Section 2 Setting
+Set_IAS_Profile_Section_2_PWS <- function(Aircraft_Profile, Section_No){
+  Aircraft_Profile <- mutate(Aircraft_Profile, Section_Number = Section_No,
+                             Profile_Section = "2",
+                             Profile_Type = "A",
+                             Start_IAS = Steady_Procedural_Speed,
+                             End_IAS = Landing_Stabilisation_Speed,
+                             Start_Dist = Start_Final_Deceleration_Distance,
+                             End_Dist = End_Final_Deceleration_Distance)
+  return(Aircraft_Profile)
+}
+
+
+Generate_Gust_Adjustment_Generic <- function(Aircraft_Profile){
+  
+  # Minimum Gust Adjustment Value.
+  Min_Adjustment <- 0
+  
+  # 
+  
+  Aircraft_Profile <- Aircraft_Profile %>%
+    mutate(Gust_Adjustment = -(Section_Wind_Effect + Surface_Headwind) / Gust_Coefficient) %>%
+    mutate(Gust_Adjustment = ifelse(Gust_Adjustment < Min_Adjustment, Min_Adjustment, Gust_Adjustment)) %>%
+    mutate(Gust_Adjustment = ifelse(is.na(Gust_Adjustment), 0, Gust_Adjustment))
+  
+  # Assumes Start Distance, End Distance, Wind_Effect, Gust Change Distance, Pre_Change_Coefficient, Post_Change_Coefficient
+  
+  
+  
+}
+
+

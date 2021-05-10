@@ -63,11 +63,11 @@ source(file.path("3. ORD Processing", "Setup IA Performance Model.R"), local= T)
 # Configuration
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 Database_Type <- "Validation"
-Database <- "LVNL_UTMA_Validation"
-IP <- "192.168.1.39"
+Database <- "NavCan_TBS_V2_Test"
+IP <- "192.168.1.23"
 con <- Get_RODBC_Database_Connection(IP, Database)
 PROC_Period <- "Month"
-PROC_Criteria <- "07/2019"
+PROC_Criteria <- "08/2020"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 Testing <- T
 LP_Primary_Key <- Get_LP_Primary_Key(Database_Type)
@@ -102,27 +102,27 @@ INT_GSPD_Profile <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, INT_IAS_Profi
 INT_Landing_Pairs <- Generate_ORD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile)
 INT_Landing_Pairs <- Generate_IA_Performance_Model_Setup(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INT_Full_GWCS_Forecast)
 
-if (WAD_Enabled){
-  INT_Landing_Pairs <- Generate_WAD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Flight_Plan)
-  INT_Landing_Pairs <- Generate_WAD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile)
-}
+#if (WAD_Enabled){
+#  INT_Landing_Pairs <- Generate_WAD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Flight_Plan)
+#  INT_Landing_Pairs <- Generate_WAD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile)
+#}
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Construction
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-OUTP_All_Pair_Reference_Data <- Construct_All_Pair_Reference_Data(LP_Primary_Key, INT_Landing_Pairs)
-OUTP_ORD_Observation <- Construct_ORD_Observation(LP_Primary_Key, INT_Landing_Pairs)
-OUTP_ORD_Aircraft_Profile <- Construct_ORD_Aircraft_Profile(LP_Primary_Key, INT_Aircraft_Profile)
-OUTP_ORD_IAS_Profile <- Construct_ORD_IAS_Profile(LP_Primary_Key, INT_IAS_Profile)
-OUTP_ORD_GSPD_Profile <- Construct_ORD_GSPD_Profile(LP_Primary_Key, INT_GSPD_Profile)
-OUTP_ORD_Prediction <- Construct_ORD_Prediction(LP_Primary_Key, INT_Landing_Pairs)
-OUTP_IA_Performance_Model_Setup <- Construct_IA_Performance_Model_Setup(LP_Primary_Key, INT_Landing_Pairs)
+#OUTP_All_Pair_Reference_Data <- Construct_All_Pair_Reference_Data(LP_Primary_Key, INT_Landing_Pairs)
+#OUTP_ORD_Observation <- Construct_ORD_Observation(LP_Primary_Key, INT_Landing_Pairs)
+#OUTP_ORD_Aircraft_Profile <- Construct_ORD_Aircraft_Profile(LP_Primary_Key, INT_Aircraft_Profile)
+#OUTP_ORD_IAS_Profile <- Construct_ORD_IAS_Profile(LP_Primary_Key, INT_IAS_Profile)
+#OUTP_ORD_GSPD_Profile <- Construct_ORD_GSPD_Profile(LP_Primary_Key, INT_GSPD_Profile)
+#OUTP_ORD_Prediction <- Construct_ORD_Prediction(LP_Primary_Key, INT_Landing_Pairs)
+#OUTP_IA_Performance_Model_Setup <- Construct_IA_Performance_Model_Setup(LP_Primary_Key, INT_Landing_Pairs)
 
-if (WAD_Enabled){
-  OUTP_WAD_Observation <- Construct_WAD_Observation(INT_Landing_Pairs, LP_Primary_Key)
-  OUTP_WAD_Prediction <- Construct_WAD_Prediction(INT_Landing_Pairs, LP_Primary_Key)
-}
+#if (WAD_Enabled){
+#  OUTP_WAD_Observation <- Construct_WAD_Observation(INT_Landing_Pairs, LP_Primary_Key)
+#  OUTP_WAD_Prediction <- Construct_WAD_Prediction(INT_Landing_Pairs, LP_Primary_Key)
+#}
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -147,13 +147,13 @@ if (Testing){
   ZSTAT_ORD_Prediction <- Summary_ORD_Prediction(LP_Primary_Key, ZCOMP_ORD_Prediction) ##
   ZSTAT_IA_Performance_Model_Setup <- Summary_IA_Performance_Model_Setup(LP_Primary_Key, ZCOMP_IA_Performance_Model_Setup) ##
   
-  if (WAD_Enabled){
-    ZCOMP_WAD_Observation <- Compare_WAD_Observation(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs) ##
-    ZCOMP_WAD_Prediction <- Compare_WAD_Prediction(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs) ##
-    
-    ZSTAT_WAD_Observation <- Summary_WAD_Observation(LP_Primary_Key, ZCOMP_WAD_Observation) ##
-    ZSTAT_WAD_Prediction <- Summary_WAD_PRediction(LP_Primary_Key, ZCOMP_WAD_Prediction) ##
-  }
+  #if (WAD_Enabled){
+  #  ZCOMP_WAD_Observation <- Compare_WAD_Observation(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs) ##
+  #  ZCOMP_WAD_Prediction <- Compare_WAD_Prediction(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs) ##
+  #  
+  #  ZSTAT_WAD_Observation <- Summary_WAD_Observation(LP_Primary_Key, ZCOMP_WAD_Observation) ##
+  #  ZSTAT_WAD_Prediction <- Summary_WAD_PRediction(LP_Primary_Key, ZCOMP_WAD_Prediction) ##
+  #}
 }
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 

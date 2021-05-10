@@ -55,18 +55,12 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   Runway <- Load_Adaptation_Table(con, "tbl_Runway")
   Path_Legs <- Load_Adaptation_Table(con, "tbl_Path_Leg")
   
-  # Legacy Wake Separation Distances
-  Legacy_Wake_Distance <- Load_Adaptation_Table(con, "tbl_DBS_Wake_Turbulence") #Should change this
-  
-  # RECAT Wake Distances, Times, IAS
-  RECAT_Wake_Distance <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Dist")
-  RECAT_Wake_Time <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Time")
-  RECAT_Wake_IAS <- Load_Adaptation_Table(con, "tbl_Assumed_Recat_Separation_IAS")
-  
-  # RECAT ROT Distances, Times, IAS
-  RECAT_ROT_Distance <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Dist")
-  RECAT_ROT_Time <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Time")
-  RECAT_ROT_IAS <- Load_Adaptation_Table(con, "tbl_Assumed_ROT_Spacing_IAS")
+  # TBS Calcs Related tables
+  #Runway_Pair_Rule <- Load_Adaptation_Table(con, "tbl_Runway_Pair_Rule")
+  #Runway_Rule <- Load_Adaptation_Table(con, "tbl_Runway_Rule")
+  #Wake_Separation_Min <- Load_Adaptation_Table(con, "tbl_Wake_Separation_Min")
+  #Constraint_Precedence <- Load_Adaptation_Table(con, "tbl_Constraint_Precedence_List")
+  #Delivery_Points <- Load_Adaptation_Table(con, "tbl_Delivery_Points")
   
   # ------------------------------------------------------------------------------------------------------------------------------------------ #
   # ------------------------------------------------------------------------------------------------------------------------------------------ #
@@ -80,32 +74,43 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   Landing_Pair <- Get_LF_Ref_Parameters(Landing_Pair, Flight_Plan, Runway, AC_To_Wake_Reduced, AC_To_Wake_Legacy_Reduced, "Leader")
   Landing_Pair <- Get_LF_Ref_Parameters(Landing_Pair, Flight_Plan, Runway, AC_To_Wake_Reduced, AC_To_Wake_Legacy_Reduced, "Follower")
   
-  # Get Reference Parameters for Aircraft Pair
+  # Get Reference SASAI Parameters by Runway (Runway Rules)
+  #Landing_Pair <- Get_Runway_Rule_Parameters(Landing_Pair, Runway_Rule)
   
-  # - RECAT
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = RECAT_Wake_Distance, RecatorLegacy = "Recat", Param_Type = "Distance", Constraint = "Wake_Separation")
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = RECAT_Wake_Time, RecatorLegacy = "Recat", Param_Type = "Time", Constraint = "Wake_Separation")
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = RECAT_Wake_IAS, RecatorLegacy = "Recat", Param_Type = "IAS", Constraint = "Wake_Separation")
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = RECAT_ROT_Distance, RecatorLegacy = "Recat", Param_Type = "Distance", Constraint = "ROT_Spacing")
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = RECAT_ROT_Time, RecatorLegacy = "Recat", Param_Type = "Time", Constraint = "ROT_Spacing")
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = RECAT_ROT_IAS, RecatorLegacy = "Recat", Param_Type = "IAS", Constraint = "ROT_Spacing")
+  # Get Wake Separation Min
+  #Landing_Pair <- Get_Wake_Separation_Minimums(Landing_Pair, Wake_Separation_Min)
+  
+  # Get Reference SASAI Parameters by Runway Pair (Runway Pair Rules)
+  #Landing_Pair <- Get_Runway_Pair_Rule_Parameters(Landing_Pair, Runway_Pair_Rule)
+  
+  # - RECAT (IA PWS Update)
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
   
   # - Legacy
-  Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = Legacy_Wake_Distance, RecatorLegacy = "Legacy", Param_Type = "Distance", Constraint = "Wake_Separation")
-  #Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = Legacy_Wake_Time, RecatorLegacy = "Legacy", Param_Type = "Time", Constraint = "Wake_Separation")
-  #Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = Legacy_Wake_IAS, RecatorLegacy = "Legacy", Param_Type = "IAS", Constraint = "Wake_Separation")
-  #Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = Legacy_ROT_Distance, RecatorLegacy = "Legacy", Param_Type = "Distance", Constraint = "ROT_Spacing")
-  #Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = Legacy_ROT_Time, RecatorLegacy = "Legacy", Param_Type = "Time", Constraint = "ROT_Spacing")
-  #Landing_Pair <- Get_Pair_Ref_Parameter(Landing_Pair, Ref_Source = Legacy_ROT_IAS, RecatorLegacy = "Legacy", Param_Type = "IAS", Constraint = "ROT_Spacing")
+  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Time", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "IAS", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Distance", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Time", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "IAS", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
   
   # Fix All DBS Not-in-trail Distances (Not Operational in SQL yet)
   # Landing_Pair <- Get_Dependent_Runway_Offset_Changes(Landing_Pair, Runway_Offsets)
   
-  # Get the DBS All Sep Distance
+  # Get the DBS All Sep Distance - ## Add Spacing, Non-Wake, Runway Dependent
   Landing_Pair <- mutate(Landing_Pair, DBS_All_Sep_Distance = Reference_Recat_Wake_Separation_Distance)
+  # Landing_Pair <- Landing_Pair %>% 
+  #   mutate(DBS_All_Sep_Distance = ifelse(is.na(DBS_All_Sep_Distance) | Reference_Non_Wake_Separation_Distance > DBS_All_Sep_Distance, Reference_Non_Wake_Separation_Distance, DBS_All_Sep_Distance)) %>%
+  #   mutate(DBS_All_Sep_Distance = ifelse(is.na(DBS_All_Sep_Distance) | Reference_Spacing_Distance > DBS_All_Sep_Distance, Reference_Spacing_Distance, DBS_All_Sep_Distance)) %>%
+  #   mutate(DBS_All_Sep_Distance = ifelse(is.na(DBS_All_Sep_Distance) | Reference_Recat_ROT_Spacing_Distance > DBS_All_Sep_Distance, Reference_Recat_ROT_Spacing_Distance, DBS_All_Sep_Distance))
   
   # Get the Prediction Time
-  Landing_Pair <- Get_ORD_Prediction_Time(Landing_Pair, Radar)
+  Landing_Pair <- Get_ORD_Prediction_Time(Landing_Pair, Radar, Path_Legs)
   
   # Get ORD Forecast Surface Wind
   Landing_Pair <- Get_Surface_Wind(Landing_Pair, Surface_Wind, Runway, 

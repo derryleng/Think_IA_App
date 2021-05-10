@@ -32,9 +32,79 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 # ----------------------------------------------- #
+# 0.2.1. COPY FOR RSTUDIO/SHINY COMPATIBILITY
+# ----------------------------------------------- #
+# This block sets the Global & Working directories
+# ----------------------------------------------- #
+
+# # --------------------------------------------------------------------------- #
+# ModuleFolder <- "<MODUEL FOLDER IN THINK IA APP"
+# ModuleSubfolder <- "<SUBFOLDER IN THINK IA APP>"
+# OutputFolder <- "<ALGORITHM FOLDER ON DROPBOX>"
+# # --------------------------------------------------------------------------- #
+# 
+# FileFlag <- c("global.R", "GlobalPlaceholder.txt")[1]
+# ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[1]
+# AlgoResourcesFolder <- c("non-global", "AlgoFunctionsPlaceholder")[1]
+# ModulesFolder <- c("modules", "ModulesPlaceholder")[1]
+# 
+# if (rstudioapi::isAvailable()) {
+#   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
+#   Base_Dir <- getwd()
+#   Global_Dir <- Base_Dir
+#   Script_Dir <- file.path(Base_Dir)
+#   while (!file.exists(file.path(Global_Dir, FileFlag))){
+#     Global_Dir <- file.path(Global_Dir, "..")
+#   }
+# } else {
+#   Global_Dir <- getwd()
+#   Script_Dir <- file.path(Global_Dir, ModulesFolder, ModuleFolder, ModuleSubfolder)
+# }
+# 
+# Global_Dir <- file.path(Global_Dir, ResourcesFolder)
+# Algo_Func_Dir <- file.path(Global_Dir, AlgoResourcesFolder)
+# 
+# # Global Functions, imports & parameters
+# source(file.path(Global_Dir, "Imports.R"), local = F)
+# source(file.path(Global_Dir, "Global Parameters.R"), local = F)
+# source(file.path(Global_Dir, "Global Functions.R"), local = F)
+# 
+# Base_Dir <- GetSaveDirectory(Project, OutputFolder)
+# Create_Directory(Base_Dir)
+
+# Function to Source Files based on Directory Precedence System.
+GetScriptPath <- function(ScriptDirectory, Airfield, FileName){
+  if (file.exists(file.path(ScriptDirectory, Airfield, FileName))){
+    message(paste0(FileName, " running from ", Airfield, " script directory."))
+    return(file.path(ScriptDirectory, Airfield, FileName))
+  } else if (file.exists(file.path(ScriptDirectory, FileName))){
+    message(paste0(FileName, " running from global script directory."))
+    return(file.path(ScriptDirectory, FileName))
+  } else {
+    message(paste0("ERROR: ", FileName, " not found. Check the directory/spelling."))
+  }
+}
+
+# Function to choose Output Path depending on Project (Given user Input)
+GetSaveDirectory <- function(Project, Algorithm){
+  
+  Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))
+  
+  if (Project == 1){
+    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
+  }
+  
+  # Go into Algorithm Folder
+  Dir <- file.path(Dir, "Outputs", Algorithm)
+  
+  return(Dir)
+  
+}
+
+# ----------------------------------------------- #
 # 0.2.1. Config Functions
 # ----------------------------------------------- #
-# SQL Access, Basic Manipulation
+# SQL Access, Basic Manipulation, Directory Config
 # ----------------------------------------------- #
 
 # the "not in" function
@@ -42,8 +112,8 @@
 
 # Get Database Connection (RODBC)
 Get_RODBC_Database_Connection <- function(IP, Database){
-  User <- "vbuser"
-  Pass <- "Th!nkvbuser"
+  User <- getPass(msg = "Username: ", noblank = FALSE, forcemask = FALSE)
+  Pass <- getPass(msg = "Password: ", noblank = FALSE, forcemask = TRUE)
   con <- RODBC::odbcDriverConnect(connection=paste0("Driver={SQL Server};
                                   Server={",IP,"};Database={", Database, "};
                                   Uid={",User,"};Pwd={",Pass,"};"))
@@ -55,6 +125,101 @@ Load_Adaptation_Table <- function(con, Table_Name){
   Table <- sqlQuery(con, paste0("SELECT * FROM ", Table_Name), stringsAsFactors = F)
   return(Table)
 }
+
+
+Load_CSV_Data <- function(con, Name, Query, Version_In_Name, Airfield_Dir, Local_Only, Type, Directory, Working_Version, File_Version){
+  
+  if (Type == "Input"){Initial_Dir <- file.path(Airfield_Dir, "Inputs")}
+  if (Type == "Output"){Initial_Dir <- file.path(Airfield_Dir, "Outputs")}
+  Initial_Dir <- Airfield_Dir
+  
+  Version_1_Split <- unlist(strsplit(Working_Version, "-"))
+  Version_2_Split <- unlist(strsplit(File_Version, "-"))
+  
+  Dir_Current <- file.path(Initial_Dir, paste0("v", Version_1_Split[1]))
+  Dir_Alternate <- file.path(Initial_Dir, paste0("v", Version_2_Split[1]))
+  
+  if (length(Version_1_Split) > 1){
+    Dir_Current <- file.path(Dir_Current, paste0("v", Version_1_Split[1], "-", Version_1_Split[2]))
+    Dir_Alternate <- file.path(Dir_Alternate, paste0("v", Version_2_Split[1], "-", Version_2_Split[2]))
+  }
+  
+  if (length(Version_1_Split) > 2){
+    Dir_Current <- file.path(Dir_Current, paste0("v", Version_1_Split[1], "-", Version_1_Split[2], "-", Version_1_Split[3]))
+    Dir_Alternate <- file.path(Dir_Alternate, paste0("v", Version_2_Split[1], "-", Version_2_Split[2], "-", Version_2_Split[3]))
+  }
+  
+  if (Version_In_Name){FileName <- paste0(Name, " v", File_Version, ".csv")} else {FileName <- paste0(Name, ".csv")}
+  if (!is.na(Directory)){
+    Dir_Current <- file.path(Dir_Current, Directory)
+    Dir_Alternate <- file.path(Dir_Alternate, Directory)
+  }
+  
+  Dir_Current <- file.path(Dir_Current, FileName)
+  Dir_Alternate <- file.path(Dir_Alternate, FileName)
+  
+  if (file.exists(Dir_Alternate)){
+    File <- fread(Dir_Alternate)
+    return(File)}
+  else if (file.exists(Dir_Current)){
+    File <- fread(Dir_Current)
+    return(File)}
+  else if (!Local_Only & Working_Version == File_Version){
+    File <- sqlQuery(con, Query, stringsAsFactors = F)
+    if(class(File) == "data.frame"){ fwrite(File, Dir_Current) }
+    return(File)
+  }
+  else {
+    message(paste0("Error: File not Found."))
+    return(NA)
+  }
+  
+  
+}
+
+Load_Generic_DB_Query <- function(con, Name, Query, Version_In_Name, Airfield_Dir, Directory, Working_Version, File_Version){
+  File <- Load_CSV_Data(con, Name, Query, Version_In_Name, Airfield_Dir, Local_Only = F, Type = "Input", Directory, Working_Version, File_Version)
+  return(File)
+}
+
+Load_DB_Input_Data <- function(con, Name, Airfield_Dir, Working_Version, File_Version){
+  Query <- paste0("SELECT * FROM ", Name)
+  Directory <- file.path("Input Data")
+  File <- Load_CSV_Data(con, Name, Query, Version_In_Name = T, Airfield_Dir, Local_Only = F, Type = "Input", Directory, Working_Version, File_Version)
+  return(File)
+}
+
+Load_Local_Adaptation_Data <- function(Airfield_Dir, Version){
+  Directory <- NA
+  Name1 <- "Local Adaptation"
+  Name2 <- "Local Adaptation Extension"
+  File1 <- Load_CSV_Data(con = NA, Name1, Query = NA, Version_In_Name = T, Airfield_Dir, Local_Only = T, Type = "Input", Directory, Version, Version)
+  File2 <- Load_CSV_Data(con = NA, Name2, Query = NA, Version_In_Name = T, Airfield_Dir, Local_Only = T, Type = "Input", Directory, Version, Version)
+  File <- rbind(File1, File2)
+  return(File)
+}
+
+Load_Output_Data <- function(Name, Airfield_Dir, Directory, Version){
+  File <- Load_CSV_Data(con = NA, Name, Query = NA, Version_In_Name = T, Airfield_Dir, Local_Only = T, Type = "Output", Directory, Version, Version)
+  return(File)
+}
+
+Load_Reference_Data <- function(con, Name, Airfield_Dir, Version){
+  Query = paste0("SELECT * FROM ", Name)
+  Directory <- file.path("Reference Data")
+  File <- Load_CSV_Data(con, Name, Query, Version_In_Name = F, Airfield_Dir, Local_Only = F, Type = "Input", Directory, Version, Version)
+  return(File)
+}
+
+Create_Directory <- function(FilePath){
+  if (!dir.exists(FilePath)) dir.create(FilePath)
+}
+
+Save_Adaptation_Table <- function(File, Name, Airfield, Dir){
+  FileName <- paste0("Populate_", Name, "_", Airfield, ".csv")
+  fwrite(File, file.path(Dir, FileName))
+}
+
 
 # ----------------------------------------------- #
 # 0.2.1. Date/Time Functions

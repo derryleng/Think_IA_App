@@ -527,3 +527,11 @@ Populate_ORD_GSPD_Profile <- function(con, ORD_GSPD_Profile){
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+test <- filter(ZCOMP_ORD_GSPD_Profile, FLAG_Start_Dist == 1)
+
+test2 <- filter(ZCOMP_ORD_Aircraft_Profile, Landing_Pair_ID %in% test$Landing_Pair_ID & FLAG_Landing_Stabilisation_Speed == 1)
+test3 <- filter(INT_Aircraft_Profile, Landing_Pair_ID %in% test2$Landing_Pair_ID)
+
+test3 <- filter(INP_Landing_Pair, Landing_Pair_ID %in% test$Landing_Pair_ID)
