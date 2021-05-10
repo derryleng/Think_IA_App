@@ -1,4 +1,99 @@
+load_packages <- function(req_file, install = T, update = F, silent = F) {
+  # req_file - .txt file containing list of required packages (one per line)
+  req <- scan(req_file, character(), quiet = T)
+  
+  if (update) update.packages(repos = "https://cloud.r-project.org", ask = F)
+  
+  if (length(req) > 0 & install) {
+    missing_packages <- req[!(req %in% installed.packages()[,"Package"])]
+    if (length(missing_packages) > 0) {
+      install.packages(missing_packages, repos = "https://cloud.r-project.org", dependencies = T, clean = T)
+    }
+  }
+  
+  if (silent) {
+    suppressPackageStartupMessages(invisible(lapply(req, library, character.only = T)))
+  } else {
+    lapply(req, library, character.only = T)
+  }
+  
+  if (!webshot::is_phantomjs_installed()) {
+    webshot::install_phantomjs()
+  }
+}
+
+load_packages("req.txt", silent = F)
+
+invisible(lapply(list.files(path = "modules/", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T), source))
+
+invisible(lapply(list.files(pattern = "settings.R|functions.R"), source))
+
+# ----------------------------------------------------------------------- #
+# UI ----------------------------------------------------------------------
+# ----------------------------------------------------------------------- #
+
+header <- dashboardHeader(
+  title = htmltools::HTML('<img src="Think_Logo_White.png" width="100" height="37">'),
+  titleWidth = sidebarWidth,
+  headerButtonUI("db_button", "database"),
+  headerButtonUI("debug_test", "info-circle")
+)
+
+sidebar <- dashboardSidebar(
+  width = sidebarWidth,
+  sidebarMenu(
+    id = "tabs",
+    lapply(names(sidebarSettings), function(x) {
+      tab_title <- sidebarSettings[[x]][1]
+      tab_icon <- sidebarSettings[[x]][2]
+      sidebarTabUI(x, tab_title, tab_icon)
+    })
+  )
+)
+
+body <- dashboardBody(
+  
+  useShinyjs(),
+  
+  # Load all CSS files within www folder
+  lapply(list.files("www", pattern = ".css"), function(x) tags$link(rel = "stylesheet", type = "text/css", href = x)),
+  
+  # Load all JS files within www folder
+  lapply(list.files("www", pattern = ".js"), function(x) tags$script(src = x)),
+  
+  # Apply minor page layout adjustment
+  tags$script(HTML("$('body').addClass('fixed');")),
+  
+  # Apply all module UI content defined in mod_ui.R files
+  evalParse(
+    "tabItems(", paste0(
+      sapply(names(sidebarSettings), function(x) {
+        paste0("tabItem(\"", x, "\",", x, "_ui(\"", x ,"\")", ")", collapse = ",")
+      }),
+      collapse = ","
+    ), ")"
+  ),
+  
+  # Loading spinner
+  conditionalPanel(
+    condition="$('html').hasClass('shiny-busy')",
+    id = "spinner_wrapper",
+    htmltools::HTML('<div class="spinner"></div>')
+  )
+  
+)
+
+ui <- dashboardPage(title = "Think IA App", skin = "red", header, sidebar, body)
+
+# ----------------------------------------------------------------------- #
+# Server ------------------------------------------------------------------
+# ----------------------------------------------------------------------- #
+
 server <- function(input, output, session) {
+  
+  addResourcePath("www", "www/")
+  
+  session$allowReconnect(T)
   
   # Stop app on session end
   session$onSessionEnded(function() {
@@ -91,10 +186,10 @@ server <- function(input, output, session) {
   # ----------------------------------------------------------------------- #
   
   observeEvent(con(), {
-
+    
     # Keep track of modules that haven't been loaded
     unloaded_tabs <- reactiveVal(names(sidebarSettings))
-
+    
     # While database is connected, call unloaded modules when selected
     if (con() != -1L) {
       observeEvent(input$tabs, {
@@ -106,7 +201,7 @@ server <- function(input, output, session) {
         }
       })
     }
-
+    
   })
   
   # ----------------------------------------------------------------------- #
@@ -148,3 +243,5 @@ server <- function(input, output, session) {
   })
   
 }
+
+shinyApp(ui, server, options = list(port = 3838))

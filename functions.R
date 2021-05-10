@@ -79,6 +79,7 @@ Time_String_To_Milliseconds <- function(Time_String) {
 }
 
 generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
+  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
   
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
   
@@ -120,18 +121,116 @@ generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   tracks$Flight_Plan_ID <- NULL
   tracks$Flight_Plan_ID <- character()
   
-  for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
-    tracks[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
-        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-        Callsign == fp[Flight_Plan_ID == j]$Callsign &
-        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-    ]$Flight_Plan_ID <- j
+    for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
+      tracks[
+        Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
+          abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+          Callsign == fp[Flight_Plan_ID == j]$Callsign &
+          grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+      ]$Flight_Plan_ID <- j
+    }
+
+    return(tracks)
+
   }
+
+generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
+  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+  
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
+  
+  # if (nrow(fp) > 0) {
+  #
+  #   if (nrow(tracks) > 0) {
+  #
+  #     if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
+  #
+  #     fp$SSR_Code <- as.character(fp$SSR_Code)
+  #     tracks$SSR_Code <- as.character(tracks$SSR_Code)
+  #
+  #     tracks$generateFPID_UID <- seq(1, nrow(tracks), 1)
+  #
+  #     # tracks_invalid <- tracks[is.na(Track_Date) | is.na(Track_Time) | is.na(Callsign) | is.na(SSR_Code)]
+  #     # tracks_valid <- tracks[!is.na(Track_Date) & !is.na(Track_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
+  #
+  #     tracks_proc <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Callsign = "Callsign", SSR_Code = "SSR_Code", Track_Time = "FP_Time")]
+  #
+  #     if (skip_leftover) {
+  #       tracks_proc$generateFPID_UID <- NULL
+  #       return(tracks_proc)
+  #     } else {
+  #       tracks_leftover <- tracks[generateFPID_UID %!in% tracks_proc$generateFPID_UID]
+  #       tracks_leftover$Flight_Plan_ID <- NA
+  #       tracks_combined <- rbind(tracks_proc, tracks_leftover)[order(generateFPID_UID)]
+  #       tracks_combined$generateFPID_UID <- NULL
+  #       return(tracks_combined)
+  #     }
+  #
+  #   } else {
+  #     message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in processed track data")
+  #   }
+  #
+  # } else {
+  #   message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in tbl_Flight_Plan")
+  # }
+  
+  tracks$Flight_Plan_ID <- NULL
+  tracks$Flight_Plan_ID <- character()
+  
+  #   for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
+  #     tracks[
+  #       Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
+  #         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+  #         Callsign == fp[Flight_Plan_ID == j]$Callsign &
+  #         grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+  #     ]$Flight_Plan_ID <- j
+  #   }
+  #
+  #   return(tracks)
+  #
+  # }
+  
+  tracks$SSR_Code <- as.numeric(tracks$SSR_Code)
+  fp$SSR_Code <- as.numeric(fp$SSR_Code)
+  
+  tracks <- tracks[!is.na(Track_Date) & !is.na(SSR_Code) & !is.na(Track_Time)]
+  tracks <- tracks[!is.na(Mode_C) & Mode_C != 99999999]
+  
+  #tracks_before_for_loop <- tracks
+  
+  for (i in unique(tracks[,paste(Track_Date, SSR_Code, Callsign, "-", Track_Number)])) {
+    
+    tracks_i <- tracks[paste(Track_Date, SSR_Code, Callsign, "-", Track_Number) == i]
+    
+    if (all(is.na(tracks_i$Mode_C)) | all(is.na(tracks_i[Mode_C != 99999999]$Mode_C))) {
+      message(i, " - no Mode C data.")
+      next
+    }
+    
+    fpid <- if (is.na(tracks_i$Callsign[1]) & min(tracks_i$Mode_C, na.rm = T) <= 1000 & max(tracks_i[Mode_C != 99999999]$Mode_C, na.rm = T) >= 1000) { # min mode C <= 1000 as two identical SSR_codes at same time. Max Mode C >= 1000 as taxiing aircraft picked up
+      fp[paste(FP_Date, SSR_Code, "NA") == strsplit(i, " -")[[1]][1] &
+           abs(FP_Time - max(tracks_i$Track_Time, na.rm = T)) < 7200
+      ]$Flight_Plan_ID[1]
+    } else {
+      fp[paste(FP_Date, SSR_Code, Callsign) == strsplit(i, " -")[[1]][1] &
+           abs(FP_Time - max(tracks_i$Track_Time, na.rm = T)) < 7200
+      ]$Flight_Plan_ID[1]
+    }
+    
+    tracks[paste(Track_Date, SSR_Code, Callsign, "-", Track_Number) == i]$Flight_Plan_ID <- fpid
+    #message(i, " ", fpid)
+  }
+  
+  tracks$Flight_Plan_ID <- as.numeric(tracks$Flight_Plan_ID)
+  tracks[is.na(Callsign)]$Callsign <- " "
   
   return(tracks)
   
 }
+
+
+
+
 
 XY_To_Heading <- function(vx, vy) {
   heading <- ifelse(
@@ -183,6 +282,57 @@ parse_log_lines <- function(raw_logs, log_type, col_names = NA) {
 factoriseCharCols <- function(df) {
   for (i in which(sapply(df, class) == "character")) df[[i]] = as.factor(df[[i]])
   return(df)
+}
+
+# Converts the Start/End Dist of Threshold and Lateral Dist Left/Right to
+# polygon point sequence as contained in the database.
+configVolume_To_pointSequence <- function(x, dbi_con) {
+  # x: Config file 05_Populate_Airspace_Volumes.csv as data.table
+  # dbi_con: database connection
+  
+  Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
+  tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
+  tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
+  
+  polygons <- data.table()
+  
+  for (i in 1:nrow(x)) {
+    
+    polygons_i <- data.table(
+      Volume_Name = rep(x$Volume_Name[i], 5),
+      Airfield_Name = rep(Airfield_Name, 5),
+      Point_Sequence = 1:5,
+      Point_X = as.numeric(c(x$Start_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i])) * fnc_GI_Nm_To_M(),
+      Point_Y = as.numeric(c(x$Lateral_Dist_Left[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Left[i], x$Lateral_Dist_Left[i])) * fnc_GI_Nm_To_M()
+    )
+    
+    grid_i <- usp_GI_Runway_To_XY(
+      gsub("^([A-Z0-9]{1,})_.*$", "R\\1", polygons_i$Volume_Name[1]),
+      polygons_i$Point_X,
+      polygons_i$Point_Y,
+      tbl_Runway
+    )
+    
+    updated_i <- usp_GI_Latlong_From_XY(
+      grid_i$Node_X,
+      grid_i$Node_Y,
+      tbl_Adaptation_Data
+    )
+    
+    polygons_i$Point_X <- grid_i$Node_X
+    polygons_i$Point_Y <- grid_i$Node_Y
+    polygons_i$Latitude <- updated_i$PositionLatitude
+    polygons_i$Longitude <- updated_i$PositionLongitude
+    
+    polygons <- rbind(
+      polygons,
+      polygons_i
+    )
+    
+  }
+  
+  return(polygons)
+  
 }
 
 # ----------------------------------------------------------------------- #

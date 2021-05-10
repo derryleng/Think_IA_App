@@ -10,7 +10,8 @@ db_defaults <- list(
     "Goose (192.168.1.39)" = "192.168.1.39"
   ),
   database = if (file.exists("temp/db_names.csv")) fread("temp/db_names.csv", header = F, sep = NULL)$V1,
-  username = c("vbuser", "ruser")
+  username = c("vbuser", "ruser"),
+  password = "Th!nkvbuser"
 )
 
 # ----------------------------------------------------------------------- #
@@ -27,8 +28,9 @@ sidebarWidth <- "160px"
 #       > Order corresponds to order of appearance in app sidebar
 #       > Use "" for icon_str to specify no icon
 sidebarSettings <- list(
-  plt_tools = c("PLT Tools", "route"),
   data_loader = c("Data Loader", "database"),
+  plt_tools = c("PLT Tools", "route"),
+  # db_processing = c("Database Processing", "hourglass-half"),
   db_explorer = c("Database Explorer", "list-alt"),
   track_visualiser = c("Track Visualiser", "search-location"),
   optimised_runway_delivery = c("ORD", "plane-arrival")

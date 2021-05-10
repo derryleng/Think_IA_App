@@ -33,13 +33,13 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
     } else if (input$logs_type == "Alt Flight Plan logs (NAVCAN)") {
       process_NavCan_FPAlt(LogFilePaths[i], dbi_con)
     } else if (input$logs_type == "Ground radar (NAVCAN)") {
-      process_NavCan_GR(LogFilePaths[i], tbl$Runway, dbi_con)
+      process_NavCan_GR(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Surface wind and QNH (NAVCAN)") {
       process_NavCan_SurfaceWindQNH(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "Cat62 Fusion (NAVCAN)") {
-      process_NavCan_Fusion_Cat62(LogFilePaths[i], tbl$Adaptation_Data, dbi_con)
+      process_NavCan_Fusion_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Surveillance radar (LVNL)") {
-      process_LVNL_Surv(LogFilePaths[i], tbl$Adaptation_Data, Runway, dbi_con)
+      process_LVNL_Surv(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Flight Plan logs (LVNL)") {
       process_LVNL_FP(LogFilePaths[i], dbi_con)
     } else if (input$logs_type == "QNH logs (LVNL)") {
@@ -117,6 +117,34 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
   })
   
   observeEvent(input$load_config, {
+    showModal(modalDialog(
+      div(
+        style = "text-align: center",
+        h3("MODIFY DATABASE WARNING")
+      ),
+      hr(),
+      div(
+        style = "text-align: center",
+        tags$b("Do you wish to proceed?")
+      ),
+      h5("Loading Config"),
+      HTML("<li>", isolate(config_files()), "</li>"),
+      "Current config tables will be cleared.",
+      h5("Database"),
+      as.character(dbGetQuery(isolate(dbi_con), "SELECT DB_NAME()")),
+      size = "s",
+      footer = div(
+        class = "centered",
+        modalButton("Cancel"),
+        div(style = "width: 15px"),
+        actionButton(ns("load_config_confirm"), "Confirm")
+      ),
+      easyClose = F
+    ))
+  })
+  
+  observeEvent(input$load_config_confirm, {
+    removeModal()
     withCallingHandlers({
       shinyjs::html("console_output", "")
       message("[",Sys.time(),"] ", "Clearing existing configuration data...")

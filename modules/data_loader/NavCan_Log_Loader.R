@@ -49,7 +49,7 @@ process_NavCan_RadarNonModeS <- function(LogFilePath, tbl_Adaptation_Data, tbl_R
     Track_SPD = as.numeric(x$FLIGHT_FIX_SPEED_KN) * fnc_GI_Kts_To_M_Per_Sec(),
     Track_HDG = as.numeric(x$FLIGHT_FIX_HEADING_DEG) * fnc_GI_Degs_To_Rads(),
     Track_Number = NA,
-    Mode_S_Address = NA,
+    Mode_S_Address = 0L,
     Mode_S_GSPD = NA,
     Mode_S_IAS = NA,
     Mode_S_HDG = NA,
@@ -187,15 +187,47 @@ process_NavCan_FPAlt <- function(LogFilePath, dbi_con) {
     SID = x$SID
   )
   
-  out <- out[!is.na(FP_Date) & !is.na(FP_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
+  out <- out[!is.na(FP_Date) & !is.na(FP_Time) & (!is.na(Callsign) | !is.na(SSR_Code))]
+  out$Callsign <- as.character(out$Callsign)
+  out[is.na(Callsign)]$Callsign <- ""
+  out$SSR_Code <- as.character(out$SSR_Code)
+  out[is.na(SSR_Code)]$SSR_Code <- ""
+  
+  out <- out[order(FP_Date, FP_Time)]
+  
+  out_2 <- data.table()
+  
+  for (d in unique(out$FP_Date)){
+    out_d <- out[FP_Date == d]
+    message("[",Sys.time(),"] ", d, " Processing")
+    out_2_d <- rbindlist(lapply(unique(out_d[,paste(FP_Date, Callsign, SSR_Code)]), function(i) {
+      #message("[",Sys.time(),"] ", i, " Processing")
+      fp_i <- out_d[paste(FP_Date, Callsign, SSR_Code) == i]
+      if (nrow(fp_i) > 1) {
+        j <- 1
+        while (j < nrow(fp_i)) {
+          if (abs(fp_i$FP_Time[j+1] - fp_i$FP_Time[j]) < 7200) {
+            fp_i <- fp_i[-j]
+          } else {
+            j <- j + 1
+          }
+        }
+      }
+      return(fp_i)
+      #message("[",Sys.time(),"] ", i, " Processed")
+    }))
+    
+    out_2 <- rbind(out_2, out_2_d)
+    #message("[",Sys.time(),"] ", d, " Processed")
+  }
   
   message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
-  out_pass_1 <- unique(out, by = c("FP_Date", "Callsign"))
+  out_pass_1 <- unique(out_2, by = c("FP_Date","FP_Time", "Callsign", "SSR_Code"))
   
   message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, Destination FROM tbl_Flight_Plan"))
+  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
   if (nrow(fp) > 0) {
-    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$Destination)]
+    out_pass_2 <- out_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
   } else {
     out_pass_2 <- out_pass_1
   }
@@ -285,7 +317,7 @@ process_NavCan_GR <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_
     Track_SPD = NA,
     Track_HDG = NA,
     Track_Number = NA,
-    Mode_S_Address = 0,
+    Mode_S_Address = 0L,
     Mode_S_GSPD = NA,
     Mode_S_IAS = NA,
     Mode_S_HDG = NA,
@@ -368,11 +400,11 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
 
 }
 
-process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_con) {
+process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
   
-  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={Node_Replacement_ARTAS_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
+  # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
   # tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-  # LogFilePath <- "C:\\Users\\NodeReplacement\\Documents\\Node_Replacement\\ALL TS1 Data\\TS1-030121.csv"
+  # LogFilePath <- "D:\\Fusion Data\\ClientLANA_00001_20210126202539.csv"
   
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
@@ -386,51 +418,96 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
              data.table(grep("^52,225.*$", logs, value = T))[, tstrsplit(V1, ",", fixed = T)])
   message("[",Sys.time(),"] ", "Found ", nrow(x), " valid CAT62 lines.")
   
-  names(x) <- c(
-    "I062/010/Sac",
-    "I062/010/Sic",
-    "I062/040/TrackNum",
-    "I062/060/Mode3A",
-    "I062/070/Time",
-    "I062/100/X",
-    "I062/100/Y",
-    "I062/105/Lat",
-    "I062/105/Lon",
-    "I062/135/QNH",
-    "I062/135/CTL",
-    "I062/185/VX",
-    "I062/185/VY",
-    "I062/295/MDA/MDA",
-    "I062/295/MHG/MHG",
-    "I062/295/TAS/TAS",
-    "I062/295/BVR/BVR",
-    "I062/295/RAN/RAN",
-    "I062/295/TAR/TAR",
-    "I062/295/TAN/TAN",
-    "I062/295/GSP/GSP",
-    "I062/295/IAR/IAR",
-    "I062/295/BPS/BPS",
-    "I062/380/ADR/ADR",
-    "I062/380/ID/ID",
-    "I062/380/MHG/MHG",
-    "I062/380/TAS/TAS",
-    "I062/380/BVR/BVR",
-    "I062/380/RAN/RAN",
-    "I062/380/TAR/RateOfTurn",
-    "I062/380/TAN/TAN",
-    "I062/380/GSP/GSP",
-    "I062/380/IAR/IAR",
-    "I062/380/BPS/BPS",
-    "I062/390/CSN/CSN",
-    "I062/SP/CCR/RC"
-  )[1:length(names(x))]
+  if (x$V1[1] == "52" & x$V2[1] == "205" ){
+    names(x) <- c(
+      "I062/010/Sac",
+      "I062/010/Sic",
+      "I062/040/TrackNum",
+      "I062/060/Mode3A",
+      "I062/070/Time",
+      "I062/100/X",
+      "I062/100/Y",
+      "I062/105/Lat",
+      "I062/105/Lon",
+      "I062/135/QNH",
+      "I062/135/CTL",
+      "I062/185/VX",
+      "I062/185/VY",
+      "I062/295/MDA/MDA",
+      "I062/295/MHG/MHG",
+      "I062/295/TAS/TAS",
+      "I062/295/BVR/BVR",
+      "I062/295/RAN/RAN",
+      "I062/295/TAR/TAR",
+      "I062/295/TAN/TAN",
+      "I062/295/GSP/GSP",
+      "I062/295/IAR/IAR",
+      "I062/295/BPS/BPS",
+      "I062/380/ADR/ADR",
+      "I062/380/ID/ID",
+      "I062/380/MHG/MHG",
+      "I062/380/TAS/TAS",
+      "I062/380/BVR/BVR",
+      "I062/380/RAN/RAN",
+      "I062/380/TAR/RateOfTurn",
+      "I062/380/TAN/TAN",
+      "I062/380/GSP/GSP",
+      "I062/380/IAR/IAR",
+      "I062/380/BPS/BPS",
+      "I062/390/CSN/CSN",
+      "I062/SP/CCR/RC",
+      "I062/220/ROCD"
+    )[1:length(names(x))]
+  } else {
+    names(x) <- c(
+      "I062/010/Sac",
+      "I062/010/Sic",
+      "I062/040/TrackNum",
+      "I062/060/Mode3A",
+      "I062/070/Time",
+      "I062/100/X",
+      "I062/100/Y",
+      "I062/105/Lat",
+      "I062/105/Lon",
+      "I062/135/QNH",
+      "I062/135/CTL",
+      "I062/185/VX",
+      "I062/185/VY",
+      "I062/295/MDA/MDA",
+      "I062/295/MHG/MHG",
+      "I062/295/TAS/TAS",
+      "I062/295/BVR/BVR",
+      "I062/295/RAN/RAN",
+      "I062/295/TAR/TAR",
+      "I062/295/TAN/TAN",
+      "I062/295/GSP/GSP",
+      "I062/295/IAR/IAR",
+      "I062/295/BPS/BPS",
+      "I062/380/ADR/ADR",
+      "I062/380/ID/ID",
+      "I062/380/MHG/MHG",
+      "I062/380/TAS/TAS",
+      "I062/380/BVR/BVR",
+      "I062/380/RAN/RAN",
+      "I062/380/TAR/RateOfTurn",
+      "I062/380/TAN/TAN",
+      "I062/380/GSP/GSP",
+      "I062/380/IAR/IAR",
+      "I062/380/BPS/BPS",
+      "I062/390/CSN/CSN",
+      "I062/SP/CCR/RC"
+    )[1:length(names(x))]
+  }
+
   
-  nrow1 <- nrow(x)
-  x <- x[!(is.na(`I062/135/CTL`) | `I062/135/CTL` == "") & !(is.na(`I062/390/CSN/CSN`) & is.na(x$`I062/380/ID/ID`))]
-  nrow2 <- nrow(x)
-  message("[",Sys.time(),"] ", "Removed ", nrow1 - nrow2, " rows with NULL values in I062/135/CTL or both I062/390/CSN/CSN and I062/380/ID/ID)")
+  # nrow1 <- nrow(x)
+  # x <- x[!(is.na(`I062/135/CTL`) | `I062/135/CTL` == "") & !(is.na(`I062/390/CSN/CSN`) & is.na(x$`I062/380/ID/ID`))]
+  # nrow2 <- nrow(x)
+  # message("[",Sys.time(),"] ", "Removed ", nrow1 - nrow2, " rows with NULL values in I062/135/CTL or both I062/390/CSN/CSN and I062/380/ID/ID)")
   
   if (nrow(x) > 0) {
+    
+    x[x == ""] <- NA
 
     if (tbl_Adaptation_Data$Use_Local_Coords) {
       x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
@@ -438,6 +515,13 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
       x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I062/100/X`), as.numeric(x$`I062/100/Y`), tbl_Adaptation_Data))
     }
 
+    x <- x[
+      Position_X >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
+        Position_X <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
+        Position_Y >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
+        Position_Y <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
+    ]
+    
     x$`I062/380/GSP/GSP` <- ifelse(as.numeric(x$`I062/295/GSP/GSP`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/GSP/GSP`)
     x$`I062/380/IAR/IAR` <- ifelse(as.numeric(x$`I062/295/IAR/IAR`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/IAR/IAR`)
     x$`I062/380/MHG/MHG` <- ifelse(as.numeric(x$`I062/295/MHG/MHG`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/MHG/MHG`)
@@ -459,7 +543,12 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
     Lon = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads()} else {x$PositionLongitude},
-    Mode_C = as.numeric(x$`I062/135/CTL`) * 100 * fnc_GI_Ft_To_M(),
+    Mode_C = ifelse(x$`I062/010/Sac` == 98 & x$`I062/010/Sic` == 160,
+                    ifelse(is.na(x$`I062/SP/CCR/RC`),
+                           as.numeric(99999999),
+                           as.numeric(x$`I062/SP/CCR/RC`) * fnc_GI_Ft_To_M()
+                           ),
+                    as.numeric(x$`I062/135/CTL`) * 100 * fnc_GI_Ft_To_M()),
     Track_SPD = sqrt(as.numeric(x$`I062/185/VX`)^2 + as.numeric(x$`I062/185/VY`)^2),
     Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I062/185/VX`), as.numeric(x$`I062/185/VY`)),
     Track_Number = as.integer(x$`I062/040/TrackNum`),
@@ -473,11 +562,14 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, dbi_co
     Mode_S_Roll_Angle = as.numeric(x$`I062/380/RAN/RAN`) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * fnc_GI_Mbar_To_Pa()
   )
+  if (x$`I062/010/Sac`[1] == "52" & x$`I062/010/Sic`[1] == "205") {
+    out <- add_column(out, Vertical_Rate = as.numeric(x$`I062/220/ROCD`) * fnc_GI_Ft_Per_Min_To_M_Per_Sec(), .after = "Track_HDG")
+  }
   
   if (nrow(out) > 0) {
     
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    out2 <- generateFPID(out, dbi_con)
+    out2 <- generateFPID_fusion(out, dbi_con)
     message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
     
     # # FOR TROUBLESHOOTING ONLY
