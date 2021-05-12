@@ -142,6 +142,15 @@ Calculate_Intercept_Position_Y <- function(){}
 Calculate_DME_Position_X <- function(){}
 Calculate_DME_Position_Y <- function(){}
 Get_Heading_Difference <- function(){}
+Is_In_Heading_Range <- function(){}
+Is_In_Polygon <- function(){}
+Generate_RTPD_Ground_Track_Heading <- function(RTP){
+  RTP <- RTP %>%
+    mutate(Ground_Track_Heading = ifelse(Get_Heading_Difference(Mode_S_Track_HDG, Track_HDG) <= Max_Heading_Diff, Mode_S_Track_HDG, Track_HDG),
+           Ground_Track_Heading = ifelse(is.na(Ground_Track_Heading) & !is.na(Mode_S_Track_HDG), Mode_S_Track_HDG, Ground_Track_Heading),
+           Ground_Track_Heading = ifelse(is.na(Ground_Track_Heading) & !is.na(Track_HDG), Track_HDG, Ground_Track_Heading))
+  return(RTP)
+}
 
 Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   
@@ -165,9 +174,7 @@ Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   
   # Get the Ground Track Heading
   RTP <- RTP %>%
-    mutate(Ground_Track_Heading = ifelse(Get_Heading_Difference(Mode_S_Track_HDG, Track_HDG) <= Max_Heading_Diff, Mode_S_Track_HDG, Track_HDG),
-           Ground_Track_Heading = ifelse(is.na(Ground_Track_Heading) & !is.na(Mode_S_Track_HDG), Mode_S_Track_HDG, Ground_Track_Heading),
-           Ground_Track_Heading = ifelse(is.na(Ground_Track_Heading) & !is.na(Track_HDG), Track_HDG, Ground_Track_Heading))
+    Generate_RTPD_Ground_Track_Heading()
   
   # Get the Direct Intercept Positions (Current Heading to ILS)
   RTP <- RTP %>%
@@ -206,6 +213,147 @@ Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   return(RTP)
   
 }
+
+
+
+
+Generate_RTPD_Path_Leg <- function(RTP, RTPD, FP, Runway, Path_Legs, Path_Leg_Transitions, Volumes, Polygons, Adaptation, VarNo){
+  
+  # Initialise Path Leg Variable Name
+  Var <- "Path_Leg"
+  if (VarNo != 1){Var <- paste0(Var, "_", VarNo)}
+  
+  # Get Max Heading Difference
+  Max_Heading_Diff <- as.numeric(Adaptation$Diff_Mode_S_To_Radar_Track_Max)
+  
+  # Arrange RTP by Flight Plan ID and Track Time
+  RTP <- RTP %>%
+    arrange(Flight_Plan_ID, Track_Time)
+  
+  # Select Relevant Fields from Main Tables 
+  RTP <- select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, X_Pos, Y_Pos, Track_HDG, Mode_S_Track_HDG)
+  RTPD <- select(Radar_Track_Point_ID, Corrected_Mode_C, Min_Sustained_RoCD)
+  FP <- select(FP, Flight_Plan_ID, Landing_Runway)
+  RTP <- RTP %>%
+    left_join(RTPD, by = c("Radar_Track_Point_ID")) %>%
+    left_join(FP, by = c("Flight_Plan_ID"))
+  
+  # Calculate Ground Track Heading
+  RTP <- RTP %>%
+    Generate_RTPD_Ground_Track_Heading()
+  
+  # Generate Relative Track ID to flight.
+  RTP <- RTP %>%
+    group_by(Flight_Plan_ID) %>%
+    mutate(Track_ID = row_number()) %>%
+    ungroup()
+  
+  # Get the Path Leg Transition File in the correct format. (PLT_ID, Volume_Name, Landing_Runway, Difference_Runway, Min_Sustained_RoCD, )
+  
+  ## Loop 1: By Runway. ASsumes Constant Landing Runway for a single flight.
+  Runways <- unique(Runway$Runway_Name)
+  
+  for (i in 1:length(Runways)){
+    
+    # Filter for Flights in this Runway
+    RTP_Runway <- filter(RTP, Landing_Runway == Runways[i])
+    
+    # Find the Maximum number of points on a flight
+    Max_Points <- max(RTP$Track_ID)
+    
+    # Filter Path Leg Transitions
+    Transitions_Runway <- filter(Path_Leg_Transitions, (Runway_Name == Runways[i] | is.na(Runway_Name)) & (Difference_Runway != Runways[i] | is.na(Difference_Runway)))
+    
+    # SECOND LOOP: Over Track ID
+    for (j in 1:Max_Points){
+      
+      # Filter for This Track ID
+      RTP_Runway_ID <- filter(RTP_Runway, Track_ID == j)
+      
+      # Get the Current Path Leg
+      if (j == 1){RTP_Runway_ID_PL <- select(RTP_Runway_ID, Radar_Track_Point_ID) %>% mutate(Current_Path_Leg = NA)}
+      else {RTP_Runway_ID_PL <- filter(RTP_Runway_ID_Comp, Track_ID == (j-1)) %>% select(Flight_Plan_ID, Current_Path_Leg = Value)}
+      RTP_Runway_ID <- left_join(RTP_Runway_ID, RTP_Runway_ID_PL, by = c("Flight_Plan_ID"))
+      
+      Unique_PLs <- unique(RTP_Runway_ID$Current_Path_Leg)
+      
+      # THIRD LOOP: NULL AND NO NULL CURRENT PATH LEGS
+      for (k in 1:2){
+        
+        if (k == 1){
+          RTP_Runway_ID_Tran <- filter(RPT_Runway_ID, is.na(Current_Path_Leg))
+          Transitions_Runway_ID_Tran <- filter(Transitions_Runway, is.na(Current_Path_Leg))
+        } else {
+          RTP_Runway_ID_Tran <- filter(RPT_Runway_ID, !is.na(Current_Path_Leg))
+          Transitions_Runway_ID_Tran <- filter(Transitions_Runway, Current_Path_Leg %in% Unique_PL)
+        }
+        
+        if (nrow(RTP_Runway_ID_Tran) > 0 & nrow(Transitions_Runway_ID_Tran) > 0){
+         
+          # FINAL LOOP: TRANSITION COMPARISON
+          for (l in 1:max(Transitions_Runway_ID_Tran$PLT_ID)){
+            
+            # Get the Transition Values
+            Trans <- filter(Transitions_Runway_ID_Tran, PLT_ID == l)
+            New_Path_Leg <- Trans[1]$New_Path_Leg
+            Min_Heading <- Trans[1]$Min_Heading
+            Max_Heading <- Trans[1]$Max_Heading
+            Min_Alt <- Trans[1]$Min_Alt
+            Max_Alt <- Trans[1]$Max_Alt
+            Min_RoCD <- Trans[1]$Min_Sustained_RoCD
+            X_Values <- Trans$Point_X
+            Y_Values <- Trans$Point_Y
+            
+            # Now perform the checks
+            RTP_Runway_ID_Tran <- RTP_Runway_ID_Tran %>%
+              mutate(Flag = ifelse(Is_In_Heading_Range(Ground_Track_Heading, Min_Heading, Max_Heading), 1, 0),
+                     Flag = ifelse(is.na(Min_Heading) | is.na(Max_Heading), Flag, 0),
+                     Flag = ifelse(Corrected_Mode_C >= Min_Alt & Corrected_Mode_C <= Max_Alt, Flag, 0),
+                     Flag = ifelse(Min_Sustained_RoCD >= Min_RoCD | is.na(Min_RoCD)),
+                     Flag = ifelse(Is_In_Polygon(X_Pos, Y_Pos, X_Values, Y_Values), Flag, 0)
+                     )
+            
+            # Split Valid and Invalid
+            Valid <- filter(RTP_Runway_ID_Tran, Flag == 1) %>% select(-Flag) %>% mutate(Value = New_Path_Leg)
+            RTP_Runway_ID_Tran <- filter(RTP_Runway_ID_Tran, Flag == 0) %>% select(-Flag)
+            
+            # Add to Completed 
+            if (!exists(RTP_Runway_ID_Comp)){RTP_Runway_ID_Comp <- Valid} else {
+              RTP_Runway_ID_Comp <- rbind(RTP_Runway_ID_Comp, Valid)
+            }
+            
+            
+          
+          }
+        
+        }
+        
+        if (nrow(RTP_Runway_ID_Tran) > 0){
+          RTP_Runway_ID_Tran <- mutate(RTP_Runway_ID_Tran, Value = Current_Path_Leg)
+        }
+        
+        if (!exists(RTP_Runway_ID_Comp)){RTP_Runway_ID_Comp <- RTP_Runway_ID_Tran} else {
+          RTP_Runway_ID_Comp <- rbind(RTP_Runway_ID_Comp, RTP_Runway_ID_Tran)
+        }
+      
+      }
+      
+        
+    }
+    
+    if (!exists(RTP_Comp)){RTP_Comp <- RTP_Runway_ID_Comp} else {
+      RTP_Comp <- rbind(RTP_Comp, RTP_Runway_ID_Comp)}
+      
+    rm(RTP_Runway_ID_Comp)
+    
+  }
+  
+  RTP_Comp <- rename(RTP_Comp, !!sym(Var) := Value)
+  
+  return(select(RTP_Comp, Radar_Track_Point_ID, !!sym(Var)))
+  
+}
+  
 
 
 
