@@ -140,6 +140,8 @@ Generate_RTPD_Glideslope_Altitude <- function(RTPD, Runway, ValorVer){
 Calculate_Intercept_Position_X <- function(){}
 Calculate_Intercept_Position_Y <- function(){}
 Calculate_DME_Position_X <- function(){}
+Calculate_DME_Position_Y <- function(){}
+Get_Heading_Difference <- function(){}
 
 Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   
@@ -156,6 +158,11 @@ Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   RTP <- left_join(RTP, FP, by = c("Flight_Plan_ID")) %>%
     left_join(Runway, by = c("Landing_Runway" = "Runway_Name"))
   
+  # Get the 4DME X/Y Co-oridnates
+  RTP <- RTP %>%
+    mutate(Runway_4DME_X = Calculate_DME_Position_X(Landing_Runway, 4*NM_to_m),
+           Runway_4DME_Y = Calculate_DME_Position_Y(Landing_Runway, 4*NM_to_m))
+  
   # Get the Ground Track Heading
   RTP <- RTP %>%
     mutate(Ground_Track_Heading = ifelse(Get_Heading_Difference(Mode_S_Track_HDG, Track_HDG) <= Max_Heading_Diff, Mode_S_Track_HDG, Track_HDG),
@@ -166,7 +173,37 @@ Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   RTP <- RTP %>%
     mutate(Intercept_X = Calculate_Intercept_Position_X(Threshold_X_Pos, Threshold_Y_Pos, Runway_Heading, X_Pos, Y_Pos, Ground_Track_Heading),
            Intercept_Y = Calculate_Intercept_Position_Y(Threshold_X_Pos, Threshold_Y_Pos, Runway_Heading, X_Pos, Y_Pos, Ground_Track_Heading),
-           Intercept_Dir_From_4DME = ifelse(Intercept_X >= Calculate_DME_Position_X(Landing_Runway, (4.0 * NM_to_m))), "E", "W")
+           Intercept_Dir_From_4DME = ifelse(Intercept_X >= Runway_4DME_X, "E", "W"))
+  
+  # Get the ILS Locus point (Intercept of ILS perpendicular to ILS) and it's range to threshold.
+  RTP <- RTP %>%
+    mutate(Runway_Heading_Perp = Runway_Heading + (pi/2),
+           ILS_Locus_X = Calculate_Intercept_Position_X(Threshold_X_Pos, Threshold_Y_Pos, Runway_Heading, X_Pos, Y_Pos, Runway_Heading_Perp),
+           ILS_Locus_Y = Calculate_Intercept_Position_Y(Threshold_X_Pos, Threshold_Y_Pos, Runway_Heading, X_Pos, Y_Pos, Runway_Heading_Perp),
+           ILS_Locus_RTT = Get_2D_Range(ILS_Locus_X, ILS_LocusY, Threshold_X_Pos, Threshold_Y_Pos),
+           Direction_From_ILS = ifelse(Y_Pos >= ILS_Locus_Y, "N", "S"))
+  
+  # Get the Range to ILS.
+  RTP <- RTP %>%
+    mutate(Range_To_ILS = Get_2D_Range(X_Pos, Y_Pos, ILS_Locus_X, ILS_Locus_Y))
+  
+  # Get the intercept of 4DME perpendicular and line from current position parallel to ILS.
+  RTP <- RTP %>%
+    mutate(Perpendicular_4DME_Locus_X = Calculate_Intercept_Position_X(Runway_4DME_X, Runway_4DME_Y, Runway_Heading_Perp, X_Pos, Y_Pos, Runway_Heading),
+           Direction_From_4DME = ifelse(X_Pos >= Perpendicular_4DME_Locus_X, "E", "W"))
+  
+  # Select relevant fields.
+  RTP <- RTP %>%
+    select(Radar_Track_Point_ID,
+           Intercept_X,
+           Intercept_Y,
+           Direction_From_ILS,
+           Direction_From_4DME,
+           Range_To_ILS,
+           Intercept_Dir_From_4DME,
+           ILS_Locus_RTT)
+  
+  return(RTP)
   
 }
 
