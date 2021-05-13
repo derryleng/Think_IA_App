@@ -55,7 +55,7 @@ version <- paste0(Sys.Date(), " ","V1.0 (AH)")
 
 #Not applicatable to this script uses database only
 # use_same_input_version <- T
-# 
+#
 # if (use_same_input_version == T) {
 #   input_version <- version
 # } else if (use_same_input_version == F) {
@@ -79,10 +79,10 @@ OutputFolder <- paste(ModuleFolder, Script_out, version, sep = "/")
 
 #Set to 1 when in git structure
 
-FileFlag <- c("global.R", "GlobalPlaceholder.txt")[2]
-ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[2]
-AlgoResourcesFolder <- c("non-global", "AlgoFunctionsPlaceholder")[2]
-ModulesFolder <- c("modules", "ModulesPlaceholder")[2]
+FileFlag <- c("global.R", "GlobalPlaceholder.txt")[1]
+ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[1]
+AlgoResourcesFolder <- c("algorithm_functions", "AlgoFunctionsPlaceholder")[1]
+ModulesFolder <- c("modules", "ModulesPlaceholder")[1]
 
 if (rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
@@ -102,8 +102,8 @@ Algo_Func_Dir <- file.path(Global_Dir, AlgoResourcesFolder)
 
 # Global Functions, imports & parameters
 source(file.path(Global_Dir, "Imports.R"), local = F)
-source(file.path(Global_Dir, "Global Parameters.R"), local = F)
-source(file.path(Global_Dir, "Global Functions.R"), local = F)
+source(file.path(Global_Dir, "unit conversions.R"), local = F)
+source(file.path(Global_Dir, "functions.R"), local = F)
 
 Base_Dir <- GetSaveDirectory(Algorithm =  OutputFolder, IorO = "Outputs")
 Create_Directory(Base_Dir)

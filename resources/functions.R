@@ -971,8 +971,8 @@ GetSaveDirectory <- function(Project, Algorithm, IorO){
 
 #Add new project direcotries here later, PWS, NODE, etc
   if (Project == 1){
-    #Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
-    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis")
+    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
+    # Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis")
   }
 
   # Go into Algorithm Folder

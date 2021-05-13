@@ -72,10 +72,10 @@ OutputFolder <- paste(ModuleFolder, Script_out, version, sep = "/")
 
 #Set to 1 when in git structure
 
-FileFlag <- c("global.R", "GlobalPlaceholder.txt")[2]
-ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[2]
-AlgoResourcesFolder <- c("non-global", "AlgoFunctionsPlaceholder")[2]
-ModulesFolder <- c("modules", "ModulesPlaceholder")[2]
+FileFlag <- c("global.R", "GlobalPlaceholder.txt")[1]
+ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[1]
+AlgoResourcesFolder <- c("algorithm_functions", "AlgoFunctionsPlaceholder")[1]
+ModulesFolder <- c("modules", "ModulesPlaceholder")[1]
 
 if (rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
@@ -95,8 +95,8 @@ Algo_Func_Dir <- file.path(Global_Dir, AlgoResourcesFolder)
 
 # Global Functions, imports & parameters
 source(file.path(Global_Dir, "Imports.R"), local = F)
-source(file.path(Global_Dir, "Global Parameters.R"), local = F)
-source(file.path(Global_Dir, "Global Functions.R"), local = F)
+source(file.path(Global_Dir, "unit conversions.R"), local = F)
+source(file.path(Global_Dir, "functions.R"), local = F)
 
 project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))
 
@@ -138,7 +138,7 @@ Separation_non_A380 <- 2
 aircraft_wake_icao4 <- unique(sqlQuery(con, sprintf("SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy")))
 names(aircraft_wake_icao4)[2] <- "ICAO_WTC"
 
-# Old database does not have this table populated, using reference file instead. 
+# Old database does not have this table populated, using reference file instead.
 # I have updated the ref file correct categories now- AH
 
 ref_wake_icao4 <- fread(file.path(ref_data, "reference_wake_separation_dist_icao.csv")) #%>% rename(ICAO_Wake_Separation_Distance =
@@ -436,9 +436,9 @@ part2row4 <- data.frame(Metric = "Mean Queued Wake Arrivals (in-trail)", Daily =
 
 part2output <- rbind(part2row1, part2row2, part2row3, part2row4)
 
-fwrite(wake_dist_breakdown, "Wake Pair Proportions.csv")
-fwrite(wake_dist_breakdown_queued, "Queued Wake Pair Proportions.csv")
-fwrite(part2output, "Arrival Totals.csv")
+fwrite(wake_dist_breakdown, file.path(out_data, "Wake Pair Proportions.csv"))
+fwrite(wake_dist_breakdown_queued, file.path(out_data, "Queued Wake Pair Proportions.csv"))
+fwrite(part2output, file.path(out_data, "Arrival Totals.csv"))
 
 #-------------------------------------------------------------------------------------------------------------------------------#
 # By Day and Hour
@@ -462,4 +462,4 @@ queued_hour_per_plot
 #--------------------------------------------------------------------#
 
 Wake_Pair_Counts <- na.omit(full_data %>% group_by(Leader_RECAT_WTC, Follower_RECAT_WTC, RECAT_Wake_Separation_Distance) %>% tally())
-fwrite(Wake_Pair_Counts, "Wake Pair Counts.csv")
+fwrite(Wake_Pair_Counts, file.path(out_data, "Wake Pair Counts.csv"))
