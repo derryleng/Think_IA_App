@@ -27,7 +27,7 @@ library(lubridate)
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
 # version <- "2021-05-04 V1.0 (AH)"
 
-use_same_input_version <- T
+use_same_input_version <- F
 
 if (use_same_input_version == T) {
   input_version <- version
@@ -52,10 +52,10 @@ OutputFolder <- paste(ModuleFolder, Script_out, version, sep = "/")
 
 #Set to 1 when in git structure
 
-FileFlag <- c("global.R", "GlobalPlaceholder.txt")[2]
-ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[2]
-AlgoResourcesFolder <- c("non-global", "AlgoFunctionsPlaceholder")[2]
-ModulesFolder <- c("modules", "ModulesPlaceholder")[2]
+FileFlag <- c("global.R", "GlobalPlaceholder.txt")[1]
+ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[1]
+AlgoResourcesFolder <- c("algorithm_functions", "AlgoFunctionsPlaceholder")[1]
+ModulesFolder <- c("modules", "ModulesPlaceholder")[1]
 
 if (rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
@@ -74,9 +74,9 @@ Global_Dir <- file.path(Global_Dir, ResourcesFolder)
 Algo_Func_Dir <- file.path(Global_Dir, AlgoResourcesFolder)
 
 # Global Functions, imports & parameters
-source(file.path(Global_Dir, "Imports.R"), local = F)
-source(file.path(Global_Dir, "Global Parameters.R"), local = F)
-source(file.path(Global_Dir, "Global Functions.R"), local = F)
+source(file.path(Global_Dir, "imports.R"), local = F)
+source(file.path(Global_Dir, "unit conversions.R"), local = F)
+source(file.path(Global_Dir, "functions.R"), local = F)
 
 project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))
 
@@ -178,7 +178,7 @@ for (i in 1:length(fp_files)){
 
 ## ac per day rate - based on GWCS 4nm
 # gwcs <- fread(paste0("C:\\Users\\", user,"\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Inputs\\GWCS_Input\\2021.04.13\\vw_Mode_S_Wind_Forecast_4nm.csv"))
-gwcs <- fread(file.path(inputs_dir, version, "vw_Mode_S_Wind_Forecast_4nm.csv"))
+gwcs <- fread(file.path(inputs_dir, input_version, "vw_Mode_S_Wind_Forecast_4nm.csv"))
 gwcs$month <- month(gwcs$FP_Date)
 g <- data.table()
 g1 <- data.table()

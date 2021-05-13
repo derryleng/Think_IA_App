@@ -70,7 +70,7 @@ library(getPass)
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
 # version <- "2021-05-04 V1.0 (AH)"
 
-use_same_input_version <- T
+use_same_input_version <- F
 
 if (use_same_input_version == T) {
   input_version <- version
@@ -95,10 +95,10 @@ OutputFolder <- paste(ModuleFolder, Script_out, version, sep = "/")
 
 #Set to 1 when in git structure
 
-FileFlag <- c("global.R", "GlobalPlaceholder.txt")[2]
-ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[2]
-AlgoResourcesFolder <- c("non-global", "AlgoFunctionsPlaceholder")[2]
-ModulesFolder <- c("modules", "ModulesPlaceholder")[2]
+FileFlag <- c("global.R", "GlobalPlaceholder.txt")[1]
+ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[1]
+AlgoResourcesFolder <- c("algorithm_functions", "AlgoFunctionsPlaceholder")[1]
+ModulesFolder <- c("modules", "ModulesPlaceholder")[1]
 
 if (rstudioapi::isAvailable()) {
   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
@@ -117,9 +117,9 @@ Global_Dir <- file.path(Global_Dir, ResourcesFolder)
 Algo_Func_Dir <- file.path(Global_Dir, AlgoResourcesFolder)
 
 # Global Functions, imports & parameters
-source(file.path(Global_Dir, "Imports.R"), local = F)
-source(file.path(Global_Dir, "Global Parameters.R"), local = F)
-source(file.path(Global_Dir, "Global Functions.R"), local = F)
+source(file.path(Global_Dir, "imports.R"), local = F)
+source(file.path(Global_Dir, "unit conversions.R"), local = F)
+source(file.path(Global_Dir, "functions.R"), local = F)
 
 project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))
 
@@ -131,7 +131,7 @@ Create_Directory(Base_Dir)
 # inputs_dir <- file.path(project_dir, "Inputs")
 # input <- file.path(inputs_dir, "GWCS_Input", version)
 
-# input <- GetSaveDirectory(Algorithm = paste(ModuleFolder, version, sep = "/"), IorO = "Inputs")
+input <- GetSaveDirectory(Project = project, Algorithm = paste(ModuleFolder, input_version, sep = "/"), IorO = "Inputs")
 
 #For this script only having 2 different out directories for the old outlier script
 outlier_dir <- paste(ModuleFolder, "Outlier Investigation", version, sep = "/")
@@ -186,12 +186,12 @@ apply_speed_buffer <- T
 # Wake pair proportions - update folder name
 # prop_str <-  paste("C:\\Users\\", user, "\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\Sample_Weighting_Output\\2021.04.13\\Wake Pair Proportions.csv", sep = "")
 #Using 1 here to force NavCan directory
-prop_str <- GetSaveDirectory(project, paste("Sample Weighting", version, "Wake Pair Proportions.csv", sep = "/"), "Outputs")
+prop_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", version, "Wake Pair Proportions.csv", sep = "/"), "Outputs")
 prop <- fread(prop_str)
 
 #Arrival totals - update folder name
 # arr_str <- paste("C:\\Users\\", user, "\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\Sample_Weighting_Output\\2021.04.13\\Arrival Totals.csv", sep = "")
-arr_str <- GetSaveDirectory(project, paste("Sample Weighting", version, "Arrival Totals.csv", sep = "/"), "Outputs")
+arr_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", version, "Arrival Totals.csv", sep = "/"), "Outputs")
 arr <- fread(arr_str)
 
 # Load the Segment Data
