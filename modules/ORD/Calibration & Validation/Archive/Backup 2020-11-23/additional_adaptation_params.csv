@@ -1,0 +1,7 @@
+Aircraft_Type,Compression_Commencement_Threshold,Landing_Stabilisation_Speed_Type_Lead,Landing_Stabilisation_Speed_Type_Follower,Min_Safe_Landing_Speed_Lead,Min_Safe_Landing_Speed_Follower,Apply_Gusting_Lead,Apply_Gusting_Follower,Local_Stabilisation_Distance_Lead,Local_Stabilisation_Distance_Follower,Steady_Procedural_Speed_Lead,Steady_Procedural_Speed_Follower,Final_Deceleration_Lead,Final_Deceleration_Follower,End_Initial_Deceleration_Distance_Lead,End_Initial_Deceleration_Distance_Follower,Initial_Procedural_Speed_Lead,Initial_Procedural_Speed_Follower,Initial_Deceleration_Lead,Initial_Deceleration_Follower
+TBM8,4,0,0,85.5,92.6,1,1,4,4,160,162,23.8,23.8,12,12,160,162,12.4,12.4
+TBM8,4,0,0,85.5,92.6,1,1,4,4,160,162,23.8,23.8,12,12,160,162,12.4,12.4
+PC12,4,0,0,86.6,101.2,1,1,4,4,160,162,22.8,22.8,12,12,160,162,12.4,12.4
+SF50,4,0,0,82.7,87.7,1,1,4,4,160,162,18.4,18.4,12,12,160,162,,
+H25B,4,0,0,121.4,126.4,1,1,4,4,160,162,25.7,25.7,12,12,160,162,12.4,12.4
+F,4,0,0,102.9,113.1,1,1,4,4,160,162,11.7,11.7,12,12,160,162,12.4,12.4

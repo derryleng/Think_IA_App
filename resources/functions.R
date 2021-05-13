@@ -43,7 +43,7 @@ runway_Opposite_End <- function(rwy) {
   rwy_split <- strsplit(gsub("^([R]{0,1})([0-9]{2})([A-Z]{0,1})$", "\\2 \\3 \\1", rwy), " ")
   new_rwy <- rep("", length(rwy_split))
   for (i in 1:length(rwy_split)) {
-    
+
     rwy_hdg <- as.numeric(rwy_split[[i]][1])
     new_rwy[i] <- if (rwy_hdg > 18) {
       as.character(rwy_hdg - 18)
@@ -53,7 +53,7 @@ runway_Opposite_End <- function(rwy) {
     if (nchar(new_rwy[i]) == 1) {
       new_rwy[i] <- paste0("0", new_rwy[i])
     }
-    
+
     if (rwy_split[[i]][2] == "L") {
       new_rwy[i] <- paste0(new_rwy[i], "R")
     } else if (rwy_split[[i]][2] == "R") {
@@ -61,11 +61,11 @@ runway_Opposite_End <- function(rwy) {
     } else {
       new_rwy[i] <- paste0(new_rwy[i], rwy_split[[i]][2])
     }
-    
+
     if (!is.na(rwy_split[[i]][3])) {
       new_rwy[i] <- paste0("R", new_rwy[i])
     }
-    
+
   }
   return(new_rwy)
 }
@@ -80,25 +80,25 @@ Time_String_To_Milliseconds <- function(Time_String) {
 
 generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
-  
+
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
-  
+
   # if (nrow(fp) > 0) {
-  #   
+  #
   #   if (nrow(tracks) > 0) {
-  #     
+  #
   #     if ("Flight_Plan_ID" %in% names(tracks)) tracks$Flight_Plan_ID <- NULL
-  #     
+  #
   #     fp$SSR_Code <- as.character(fp$SSR_Code)
   #     tracks$SSR_Code <- as.character(tracks$SSR_Code)
-  #     
+  #
   #     tracks$generateFPID_UID <- seq(1, nrow(tracks), 1)
-  #     
+  #
   #     # tracks_invalid <- tracks[is.na(Track_Date) | is.na(Track_Time) | is.na(Callsign) | is.na(SSR_Code)]
   #     # tracks_valid <- tracks[!is.na(Track_Date) & !is.na(Track_Time) & !is.na(Callsign) & !is.na(SSR_Code)]
-  #     
+  #
   #     tracks_proc <- tracks[fp, roll = "nearest", on = c(Track_Date = "FP_Date", Callsign = "Callsign", SSR_Code = "SSR_Code", Track_Time = "FP_Time")]
-  #     
+  #
   #     if (skip_leftover) {
   #       tracks_proc$generateFPID_UID <- NULL
   #       return(tracks_proc)
@@ -109,18 +109,18 @@ generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   #       tracks_combined$generateFPID_UID <- NULL
   #       return(tracks_combined)
   #     }
-  #     
+  #
   #   } else {
   #     message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in processed track data")
   #   }
-  #   
+  #
   # } else {
   #   message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in tbl_Flight_Plan")
   # }
-  
+
   tracks$Flight_Plan_ID <- NULL
   tracks$Flight_Plan_ID <- character()
-  
+
     for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
       tracks[
         Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
@@ -136,9 +136,9 @@ generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
 
 generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
-  
+
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan"))
-  
+
   # if (nrow(fp) > 0) {
   #
   #   if (nrow(tracks) > 0) {
@@ -173,10 +173,10 @@ generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   # } else {
   #   message("[",Sys.time(),"] ", "Failed to generate Flight_Plan_ID - no rows in tbl_Flight_Plan")
   # }
-  
+
   tracks$Flight_Plan_ID <- NULL
   tracks$Flight_Plan_ID <- character()
-  
+
   #   for (j in unique(fp[FP_Date %in% unique(tracks$Track_Date)]$Flight_Plan_ID)) {
   #     tracks[
   #       Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
@@ -189,24 +189,24 @@ generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   #   return(tracks)
   #
   # }
-  
+
   tracks$SSR_Code <- as.numeric(tracks$SSR_Code)
   fp$SSR_Code <- as.numeric(fp$SSR_Code)
-  
+
   tracks <- tracks[!is.na(Track_Date) & !is.na(SSR_Code) & !is.na(Track_Time)]
   tracks <- tracks[!is.na(Mode_C) & Mode_C != 99999999]
-  
+
   #tracks_before_for_loop <- tracks
-  
+
   for (i in unique(tracks[,paste(Track_Date, SSR_Code, Callsign, "-", Track_Number)])) {
-    
+
     tracks_i <- tracks[paste(Track_Date, SSR_Code, Callsign, "-", Track_Number) == i]
-    
+
     if (all(is.na(tracks_i$Mode_C)) | all(is.na(tracks_i[Mode_C != 99999999]$Mode_C))) {
       message(i, " - no Mode C data.")
       next
     }
-    
+
     fpid <- if (is.na(tracks_i$Callsign[1]) & min(tracks_i$Mode_C, na.rm = T) <= 1000 & max(tracks_i[Mode_C != 99999999]$Mode_C, na.rm = T) >= 1000) { # min mode C <= 1000 as two identical SSR_codes at same time. Max Mode C >= 1000 as taxiing aircraft picked up
       fp[paste(FP_Date, SSR_Code, "NA") == strsplit(i, " -")[[1]][1] &
            abs(FP_Time - max(tracks_i$Track_Time, na.rm = T)) < 7200
@@ -216,16 +216,16 @@ generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
            abs(FP_Time - max(tracks_i$Track_Time, na.rm = T)) < 7200
       ]$Flight_Plan_ID[1]
     }
-    
+
     tracks[paste(Track_Date, SSR_Code, Callsign, "-", Track_Number) == i]$Flight_Plan_ID <- fpid
     #message(i, " ", fpid)
   }
-  
+
   tracks$Flight_Plan_ID <- as.numeric(tracks$Flight_Plan_ID)
   tracks[is.na(Callsign)]$Callsign <- " "
-  
+
   return(tracks)
-  
+
 }
 
 
@@ -248,16 +248,16 @@ XY_To_Heading <- function(vx, vy) {
 # For handling 90XX Leidos logging formats (used in TBS and CAV Log Loaders)
 # Must have a "Date Time Message Type" line directly before each 90XX data line.
 parse_log_lines <- function(raw_logs, log_type, col_names = NA) {
-  
+
   logs <- rbindlist(lapply(grep(paste0("^", log_type, ", .*$"), raw_logs), function(i) {
-    
+
     Log_Date <- as.character(as.Date(gsub("^([0-9]{2}-[0-9]{2}-[0-9]{2})[T ]{1}([0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3})  Message: [0-9]{4}$", "\\1", raw_logs[i-1]), "%y-%m-%d"))
     Log_Time <- Time_String_To_Seconds(gsub("^([0-9]{2}-[0-9]{2}-[0-9]{2})[T ]{1}([0-9]{2}:[0-9]{2}:[0-9]{2}.[0-9]{3})  Message: [0-9]{4}$", "\\2", raw_logs[i-1]))
-    
+
     LogContents <- data.table(t(c(Log_Date, Log_Time, unlist(strsplit(raw_logs[i], split = "\\s{0,},\\s{0,}")))))
-    
+
     if (!is.na(col_names) & ncol(LogContents) > 0) {
-      
+
       if (length(col_names) < ncol(LogContents)) {
         message("WARNING: Not enough column names supplied for parse_log_lines: ", log_type, " - expected ", ncol(LogContents), " but received ", length(col_names), ".")
         names(LogContents)[1:length(col_names)] <- col_names
@@ -267,15 +267,15 @@ parse_log_lines <- function(raw_logs, log_type, col_names = NA) {
         # message("WARNING: Too many column names supplied for parse_log_lines: ", log_type, " - expected ", ncol(LogContents), " but received ", length(col_names), ".")
         names(LogContents) <- col_names[1:length(names(LogContents))]
       }
-      
+
     }
-    
+
     return(LogContents)
-    
+
   }), use.names = T, fill = T)
-  
+
   return(logs)
-  
+
 }
 
 # Required to extend DT filter ability on character columns
@@ -289,15 +289,15 @@ factoriseCharCols <- function(df) {
 configVolume_To_pointSequence <- function(x, dbi_con) {
   # x: Config file 05_Populate_Airspace_Volumes.csv as data.table
   # dbi_con: database connection
-  
+
   Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
   tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
   tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
-  
+
   polygons <- data.table()
-  
+
   for (i in 1:nrow(x)) {
-    
+
     polygons_i <- data.table(
       Volume_Name = rep(x$Volume_Name[i], 5),
       Airfield_Name = rep(Airfield_Name, 5),
@@ -305,34 +305,34 @@ configVolume_To_pointSequence <- function(x, dbi_con) {
       Point_X = as.numeric(c(x$Start_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$End_Dist_From_Threshold[i], x$Start_Dist_From_Threshold[i])) * fnc_GI_Nm_To_M(),
       Point_Y = as.numeric(c(x$Lateral_Dist_Left[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Right[i], x$Lateral_Dist_Left[i], x$Lateral_Dist_Left[i])) * fnc_GI_Nm_To_M()
     )
-    
+
     grid_i <- usp_GI_Runway_To_XY(
       gsub("^([A-Z0-9]{1,})_.*$", "R\\1", polygons_i$Volume_Name[1]),
       polygons_i$Point_X,
       polygons_i$Point_Y,
       tbl_Runway
     )
-    
+
     updated_i <- usp_GI_Latlong_From_XY(
       grid_i$Node_X,
       grid_i$Node_Y,
       tbl_Adaptation_Data
     )
-    
+
     polygons_i$Point_X <- grid_i$Node_X
     polygons_i$Point_Y <- grid_i$Node_Y
     polygons_i$Latitude <- updated_i$PositionLatitude
     polygons_i$Longitude <- updated_i$PositionLongitude
-    
+
     polygons <- rbind(
       polygons,
       polygons_i
     )
-    
+
   }
-  
+
   return(polygons)
-  
+
 }
 
 # ----------------------------------------------------------------------- #
@@ -459,10 +459,10 @@ fnc_GI_To_Vector_Y <- function(Vector_Amplitude, Vector_Angle) {
 #   For a position supplied in cartesian representation relative to an
 # origin latitude and longitude position, this procedure calculates
 # the position as a latitude and longitude.
-# 
+#
 #   Stereographic from OGP (International Association og Oil and Gas Producers)
 # using local grid origin and WGS84 Earth.
-# Stereographic relates to a projection from the centre of the sphere onto a 
+# Stereographic relates to a projection from the centre of the sphere onto a
 # planar surface tangential at the origin.
 # The calculations first calculate the conformal lat/long of the origin and the
 # point, from the supplied geodetic lat/long using WGS84 Earth spheroid parameters.
@@ -476,208 +476,208 @@ fnc_GI_To_Vector_Y <- function(Vector_Amplitude, Vector_Angle) {
 #   Coordinate Conversion and Transformations including Formulas, Page 42)
 
 usp_GI_Latlong_From_XY <- function(Position_X, Position_Y, tbl_Adaptation_Data) {
-  
+
   # False Easting / Northings and scaling
   FN <- tbl_Adaptation_Data$Grid_Offset_Y[1]
   FE <- tbl_Adaptation_Data$Grid_Offset_X[1]
   K_0 <- 1.0
-  
+
   # Geodetic origin latitude / longitude
   Phi_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lat[1]
   Lamda_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lon[1]
-  
+
   # Semi_Major_Axis (metres)
   a <- 6378137.0
-  
+
   # Semi_Minor_Axis (metres)
   b <- 6356752.0
-  
+
   # Flattening
   f <- (a - b) / a
-  
+
   # Eccentricity
   e2 <- 2 * f - f^2
   e <- sqrt(e2)
-  
+
   # Radius of curvature in the meridian
   Rho_0 <- a * (1 - e2) / (1 - e2 * sin(Phi_0)^2)^1.5
-  
+
   # Radius of curvature in the prime vertical
   Nu_0 <- a / (1 - e2 * sin(Phi_0)^2)^0.5
-  
+
   # Conformal sphere parameters
   R <- (Rho_0 * Nu_0)^0.5
   n <- (1 + (e2 * cos(Phi_0)^4 / (1 - e2)))^0.5
-  
+
   # Intermediates for conformal origin
   S1 <- (1 + sin(Phi_0)) / (1 - sin(Phi_0))
   S2 <- (1 - e * sin(Phi_0)) / (1 + e * sin(Phi_0))
   w1 <- (S1 * S2^e)^n
   c <- (n + sin(Phi_0)) * (1 - (w1 - 1) / (w1 + 1)) / ((n - sin(Phi_0)) * (1 + (w1 - 1) / (w1 + 1)))
   w2 <- c * w1
-  
+
   # Conformal origin latitude / longitude
   Chi_0 <- asin((w2 - 1) / (w2 + 1))
   Delta_0 = Lamda_0
-  
+
   # Intermediates
   g <- 2 * R * K_0 * tan(pi / 4 - Chi_0 / 2)
   h <- 4 * R * K_0 * tan(Chi_0) + g
   i <- atan((Position_X - FE) / (h + (Position_Y - FN)))
   j <- atan((Position_X - FE) / (g - (Position_Y - FN))) - i
-  
+
   # Conformal point latitude.
   Chi <- Chi_0 + 2 * atan( ((Position_Y - FN) - (Position_X - FE) * tan(j / 2)) / (2 * R * K_0) )
-  
+
   # Conformal point longitude.
   Delta <- j + (2 * i) + Delta_0
-  
+
   # Geodetic longitude.
   Lamda <- (Delta - Delta_0) / n + Delta_0
-  
+
   # Isomeric latitude.
   Psi <- 0.5 * log( (1 + sin(Chi)) / (c * (1 - sin(Chi))) ) / n
-  
+
   # First approximation
   Phi_1 <- 2 * atan( exp(Psi) ) - pi / 2
-  
+
   # Iterate until error in Phi is sufficiently small.
-  # Psi_i is the isometric latutude at Phi_i.	
-  
+  # Psi_i is the isometric latutude at Phi_i.
+
   Phi_i <- pi  # An impossible latitude
-  
+
   Phi_i_Plus1 <- Phi_1  # To get the loop going
-  
+
   Latitude_Accuracy <- (0.0001 / 180.0) * pi  # About 10m
-  
+
   # i is effectively 1 first time through.
   for (k in 1:length(i)) {
     Count <- 10  # Count down to make sure we escape the loop!
     while (abs(Phi_i_Plus1[k] - Phi_i) > Latitude_Accuracy & Count >= 0) {
       Phi_i <- Phi_i_Plus1[k]
-      
+
       Psi_i <- log( tan(Phi_i / 2 + pi / 4) * ((1 - e * sin(Phi_i)) / (1 + e * sin(Phi_i)))^(e / 2) )
-      
+
       Phi_i_Plus1[k] <- Phi_i - (Psi_i - Psi[k]) * cos(Phi_i) * (1 - e^2 * sin(Phi_i)^2) / (1 - e^2)
-      
+
       Count <- Count - 1
     }
   }
-  
+
   # Set function output parameters.
   return(data.table(
     PositionLatitude = Phi_i_Plus1,
     PositionLongitude = Lamda
   ))
-  
+
 }
 
 usp_GI_Latlong_To_XY <- function(PositionLatitude, PositionLongitude, tbl_Adaptation_Data) {
-  
+
   # Copy inputs for naming convenience.
   Phi <- PositionLatitude
   Lamda <- PositionLongitude
-  
+
   # Set up False Easting / Northings and scaling as required.
   FN <- tbl_Adaptation_Data$Grid_Offset_Y[1]
   FE <- tbl_Adaptation_Data$Grid_Offset_X[1]
   K_0 <- 1.0
-  
+
   # Set up origin as required (R27L threshold for local coords).
   # Geodetic origin latitude / longitude.
   Phi_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lat[1]
   Lamda_0 <- tbl_Adaptation_Data$Grid_Projection_Origin_Lon[1]
-  
+
   # WGS84 Earth spheroid parameters.
-  
+
   # Semi_Major_Axis (metres)
   a <- 6378137.0
-  
+
   # Semi_Minor_Axis (metres)
   b <- 6356752.0
-  
+
   # Flattening.
   f <- (a - b) / a
-  
+
   # Eccentricity.
   e2 <- 2 * f - f^2
   e <- sqrt(e2)
-  
+
   # Radius of curvature in the meridian.
   Rho_0 <- a * (1 - e2) / (1 - e2 * sin(Phi_0)^2)^1.5
-  
+
   # Radius of curvature in the prime vertical.
   Nu_0 <- a / (1 - e2 * sin(Phi_0)^2)^0.5
-  
+
   # Conformal sphere parameters.
   R <- (Rho_0 * Nu_0)^0.5
-  
+
   n <- (1 + (e2 * cos(Phi_0)^4 / (1 - e2)))^0.5
-  
+
   # Intermediates for conformal origin.
   S1 <- (1 + sin(Phi_0)) / (1 - sin(Phi_0))
-  
+
   S2 <- (1 - e * sin(Phi_0)) / (1 + e * sin(Phi_0))
-  
+
   w1 <- (S1 * S2^e)^n
-  
+
   c <- (n + sin(Phi_0)) * (1 - (w1 - 1) / (w1 + 1)) / ((n - sin(Phi_0)) * (1 + (w1 - 1) / (w1 + 1)))
-  
+
   w2 <- c * w1
-  
+
   # Conformal origin latitude.
   Chi_0 <- asin((w2 - 1) / (w2 + 1))
-  
+
   # Conformal origin longitude.
   Delta_0 <- Lamda_0
-  
+
   # Intermediates for conformal point.
   Sa <- (1 + sin(Phi)) / (1 - sin(Phi))
-  
+
   Sb <- (1 - e * sin(Phi)) / (1 + e * sin(Phi))
-  
+
   w <- c * (Sa * Sb^e)^n
-  
+
   # Conformal point latitude.
   Chi <- asin((w - 1) / (w + 1))
-  
+
   # Conformal point longitude.
   Delta <- n * (Lamda - Delta_0) + Delta_0
-  
+
   # Intermediates for final grid calcs.
   B_Cap <- (1 + sin(Chi) * sin(Chi_0) + cos(Chi) * cos(Chi_0) * cos(Delta - Delta_0))
-  
+
   # Eastings (X) and Northings (Y)
   return(data.table(
     Position_X = FE + 2 * R * K_0 * cos(Chi) * sin(Delta - Delta_0) / B_Cap,
     Position_Y = FN + 2 * R * K_0 * (sin(Chi) * cos(Chi_0) - cos(Chi) * sin(Chi_0) * cos(Delta - Delta_0)) / B_Cap
   ))
-  
+
 }
 
 # Synopsis:	This procedure calculates NODE X/Y coordinates from runway
 # relative coordinates.
-# 
+#
 # Runway relative coordinates are X/Y coordinates in metres, but relative to
 # runway threshold for the specified runway.  The conversion involves a
 # rotation to the axis direction of the centre-line and a translation to the
 # NODE X/Y coordinates of the runway threshold.
 
 usp_GI_Runway_To_XY <- function(Runway_Nom, Runway_X, Runway_Y, tbl_Runway) {
-  
+
   # Get the runway threshold data.
   Runway_Threshold_X_Pos <- tbl_Runway[Runway_Name == Runway_Nom]$Threshold_X_Pos
   Runway_Threshold_Y_Pos <- tbl_Runway[Runway_Name == Runway_Nom]$Threshold_Y_Pos
-  
+
   # We want to rotate the coordinate system by the runway heading offset in the Node
   # system, which is NOT the true runway heading!  This is calculated using the x/y
   # position of the two threshold coordinates at the two ends of the tarmac.
   Theta <- tbl_Runway[Runway_Name == Runway_Nom]$NODE_Heading_Offset
-  
+
   # Calculate the coordinates.
   Node_X = (Runway_X * cos(Theta) + Runway_Y * sin(Theta)) + Runway_Threshold_X_Pos
   Node_Y = (-Runway_X * sin(Theta) + Runway_Y * cos(Theta)) + Runway_Threshold_Y_Pos
-  
+
   return(data.table(Node_X = Node_X, Node_Y = Node_Y))
 }
 
@@ -860,22 +860,22 @@ XML_Tag_Close <- function(tag_name) {
 
 # Convert list type to vector of XML strings
 List_To_XML <- function(x, indent = 0, out_vec = c()) {
-  
+
   x_names <- names(x)
   i <- 1
-  
+
   while (i <= length(x)) {
-    
+
     attrs_list <- NA
     skip_next <- F
-    
+
     if (i < length(x)) {
       if (x_names[i + 1] == paste0(x_names[i], ".attr")) {
         attrs_list <- x[[i+1]]
         skip_next <- T
       }
     }
-    
+
     if (is.numeric(x[[i]]) | is.character(x[[i]])) {
       out_vec <- c(out_vec, paste0(
         paste(rep("    ", indent), collapse = ""),
@@ -890,17 +890,17 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
     } else {
       warning(paste0("Invalid data type at ", x_names[i]))
     }
-    
+
     if (skip_next) {
       i <- i + 2
     } else {
       i <- i + 1
     }
-    
+
   }
-  
+
   return(out_vec)
-  
+
 }
 
 
@@ -919,12 +919,12 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
 # ModuleSubfolder <- "<SUBFOLDER IN THINK IA APP>"
 # OutputFolder <- "<ALGORITHM FOLDER ON DROPBOX>"
 # # --------------------------------------------------------------------------- #
-# 
+#
 # FileFlag <- c("global.R", "GlobalPlaceholder.txt")[1]
 # ResourcesFolder <- c("resources", "GlobalFunctionsPlaceholder")[1]
 # AlgoResourcesFolder <- c("algorithm_functions", "AlgoFunctionsPlaceholder")[1]
 # ModulesFolder <- c("modules", "ModulesPlaceholder")[1]
-# 
+#
 # if (rstudioapi::isAvailable()) {
 #   setwd(dirname(rstudioapi::getSourceEditorContext()$path))
 #   Base_Dir <- getwd()
@@ -937,16 +937,19 @@ List_To_XML <- function(x, indent = 0, out_vec = c()) {
 #   Global_Dir <- getwd()
 #   Script_Dir <- file.path(Global_Dir, ModulesFolder, ModuleFolder, ModuleSubfolder)
 # }
-# 
+#
 # Global_Dir <- file.path(Global_Dir, ResourcesFolder)
 # Algo_Func_Dir <- file.path(Global_Dir, AlgoResourcesFolder)
-# 
+#
 # # Global Functions, imports & parameters
-# source(file.path(Global_Dir, "imports.R"), local = F)
+# source(file.path(Global_Dir, "Imports.R"), local = F)
 # source(file.path(Global_Dir, "unit conversions.R"), local = F)
 # source(file.path(Global_Dir, "functions.R"), local = F)
-# 
-# Base_Dir <- GetSaveDirectory(Project, OutputFolder)
+#
+# Define Project with a numeric value
+# Base_Dir <- GetSaveDirectory(Project = project, Algorithm =  OutputFolder, IorO = "Outputs")
+# or leave blank and the function will request the value from you
+# Base_Dir <- GetSaveDirectory(Algorithm =  OutputFolder, IorO = "Outputs")
 # Create_Directory(Base_Dir)
 
 # Function to Source Files based on Directory Precedence System.
@@ -962,21 +965,24 @@ GetScriptPath <- function(ScriptDirectory, Airfield, FileName){
   }
 }
 
-# Function to choose Output Path depending on Project (Given user Input)
-GetSaveDirectory <- function(Project, Algorithm){
-  
-  Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))
-  
+GetSaveDirectory <- function(Project, Algorithm, IorO){
+
+  if(missing(Project)){Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))}
+
+#Add new project direcotries here later, PWS, NODE, etc
   if (Project == 1){
-    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
+    #Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
+    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis")
   }
-  
+
   # Go into Algorithm Folder
-  Dir <- file.path(Dir, "Outputs", Algorithm)
-  
+  # IorO as "Inputs" or "Outputs" as a string
+  Dir <- file.path(Dir, IorO, Algorithm)
+
   return(Dir)
-  
+
 }
+
 
 # ----------------------------------------------- #
 # 0.2.1. Config Functions
@@ -1005,36 +1011,36 @@ Load_Adaptation_Table <- function(con, Table_Name){
 
 
 Load_CSV_Data <- function(con, Name, Query, Version_In_Name, Airfield_Dir, Local_Only, Type, Directory, Working_Version, File_Version){
-  
+
   if (Type == "Input"){Initial_Dir <- file.path(Airfield_Dir, "Inputs")}
   if (Type == "Output"){Initial_Dir <- file.path(Airfield_Dir, "Outputs")}
   Initial_Dir <- Airfield_Dir
-  
+
   Version_1_Split <- unlist(strsplit(Working_Version, "-"))
   Version_2_Split <- unlist(strsplit(File_Version, "-"))
-  
+
   Dir_Current <- file.path(Initial_Dir, paste0("v", Version_1_Split[1]))
   Dir_Alternate <- file.path(Initial_Dir, paste0("v", Version_2_Split[1]))
-  
+
   if (length(Version_1_Split) > 1){
     Dir_Current <- file.path(Dir_Current, paste0("v", Version_1_Split[1], "-", Version_1_Split[2]))
     Dir_Alternate <- file.path(Dir_Alternate, paste0("v", Version_2_Split[1], "-", Version_2_Split[2]))
   }
-  
+
   if (length(Version_1_Split) > 2){
     Dir_Current <- file.path(Dir_Current, paste0("v", Version_1_Split[1], "-", Version_1_Split[2], "-", Version_1_Split[3]))
     Dir_Alternate <- file.path(Dir_Alternate, paste0("v", Version_2_Split[1], "-", Version_2_Split[2], "-", Version_2_Split[3]))
   }
-  
+
   if (Version_In_Name){FileName <- paste0(Name, " v", File_Version, ".csv")} else {FileName <- paste0(Name, ".csv")}
   if (!is.na(Directory)){
     Dir_Current <- file.path(Dir_Current, Directory)
     Dir_Alternate <- file.path(Dir_Alternate, Directory)
   }
-  
+
   Dir_Current <- file.path(Dir_Current, FileName)
   Dir_Alternate <- file.path(Dir_Alternate, FileName)
-  
+
   if (file.exists(Dir_Alternate)){
     File <- fread(Dir_Alternate)
     return(File)}
@@ -1050,8 +1056,8 @@ Load_CSV_Data <- function(con, Name, Query, Version_In_Name, Airfield_Dir, Local
     message(paste0("Error: File not Found."))
     return(NA)
   }
-  
-  
+
+
 }
 
 Load_Generic_DB_Query <- function(con, Name, Query, Version_In_Name, Airfield_Dir, Directory, Working_Version, File_Version){
@@ -1150,7 +1156,7 @@ Convert_Seconds_to_Time_String <- function(total_secs){
 # ----------------------------------------------- #
 # 0.2.2. Simple Mathematical Functions
 # ----------------------------------------------- #
-# 
+#
 # ----------------------------------------------- #
 
 # ----------------------------------------------- #
@@ -1204,7 +1210,7 @@ Get_2D_Vy <- function(amp, angle){
 
 Get_2D_Range <- function(x1, y1, x2, y2){
   return(Get_2D_Amplitude((x1-x2), (y1-y2)))
-} 
+}
 
 # ----------------------------------------------- #
 # 0.2.2.6. Calculate 2D Scalar Product.
@@ -1214,10 +1220,6 @@ Get_2D_Range <- function(x1, y1, x2, y2){
 Get_2D_Scalar_Product <- function(amp1, ang1, amp2, ang2){
   prod <- abs(amp1)*abs(amp2)*cos(abs(ang1 - ang2))
   return(prod)
-} 
+}
 
 # ----------------------------------------------- #
-
-
-
-

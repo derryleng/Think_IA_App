@@ -1,0 +1,5 @@
+Please note that ORD Resources.R is retired. Library imports and variables in this script was moved to Run Script.R and what is left was renamed as Functions.R.
+
+I have left the ORD Resources.R script in this folder due to MC script dependency. I will incorporate MC changes into main scripts when time allows.
+
+Derry
