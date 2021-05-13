@@ -531,3 +531,57 @@ calculate_headwind_component <- function(runway_hdg, wind_hdg, wind_spd){
   return(headwind_component)
 }
 
+# Only works for RECAT
+PlotAgainstReferenceFTA <- function(Data, Reference, RefDists, PlotVar, SepDist, FollowerWTC, Unit, Colour){
+  
+  # String for Title
+  if (Unit == "IAS"){
+    Unit <- "IAS (kts)"
+    PlotTitle <- "Follower Mean IAS"
+    names(Reference)[ncol(Reference)] <- "IAS"
+    Var <- "IAS"
+  }
+  
+  if (Unit == "Time"){
+    Unit <- "Time (s)"
+    PlotTitle <- "Flying time"
+    names(Reference)[ncol(Reference)] <- "Time"
+    Var <- "Time"
+  }
+  
+  names(RefDists)[ncol(RefDists)] <- "Distance"
+  
+  # Get variable names.
+  Dist_Var <- "Separation_Distance"
+  Foll_Var <- "Wake_Cat"
+  
+  # Filter Data for WTCs of interest
+  Data <- filter(Data, !!sym(Dist_Var) == SepDist & !!sym(Foll_Var) == FollowerWTC)
+  
+  if (ncol(Reference) == 4){
+    Reference <- select(Reference, -Runway) %>% unique()
+    RefDists <- select(Reference, -Runway) %>% unique()
+  }
+  Reference <- left_join(Reference, RefDists, by = c("Leader_WTC", "Follower_WTC"))
+  RefVar <- as.numeric(filter(Reference, Distance == !!sym(Dist_Var) & Follower_WTC == Follower_WTC) %>% select(!!sym(Var)))[1]
+  String <- paste0(PlotTitle)
+  
+  # Initialise Histogram plot
+  Plot <- ggplot(Data) + geom_histogram(mapping = aes(x = !!sym(PlotVar), y = ..density..), binwidth = 2, fill = Colour) + geom_vline(xintercept = RefVar) + 
+    labs(x = Unit, y = "Density", title = String, subtitle = PlotVar)
+  
+  return(Plot)
+  
+}
+
+
+# Uses PlotAgainstReference from functions.R
+PlotAverageIASAgainstReference <- function(Data, RefSpeeds, RefDists, SpeedVar, RecatorLegacy, LeaderWTC, FollowerWTC){
+  
+  Plot <- PlotAgainstReferenceFTA(Data, RefSpeeds, RefDists, PlotVar, SepDist, FollowerWTC, Unit, Colour)
+  Plot <- Plot + xlim(80, 240)
+  
+  return(Plot)
+  
+}
+

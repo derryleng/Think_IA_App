@@ -168,6 +168,59 @@ Calculate_PM_Time_Separation_Actual <- function(PM, Segs, Grouping_Type, Seg_Siz
 }
 
 
+PlotAgainstReferencePM <- function(Data, Reference, RefDists, PlotVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit, Colour){
+  
+  # String for Title
+  if (Unit == "IAS"){
+    Unit <- "IAS (kts)"
+    PlotTitle <- "Follower IAS"
+  }
+  
+  if (Unit == "Time"){
+    Unit <- "Time (s)"
+    PlotTitle <- "Time Separations"
+  }
+  
+  # Get variable names.
+  Leader_Var <- paste0("Leader_", RecatorLegacy, "_Wake_Cat")
+  Foll_Var <- paste0("Follower_", RecatorLegacy, "_Wake_Cat")
+  
+  # Filter Data for WTCs of interest
+  Data <- filter(Data, !!sym(Leader_Var) == LeaderWTC & !!sym(Foll_Var) == FollowerWTC)
+
+  RefVar <- as.numeric(filter(Reference, Leader_WTC == LeaderWTC, Follower_WTC == FollowerWTC))
+  RefDist <- as.numeric(filter(RefDists, Leader_WTC == LeaderWTC, Follower_WTC == FollowerWTC)$Reference_Wake_Separation_Distance)
+  String <- paste0(PlotTitle, " for pair ", LeaderWTC, "-", FollowerWTC, " (", RefDist, "NM)")
+  
+  # Initialise Histogram plot
+  Plot <- ggplot(Data) + geom_histogram(mapping = aes(x = !!sym(PlotVar), y = ..density..), binwidth = 2, fill = Colour) + geom_vline(xintercept = RefVar) + 
+    labs(x = Unit, y = "Density", title = String, subtitle = PlotVar)
+  
+  return(Plot)
+  
+}
+
+
+# Uses PlotAgainstReference from functions.R
+PlotTimeSeparationAgainstReference <- function(PM, RefTimes, RefDists, TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC){
+  
+  Plot <- PlotAgainstReferencePM(PM, RefTimes, RefDists, PlotVar = TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit = "Time", Colour = "magenta")
+  Plot <- Plot + xlim(40, 200)
+  
+  return(Plot)
+  
+}
+
+PlotFollowerIASAgainstReference <- function(Data, RefSpeeds, RefDists, SpeedVar, RecatorLegacy, LeaderWTC, FollowerWTC){
+  
+  Plot <- PlotAgainstReferencePM(PM, RefSpeeds, RefDists, PlotVar = SpeedVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit = "IAS", Colour = "green")
+  Plot <- Plot + xlim(80, 240)
+  
+  return(Plot)
+  
+}
+
+
 
 
 

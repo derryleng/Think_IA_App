@@ -138,13 +138,13 @@ Bolster_ROT <- F
 # ---------------------------------------------------- #
 
 # Config Parameters for Time Spacing Calculations (NAV)
-Separation_Type <- c("Perfect", "Perfect", "Perfect", "Perfect", "Perfect", "Perfect", "Perfect", "Perfect")
-Separation_Delivery <- c(1, 1, 1, 1, 0, 0, 0, 0)
-Separation_Distance <- c("Recat_eTBS_0DME_Wake_Separation_Distance", "Recat_eTBS_0DME_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance",
-                         "Recat_eTBS_0DME_Wake_Separation_Distance", "Recat_eTBS_0DME_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance")
-Separation_Time <- c("Perfect_1DME_Wake_Separation_Time_TBS", "Perfect_1DME_Wake_Separation_Time_TBS_US05", "Perfect_1DME_Wake_Separation_Time_DBS", "Perfect_1DME_Wake_Separation_Time_DBS_US05",
-                     "Perfect_0DME_Wake_Separation_Time_TBS", "Perfect_0DME_Wake_Separation_Time_TBS_US05", "Perfect_0DME_Wake_Separation_Time_DBS", "Perfect_0DME_Wake_Separation_Time_DBS_US05")
-Separation_Under <- c(0, 0.5, 0, 0.5, 0, 0.5, 0, 0.5)
+Separation_Type <- c("Perfect", "Perfect", "Perfect", "Perfect")#, "Perfect", "Perfect", "Perfect", "Perfect")
+Separation_Delivery <- c(1, 1, 1, 1)#, 0, 0, 0, 0)
+Separation_Distance <- c("Recat_eTBS_0DME_Wake_Separation_Distance", "Recat_eTBS_0DME_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance")#,
+                         #"Recat_eTBS_0DME_Wake_Separation_Distance", "Recat_eTBS_0DME_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance", "Ref_Recat_Wake_Separation_Distance")
+Separation_Time <- c("Perfect_1DME_Wake_Separation_Time_TBS", "Perfect_1DME_Wake_Separation_Time_TBS_US05", "Perfect_1DME_Wake_Separation_Time_DBS", "Perfect_1DME_Wake_Separation_Time_DBS_US05")#,
+                     #"Perfect_0DME_Wake_Separation_Time_TBS", "Perfect_0DME_Wake_Separation_Time_TBS_US05", "Perfect_0DME_Wake_Separation_Time_DBS", "Perfect_0DME_Wake_Separation_Time_DBS_US05")
+Separation_Under <- c(0, 0.5, 0, 0.5)#, 0, 0.5, 0, 0.5)
 
 # Grouping Variable type (Use "Landing_Pair_ID" if both outputs from DB) TODO: Automatically Determine Based on File Versions
 Grouping_Type <- "Landing_Pair_ID"

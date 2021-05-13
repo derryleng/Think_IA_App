@@ -80,3 +80,19 @@ Summary_Wake_Runway <- Summary_Wake_Runway %>%
   mutate(Median_Speed_Diff = round(Median_Speed_Runway - Median_Speed, 1))
 fwrite(Summary_Wake_Runway, file.path(Local_Iteration_Dir, paste0("IAS Runway Comparison v", Local_Iteration_Version, ".csv")))
 
+
+## Plots of Mean IAS against Reference Time
+for (i in 1:nrow(Wake_Adaptation_Speeds_Wake)){
+  
+  LeaderWTC <- Wake_Adaptation_Speeds_Wake[i,]$Leader_WTC
+  FollowerWTC <- Wake_Adaptation_Speeds_Wake[i,]$Follower_WTC
+  Path <- file.path(Plot_Dir, paste0(LeaderWTC, "-", FollowerWTC))
+  Create_Directory(Path)
+  
+  for (j in 1:length(Separation_Time)){
+    Plot <- PlotAverageIASAgainstReference(FT_Data, Wake_Adaptation_Speeds_Wake, Recat_Wake_Dist, "Ave_SPD", "Recat", LeaderWTC, FollowerWTC)
+    #png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " ", Separation_Time[j], ".png")))
+    print(Plot)
+    #dev.off()
+  }
+}

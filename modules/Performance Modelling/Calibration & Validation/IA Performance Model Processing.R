@@ -107,59 +107,11 @@ for (i in 1:nrow(Scenarios)){
 Plot_Dir <- file.path(Out_Dir, "Plots")
 Create_Directory(Plot_Dir)
 
-PlotAgainstReference <- function(Data, Reference, RefDists, PlotVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit, Algo, Colour){
-  
-  # String for Title
-  if (Unit == "IAS"){
-    Unit <- "IAS (kts)"
-    PlotTitle <- "Follower IAS"
-    }
-  
-  if (Unit == "Time"){
-    Unit <- "Time (s)"
-    if (Algo == "PM"){
-      PlotTitle <- "Time Separations"
-    }
-    if (Algo == "TBSC"){
-      PlotTitle <- "Flying Times"
-    }
-  }
-  
-  # Get variable names.
-  Leader_Var <- paste0("Leader_", RecatorLegacy, "_Wake_Cat")
-  Foll_Var <- paste0("Follower_", RecatorLegacy, "_Wake_Cat")
-  
-  # Filter Data for WTCs of interest
-  Data <- filter(Data, !!sym(Leader_Var) == LeaderWTC & !!sym(Foll_Var) == FollowerWTC)
-  RefVar <- as.numeric(filter(Reference, Leader_WTC == LeaderWTC, Follower_WTC == FollowerWTC))
-  RefDist <- as.numeric(filter(RefDists, Leader_WTC == LeaderWTC, Follower_WTC == FollowerWTC)$Reference_Wake_Separation_Distance)
-  String <- paste0(PlotTitle, " for pair ", LeaderWTC, "-", FollowerWTC, " (", RefDist, "NM)")
-  
-  # Initialise Histogram plot
-  Plot <- ggplot(Data) + geom_histogram(mapping = aes(x = !!sym(PlotVar), y = ..density..), binwidth = 2, fill = Colour) + geom_vline(xintercept = RefVar) + 
-    labs(x = Unit, y = "Density", title = String, subtitle = PlotVar)
-  
-  return(Plot)
-  
-}
 
-PlotTimeSeparationAgainstReference <- function(PM, RefTimes, RefDists, TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC){
-  
-  Plot <- PlotAgainstReference(PM, RefTimes, RefDists, PlotVar = TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit = "Time", Algo = "PM", Colour = "magenta")
-  Plot <- Plot + xlim(40, 200)
-  
-  return(Plot)
-  
-}
 
-PlotFollowerIASAgainstReference <- function(Data, RefSpeeds, RefDists, SpeedVar, RecatorLegacy, LeaderWTC, FollowerWTC){
-  
-  Plot <- PlotAgainstReference(PM, RefSpeeds, RefDists, PlotVar = SpeedVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit = "IAS", Algo = "PM", Colour = "green")
-  Plot <- Plot + xlim(80, 240)
-  
-  return(Plot)
-  
-}
+
+
+
 
 ## Loop across all Wake Distances
 for (i in 1:nrow(Recat_Wake_Time)){
@@ -171,9 +123,9 @@ for (i in 1:nrow(Recat_Wake_Time)){
 
    for (j in 1:length(Separation_Time)){
      Plot <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, Separation_Time[j], "Recat", LeaderWTC, FollowerWTC)
-     png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " ", Separation_Time[j], ".png")))
+     #png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " ", Separation_Time[j], ".png")))
      print(Plot)
-     dev.off()
+     #dev.off()
    }
    
    ## TEMP Comparisons 
@@ -184,17 +136,17 @@ for (i in 1:nrow(Recat_Wake_Time)){
    Plot3 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_TBS_US05", "Recat", LeaderWTC, FollowerWTC)
    Plot4 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_0DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
    
-   png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v DBS 1DME.png")))
-   grid.arrange(Plot1, Plot2)
-   dev.off()
-   
-   png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v US TBS 1DME.png")))
-   grid.arrange(Plot1, Plot3)
-   dev.off()
-   
-   png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, "  TBS 1DME v 0DME.png")))
-   grid.arrange(Plot1, Plot4)
-   dev.off()
+   # png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v DBS 1DME.png")))
+   # grid.arrange(Plot1, Plot2)
+   # dev.off()
+   # 
+   # png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v US TBS 1DME.png")))
+   # grid.arrange(Plot1, Plot3)
+   # dev.off()
+   # 
+   # png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, "  TBS 1DME v 0DME.png")))
+   # grid.arrange(Plot1, Plot4)
+   # dev.off()
    
 }
 
