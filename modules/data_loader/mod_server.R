@@ -57,37 +57,6 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
   
 }
 
-generic_confirm_dialogue <- function(SQLFileName, actionButtonName, dbi_con, ...) {
-  modalDialog(
-    div(
-      style = "text-align: center",
-      h3("MODIFY DATABASE WARNING")
-    ),
-    hr(),
-    div(
-      style = "text-align: center",
-      tags$b("Do you wish to proceed?")
-    ),
-    ...,
-    h5("SQL Script"),
-    if (length(SQLFileName) > 1) {
-      HTML("<li>", paste0(SQLFileName, collapse = "</li><li>"), "</li>")
-    } else {
-      SQLFileName
-    },
-    h5("Database"),
-    as.character(dbGetQuery(isolate(dbi_con), "SELECT DB_NAME()")),
-    size = "s",
-    footer = div(
-      class = "centered",
-      modalButton("Cancel"),
-      div(style = "width: 15px"),
-      actionButton(actionButtonName, "Confirm")
-    ),
-    easyClose = F
-  )
-}
-
 additional_processing <- function(dbi_con) {
   
   Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))

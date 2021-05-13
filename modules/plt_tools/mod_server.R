@@ -117,9 +117,16 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   vw_PLT_Detailed_Analysis <- reactive({
     d <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM vw_PLT_Detailed_Analysis"))
-    d[is.na(Non_Standard_Transition_V1) | Non_Standard_Transition_V1 == ""]$Non_Standard_Transition_V1 <- "None"
-    d[is.na(Non_Standard_Transition_V2) | Non_Standard_Transition_V2 == ""]$Non_Standard_Transition_V2 <- "None"
-    d[is.na(Non_Standard_Transition_V3) | Non_Standard_Transition_V3 == ""]$Non_Standard_Transition_V3 <- "None"
+    names(d) <- gsub("_", " ", names(d))
+    d[is.na(`Non Standard Transition V1`) | `Non Standard Transition V1` == ""]$`Non Standard Transition V1` <- "None"
+    d[is.na(`Non Standard Transition V2`) | `Non Standard Transition V2` == ""]$`Non Standard Transition V2` <- "None"
+    d[is.na(`Non Standard Transition V3`) | `Non Standard Transition V3` == ""]$`Non Standard Transition V3` <- "None"
+    d$`Base Leg Altidude V1` <- round(d$`Base Leg Altidude V1`, 2)
+    d$`Base Leg Altidude V2` <- round(d$`Base Leg Altidude V2`, 2)
+    d$`Base Leg Altidude V3` <- round(d$`Base Leg Altidude V3`, 2)
+    d$`Base Leg Lateral Distance V1` <- round(d$`Base Leg Lateral Distance V1`, 2)
+    d$`Base Leg Lateral Distance V2` <- round(d$`Base Leg Lateral Distance V2`, 2)
+    d$`Base Leg Lateral Distance V3` <- round(d$`Base Leg Lateral Distance V3`, 2)
     return(d)
   })
   
@@ -562,6 +569,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
             Latitude = v_i$Latitude*180/pi
           )
         ),
+        highlight = highlightOptions(
+          bringToFront = F
+        ),
         group = "Volumes"
       )
     }
@@ -578,6 +588,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
             Longitude = v_i$Longitude*180/pi,
             Latitude = v_i$Latitude*180/pi
           )
+        ),
+        highlight = highlightOptions(
+          bringToFront = F
         ),
         group = "Volumes_2"
       )
@@ -596,22 +609,25 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
             Latitude = v_i$Latitude*180/pi
           )
         ),
+        highlight = highlightOptions(
+          bringToFront = F
+        ),
         group = "Volumes_3"
       )
     }
   })
   
-  # PLT Analysis Tools ------------------------------------------------------
+  # PLT Analysis Tools | General UI -----------------------------------------
   
   output$analysis_view <- renderUI({
     detailed_filter_3_range1 <- c(
-      min(vw_PLT_Detailed_Analysis()$Activation_Time_Difference_V1_V2, na.rm = T),
-      max(vw_PLT_Detailed_Analysis()$Activation_Time_Difference_V1_V2, na.rm = T)
+      min(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V2`, na.rm = T),
+      max(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V2`, na.rm = T)
     )
     
     detailed_filter_3_range2 <- c(
-      min(vw_PLT_Detailed_Analysis()$Activation_Time_Difference_V1_V3, na.rm = T),
-      max(vw_PLT_Detailed_Analysis()$Activation_Time_Difference_V1_V3, na.rm = T)
+      min(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V3`, na.rm = T),
+      max(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V3`, na.rm = T)
     )
     
     div(
@@ -671,9 +687,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   })
   
   output$pltvis_g0_ui <- renderUI({
-    choices_v1 <- unique(vw_PLT_Detailed_Analysis()$Non_Standard_Transition_V1)
-    choices_v2 <- unique(vw_PLT_Detailed_Analysis()$Non_Standard_Transition_V2)
-    choices_v3 <- unique(vw_PLT_Detailed_Analysis()$Non_Standard_Transition_V3)
+    choices_v1 <- unique(vw_PLT_Detailed_Analysis()$`Non Standard Transition V1`)
+    choices_v2 <- unique(vw_PLT_Detailed_Analysis()$`Non Standard Transition V2`)
+    choices_v3 <- unique(vw_PLT_Detailed_Analysis()$`Non Standard Transition V3`)
     choices_all <- unique(c(choices_v1, choices_v2, choices_v3))
     if (input$pltvis_g0_sep) {
       div(
@@ -686,8 +702,32 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }
   })
   
-  # Run PLT Analysis
+  # PLT Analysis Tools | Run PLT Analysis -----------------------------------
+
   observeEvent(input$plt_analysis_run, {
+    showModal(modalDialog(
+      div(
+        style = "text-align: center",
+        h3("MODIFY DATABASE WARNING")
+      ),
+      hr(),
+      div(
+        style = "text-align: center",
+        tags$b("Do you wish to run PLT analysis?"),
+        tags$b("This may take some time."),
+      ),
+      size = "s",
+      footer = div(
+        class = "centered",
+        modalButton("Cancel"),
+        div(style = "width: 15px"),
+        actionButton(ns("plt_analysis_run_confirm"), "Confirm")
+      ),
+      easyClose = F
+    ))
+  })
+  
+  observeEvent(input$plt_analysis_run_confirm, {
     
     variants <- isolate(input$plt_analysis_variants)
     
@@ -756,9 +796,11 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
         dbSendQuery(dbi_con, read_SQL_File(paste0("modules/plt_tools/UTMA_PLT_Validation_Run_Variant_", k, ".sql")))
       }
     }
-
+    
   })
   
+  # PLT Analysis Tools | Summary Stats --------------------------------------
+
   observeEvent(input$summary_show, {
     output$summary_stats_ui <- renderUI({
       div(
@@ -772,46 +814,45 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }, server = T)
   })
   
-  vw_PLT_Detailed_Analysis_Filtered <- eventReactive(input$detailed_show, {
+  # PLT Analysis Tools | Detailed Analysis Table ----------------------------
+
+  plt_dat <- eventReactive(input$detailed_show, {
     d <- vw_PLT_Detailed_Analysis()
     if (input$detailed_filter_1 == 2) {
-      d1 <- if (all(d$Non_Standard_Transition_V2 == "None")) {
-        d[0]
-      } else {
-        d[Non_Standard_Transition_V1 != Non_Standard_Transition_V2]
+      consider_V2 <- any(d$`Non Standard Transition V2` != "None")
+      consider_V3 <- any(d$`Non Standard Transition V3` != "None")
+      
+      if (consider_V2 & !consider_V3) {
+        d <- d[`Non Standard Transition V1` != `Non Standard Transition V2`]
+      } else if (!consider_V2 & consider_V3) {
+        d <- d[`Non Standard Transition V1` != `Non Standard Transition V3`]
+      } else if (consider_V2 & consider_V3) {
+        d <- d[`Non Standard Transition V1` != `Non Standard Transition V2` |
+                 `Non Standard Transition V1` != `Non Standard Transition V3` | 
+                 `Non Standard Transition V2` != `Non Standard Transition V3`]
       }
-      d2 <- if (all(d$Non_Standard_Transition_V3 == "None")) {
-        d[0]
-      } else {
-        d[Non_Standard_Transition_V1 != Non_Standard_Transition_V3]
-      }
-      d3 <- if (all(d$Non_Standard_Transition_V2 == "None") | all(d$Non_Standard_Transition_V3 == "None")) {
-        d[0]
-      } else {
-        d[Non_Standard_Transition_V2 != Non_Standard_Transition_V3]
-      }
-      d <- rbind(d1, d2, d3)
     }
     
     if (input$pltvis_g0_sep) {
-      d <- d[Non_Standard_Transition_V1 %in% input$pltvis_g0_trans1 &
-               Non_Standard_Transition_V2 %in% input$pltvis_g0_trans2 &
-               Non_Standard_Transition_V3 %in% input$pltvis_g0_trans3]
+      d <- d[`Non Standard Transition V1` %in% input$pltvis_g0_trans1 &
+               `Non Standard Transition V2` %in% input$pltvis_g0_trans2 &
+               `Non Standard Transition V3` %in% input$pltvis_g0_trans3]
     } else {
-      d <- d[Non_Standard_Transition_V1 %in% input$pltvis_g0_trans &
-               Non_Standard_Transition_V2 %in% input$pltvis_g0_trans &
-               Non_Standard_Transition_V3 %in% input$pltvis_g0_trans]
+      d <- d[`Non Standard Transition V1` %in% input$pltvis_g0_trans &
+               `Non Standard Transition V2` %in% input$pltvis_g0_trans &
+               `Non Standard Transition V3` %in% input$pltvis_g0_trans]
     }
     
-    d <- d[Activation_Time_Difference_V1_V2 >= input$detailed_filter_3[1] &
-             Activation_Time_Difference_V1_V2 >= input$detailed_filter_3[2] &
-             Activation_Time_Difference_V1_V3 >= input$detailed_filter_4[1] &
-             Activation_Time_Difference_V1_V3 >= input$detailed_filter_4[2]]
-    
+    d <- d[`Activation Time Difference V1 V2` >= input$detailed_filter_3[1] &
+             `Activation Time Difference V1 V2` <= input$detailed_filter_3[2] &
+             `Activation Time Difference V1 V3` >= input$detailed_filter_4[1] &
+             `Activation Time Difference V1 V3` <= input$detailed_filter_4[2]]
+  
     return(d)
   })
-  
+
   observeEvent(input$detailed_show, {
+    
     output$detailed_analysis_ui <- renderUI({
       div(
         div(style = "height: 15px;"),
@@ -820,43 +861,16 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
         
         actionButton(ns("pltvis_flights_view"), "View selected flights"),
         
-        uiOutput(ns("pltvis_flights_ui"))
-      )
-    })
-    
-    output$plt_detailed_table <- DT::renderDataTable({
-      datatable_customised_2(vw_PLT_Detailed_Analysis_Filtered(), selection = "multiple")
-    }, server = T)
-  })
-  
-  observeEvent(input$pltvis_flights_view, {
-    fpid <- vw_PLT_Detailed_Analysis_Filtered()$Flight_Plan_ID[input$plt_detailed_table_rows_selected]
-    
-    d <- vw_PLT_Detailed_Analysis_Filtered()[Flight_Plan_ID %in% fpid]
-    
-    choices_v1 <- unique(d$Non_Standard_Transition_V1)
-    choices_v2 <- unique(d$Non_Standard_Transition_V2)
-    choices_v3 <- unique(d$Non_Standard_Transition_V3)
-    choices_all <- unique(c(
-      d$Non_Standard_Transition_V1,
-      d$Non_Standard_Transition_V2,
-      d$Non_Standard_Transition_V3
-    ))
-    
-    output$pltvis_flights_ui <- renderUI({
-      div(
         hr(),
-        checkboxGroupInput(
-          ns("pltvis_options"), label = "Display options", 
-          choices = list("Tracks" = 1, "Indicator activation point" = 2)
-        ),
-        checkboxInput(ns("pltvis_vol_sep"), "Separate Volume Display Toggle"),
+        checkboxInput(ns("pltvis_disp_tracks"), "Display tracks"),
+        checkboxInput(ns("pltvis_disp_ind"), "Display indicator activation points"),
+        checkboxInput(ns("pltvis_vol_sep"), "Toggle separate volume display"),
         uiOutput(ns("pltvis_vol_ui")),
         div(
           style = "display: flex",
-          leafletOutput(ns("pltvis_map_1"), height = "563px"),
-          leafletOutput(ns("pltvis_map_2"), height = "563px"),
-          leafletOutput(ns("pltvis_map_3"), height = "563px")
+          leafletOutput(ns("pltvis_map_1"), height = "940px"),
+          leafletOutput(ns("pltvis_map_2"), height = "940px"),
+          leafletOutput(ns("pltvis_map_3"), height = "940px")
         ),
         
         hr(),
@@ -880,95 +894,135 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
       )
     })
     
+    output$plt_detailed_table <- DT::renderDataTable({
+      datatable_customised_2(plt_dat(), selection = "multiple")
+    }, server = T)
+    
     output$pltvis_map_1 <- renderLeaflet(map_template())
     output$pltvis_map_2 <- renderLeaflet(map_template())
     output$pltvis_map_3 <- renderLeaflet(map_template())
     
-    output$pltvis_vol_ui <- renderUI({
-      vol_v1 <- unique(as.character(volumes()[Variant == "V1"]$Volume_Name))
-      vol_v2 <- unique(as.character(volumes()[Variant == "V2"]$Volume_Name))
-      vol_v3 <- unique(as.character(volumes()[Variant == "V3"]$Volume_Name))
-      vol_all <- unique(as.character(volumes()$Volume_Name))
-      if (input$pltvis_vol_sep) {
-        div(
-          pickerInput_customised(ns("pltvis_vol_1"), "Display Volumes V1", choices=vol_v1),
-          pickerInput_customised(ns("pltvis_vol_2"), "Display Volumes V2", choices=vol_v2),
-          pickerInput_customised(ns("pltvis_vol_3"), "Display Volumes V3", choices=vol_v3)
-        )
-      } else {
-        pickerInput_customised(ns("pltvis_vol"), "Display Volumes", choices=vol_all)
-      }
-    })
+  })
+  
+  # PLT Analysis Tools | Detailed Analysis Map ------------------------------
+
+  plt_tracks <- eventReactive(input$pltvis_flights_view, {
+    fpid <- plt_dat()$`Flight Plan ID`[input$plt_detailed_table_rows_selected]
     
-    output$pltvis_g1_ui <- renderUI({
-      if (input$pltvis_g1_sep) {
-        div(
-          pickerInput_customised(ns("pltvis_g1_trans1"), "Filter Non-Standard Transitions V1", choices=choices_v1, selected=choices_v1),
-          pickerInput_customised(ns("pltvis_g1_trans2"), "Filter Non-Standard Transitions V2", choices=choices_v2, selected=choices_v2),
-          pickerInput_customised(ns("pltvis_g1_trans3"), "Filter Non-Standard Transitions V3", choices=choices_v3, selected=choices_v3)
-        )
-      } else {
-        pickerInput_customised(ns("pltvis_g1_trans"), "Filter Non-Standard Transitions", choices=choices_all, selected=choices_all)
-      }
-    })
+    tracks <- as.data.table(dbGetQuery(dbi_con, sprintf(
+      "SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID IN ('%s')",
+      paste0(fpid, collapse = "','")
+    )))
     
-    output$pltvis_g3_ui <- renderUI({
-      if (input$pltvis_g3_sep) {
-        div(
-          pickerInput_customised(ns("pltvis_g3_trans1"), "Filter Non-Standard Transitions V1", choices=choices_v1, selected=choices_v1),
-          pickerInput_customised(ns("pltvis_g3_trans2"), "Filter Non-Standard Transitions V2", choices=choices_v2, selected=choices_v2),
-          pickerInput_customised(ns("pltvis_g3_trans3"), "Filter Non-Standard Transitions V3", choices=choices_v3, selected=choices_v3)
-        )
-      } else {
-        pickerInput_customised(ns("pltvis_g3_trans"), "Filter Non-Standard Transitions", choices=choices_all, selected=choices_all)
-      }
-    })
+    return(tracks)
+  })
+  
+  # Set map bounds
+  observeEvent(plt_tracks(), {
     
-    output$pltvis_g4_ui <- renderUI({
-      if (input$pltvis_g4_sep) {
-        div(
-          pickerInput_customised(ns("pltvis_g4_trans1"), "Filter Non-Standard Transitions V1", choices=choices_v1, selected=choices_v1),
-          pickerInput_customised(ns("pltvis_g4_trans2"), "Filter Non-Standard Transitions V2", choices=choices_v2, selected=choices_v2),
-          pickerInput_customised(ns("pltvis_g4_trans3"), "Filter Non-Standard Transitions V3", choices=choices_v3, selected=choices_v3)
-        )
-      } else {
-        pickerInput_customised(ns("pltvis_g4_trans"), "Filter Non-Standard Transitions", choices=choices_all, selected=choices_all)
-      }
-    })
+    p1 <- leafletProxy("pltvis_map_1")
+    p2 <- leafletProxy("pltvis_map_2")
+    p3 <- leafletProxy("pltvis_map_3")
     
-    observeEvent(input$pltvis_options, {
-      
-      query <- sprintf(
-        "SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID IN ('%s')",
-        paste0(fpid, collapse = "','")
+    p1 %>%
+      fitBounds(
+        lng1 = min(plt_tracks()$Lon, na.rm = T),
+        lng2 = max(plt_tracks()$Lon, na.rm = T),
+        lat1 = min(plt_tracks()$Lat, na.rm = T),
+        lat2 = max(plt_tracks()$Lat, na.rm = T)
       )
-      dat <- as.data.table(dbGetQuery(dbi_con, query))
-      
-      p1 <- leafletProxy("pltvis_map_1") %>%
-        fitBounds(
-          lng1 = min(dat$Lon, na.rm = T),
-          lng2 = max(dat$Lon, na.rm = T),
-          lat1 = min(dat$Lat, na.rm = T),
-          lat2 = max(dat$Lat, na.rm = T)
-        )
-      p2 <- leafletProxy("pltvis_map_2") %>%
-        fitBounds(
-          lng1 = min(dat$Lon, na.rm = T),
-          lng2 = max(dat$Lon, na.rm = T),
-          lat1 = min(dat$Lat, na.rm = T),
-          lat2 = max(dat$Lat, na.rm = T)
-        ) 
-      p3 <- leafletProxy("pltvis_map_3") %>%
-        fitBounds(
-          lng1 = min(dat$Lon, na.rm = T),
-          lng2 = max(dat$Lon, na.rm = T),
-          lat1 = min(dat$Lat, na.rm = T),
-          lat2 = max(dat$Lat, na.rm = T)
-        ) 
-      
-      if (1 %in% input$pltvis_options) {
-        labs <- simple_map_labels(dat)
-        legs <- as.data.table(dbGetQuery(dbi_con, "
+    p2 %>%
+      fitBounds(
+        lng1 = min(plt_tracks()$Lon, na.rm = T),
+        lng2 = max(plt_tracks()$Lon, na.rm = T),
+        lat1 = min(plt_tracks()$Lat, na.rm = T),
+        lat2 = max(plt_tracks()$Lat, na.rm = T)
+      )
+    p3 %>%
+      fitBounds(
+        lng1 = min(plt_tracks()$Lon, na.rm = T),
+        lng2 = max(plt_tracks()$Lon, na.rm = T),
+        lat1 = min(plt_tracks()$Lat, na.rm = T),
+        lat2 = max(plt_tracks()$Lat, na.rm = T)
+      )
+    
+  }, once = T)
+  
+  observeEvent(input$pltvis_vol, {
+    p1 <- leafletProxy("pltvis_map_1")
+    p2 <- leafletProxy("pltvis_map_2")
+    p3 <- leafletProxy("pltvis_map_3")
+    p1 %>% clearGroup("volumes")
+    p2 %>% clearGroup("volumes")
+    p3 %>% clearGroup("volumes")
+    for (vol in input$pltvis_vol) {
+      p1 %>% addPolygons(
+        data = Polygon(
+          volumes()[Variant == "V1"][Volume_Name %in% vol, c("Longitude","Latitude")]
+        ),
+        group = "volumes"
+      )
+      p2 %>% addPolygons(
+        data = Polygon(
+          volumes()[Variant == "V2"][Volume_Name %in% vol, c("Longitude","Latitude")]
+        ),
+        group = "volumes"
+      )
+      p3 %>% addPolygons(
+        data = Polygon(
+          volumes()[Variant == "V3"][Volume_Name %in% vol, c("Longitude","Latitude")]
+        ),
+        group = "volumes"
+      )
+    }
+  })
+  
+  observeEvent(input$pltvis_vol_1, {
+    p <- leafletProxy("pltvis_map_1")
+    p %>% clearGroup("volumes")
+    for (vol in input$pltvis_vol_1) {
+      p %>% addPolygons(
+        data = Polygon(
+          volumes()[Volume_Name %in% vol, c("Longitude","Latitude")]
+        ),
+        group = "volumes"
+      )
+    }
+  })
+  
+  observeEvent(input$pltvis_vol_2, {
+    p <- leafletProxy("pltvis_map_2")
+    p %>% clearGroup("volumes")
+    for (vol in input$pltvis_vol_2) {
+      p %>% addPolygons(
+        data = Polygon(
+          volumes()[Volume_Name %in% vol, c("Longitude","Latitude")]
+        ),
+        group = "volumes"
+      )
+    }
+  })
+  
+  observeEvent(input$pltvis_vol_3, {
+    p <- leafletProxy("pltvis_map_3")
+    p %>% clearGroup("volumes")
+    for (vol in input$pltvis_vol_3) {
+      p %>% addPolygons(
+        data = Polygon(
+          volumes()[Volume_Name %in% vol, c("Longitude","Latitude")]
+        ),
+        group = "volumes"
+      )
+    }
+  })
+  
+  observeEvent(input$pltvis_disp_tracks, {
+    p1 <- leafletProxy("pltvis_map_1")
+    p2 <- leafletProxy("pltvis_map_2")
+    p3 <- leafletProxy("pltvis_map_3")
+    if (input$pltvis_disp_tracks) {
+      labs <- simple_map_labels(plt_tracks())
+      legs <- as.data.table(dbGetQuery(dbi_con, "
           SELECT DISTINCT Path_Leg_Name FROM (
             SELECT DISTINCT Path_Leg_Name FROM tbl_Path_Leg
             UNION
@@ -978,52 +1032,61 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
           ) AS leggy_boys
           ORDER BY Path_Leg_Name 
         "))
-        pal <- colorFactor(brewer.pal(11, "Spectral"), domain=legs$Path_Leg_Name)
-        
-        p1 %>% clearGroup("markers") %>%
-          addCircleMarkers(
-            data = dat,
-            lng = ~Lon,
-            lat = ~Lat,
-            color = ~pal(Path_Leg),
-            label = labs,
-            labelOptions=labelOptions(textsize="13px", direction="auto"),
-            weight=5,
-            radius=5,
-            group="markers"
-          )
-        p2 %>% clearGroup("markers") %>%
-          addCircleMarkers(
-            data = dat,
-            lng = ~Lon,
-            lat = ~Lat,
-            color = ~pal(Path_Leg_2),
-            label = labs,
-            labelOptions=labelOptions(textsize="13px", direction="auto"),
-            weight=5,
-            radius=5,
-            group="markers"
-          )
-        p3 %>% clearGroup("markers") %>%
-          addCircleMarkers(
-            data = dat,
-            lng = ~Lon,
-            lat = ~Lat,
-            color = ~pal(Path_Leg_3),
-            label = labs,
-            labelOptions=labelOptions(textsize="13px", direction="auto"),
-            weight=5,
-            radius=5,
-            group="markers"
-          )
-      } else {
-        p1 %>% clearGroup("markers")
-        p2 %>% clearGroup("markers")
-        p3 %>% clearGroup("markers")
-      }
+      pal <- colorFactor(brewer.pal(11, "Spectral"), domain=legs$Path_Leg_Name)
       
-      if (2 %in% input$pltvis_options) {
-        d_v1 <- as.data.table(dbGetQuery(dbi_con, sprintf("
+      p1 %>% clearGroup("markers") %>%
+        addCircleMarkers(
+          data = plt_tracks(),
+          lng = ~Lon,
+          lat = ~Lat,
+          color = ~pal(Path_Leg),
+          label = labs,
+          labelOptions=labelOptions(textsize="13px", direction="auto"),
+          weight=5,
+          radius=5,
+          group="markers",
+          options=markerOptions(zIndexOffset=1000001)
+        )
+      p2 %>% clearGroup("markers") %>%
+        addCircleMarkers(
+          data = plt_tracks(),
+          lng = ~Lon,
+          lat = ~Lat,
+          color = ~pal(Path_Leg_2),
+          label = labs,
+          labelOptions=labelOptions(textsize="13px", direction="auto"),
+          weight=5,
+          radius=5,
+          group="markers",
+          options=markerOptions(zIndexOffset=1000001)
+        )
+      p3 %>% clearGroup("markers") %>%
+        addCircleMarkers(
+          data = plt_tracks(),
+          lng = ~Lon,
+          lat = ~Lat,
+          color = ~pal(Path_Leg_3),
+          label = labs,
+          labelOptions=labelOptions(textsize="13px", direction="auto"),
+          weight=5,
+          radius=5,
+          group="markers",
+          options=markerOptions(zIndexOffset=1000001)
+        )
+    } else {
+      p1 %>% clearGroup("markers")
+      p2 %>% clearGroup("markers")
+      p3 %>% clearGroup("markers")
+    }
+  })
+  
+  observeEvent(input$pltvis_disp_ind, {
+    fpid <- unique(plt_tracks()$Flight_Plan_ID)
+    p1 <- leafletProxy("pltvis_map_1")
+    p2 <- leafletProxy("pltvis_map_2")
+    p3 <- leafletProxy("pltvis_map_3")
+    if (input$pltvis_disp_ind) {
+      d_v1 <- as.data.table(dbGetQuery(dbi_con, sprintf("
           SELECT
             t.Flight_Plan_ID,
             Indicator_Activation_Time_V1,
@@ -1042,18 +1105,18 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
             t.Flight_Plan_ID = s.Flight_Plan_ID AND Indicator_Activation_Time_V1 = Track_Time
           )
           ", paste0(fpid, collapse = "','")
-        )))
-        p1 %>% clearGroup("ind") %>%
-          addMarkers(
-            data = d_v1,
-            lng = ~Lon,
-            lat = ~Lat,
-            label = simple_map_labels(d_v1),
-            labelOptions=labelOptions(textsize="13px", direction="auto"),
-            group="ind"
-          )
-        
-        d_v2 <- as.data.table(dbGetQuery(dbi_con, sprintf("
+      )))
+      p1 %>% clearGroup("ind") %>%
+        addMarkers(
+          data = d_v1,
+          lng = ~Lon,
+          lat = ~Lat,
+          label = simple_map_labels(d_v1),
+          labelOptions=labelOptions(textsize="13px", direction="auto"),
+          group="ind"
+        )
+      
+      d_v2 <- as.data.table(dbGetQuery(dbi_con, sprintf("
           SELECT
             t.Flight_Plan_ID,
             Indicator_Activation_Time_V2,
@@ -1072,18 +1135,18 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
             t.Flight_Plan_ID = s.Flight_Plan_ID AND Indicator_Activation_Time_V2 = Track_Time
           )
           ", paste0(fpid, collapse = "','")
-        )))
-        p2 %>% clearGroup("ind") %>%
-          addMarkers(
-            data = d_v2,
-            lng = ~Lon,
-            lat = ~Lat,
-            label = simple_map_labels(d_v2),
-            labelOptions=labelOptions(textsize="13px", direction="auto"),
-            group="ind"
-          )
-        
-        d_v3 <- as.data.table(dbGetQuery(dbi_con, sprintf("
+      )))
+      p2 %>% clearGroup("ind") %>%
+        addMarkers(
+          data = d_v2,
+          lng = ~Lon,
+          lat = ~Lat,
+          label = simple_map_labels(d_v2),
+          labelOptions=labelOptions(textsize="13px", direction="auto"),
+          group="ind"
+        )
+      
+      d_v3 <- as.data.table(dbGetQuery(dbi_con, sprintf("
           SELECT
             t.Flight_Plan_ID,
             Indicator_Activation_Time_V3,
@@ -1102,185 +1165,229 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
             t.Flight_Plan_ID = s.Flight_Plan_ID AND Indicator_Activation_Time_V3 = Track_Time
           )
           ", paste0(fpid, collapse = "','")
-        )))
-        p3 %>% clearGroup("ind") %>%
-          addMarkers(
-            data = d_v3,
-            lng = ~Lon,
-            lat = ~Lat,
-            label = simple_map_labels(d_v3),
-            labelOptions=labelOptions(textsize="13px", direction="auto"),
-            group="ind"
-          )
-      } else {
-        p1 %>% clearGroup("ind")
-        p2 %>% clearGroup("ind")
-        p3 %>% clearGroup("ind")
-      }
-      
-    })
-    
-    observe({
-      req(input$pltvis_vol)
-      p1 <- leafletProxy("pltvis_map_1")
-      p2 <- leafletProxy("pltvis_map_2")
-      p3 <- leafletProxy("pltvis_map_3")
-      p1 %>% clearGroup("volumes") %>% addPolygons(
-        data = Polygon(
-          volumes()[Volume_Name %in% input$pltvis_vol, c("Longitude","Latitude")]
-        ),
-        group = "volumes"
-      )
-      p2 %>% clearGroup("volumes") %>% addPolygons(
-        data = Polygon(
-          volumes()[Volume_Name %in% input$pltvis_vol, c("Longitude","Latitude")]
-        ),
-        group = "volumes"
-      )
-      p3 %>% clearGroup("volumes") %>% addPolygons(
-        data = Polygon(
-          volumes()[Volume_Name %in% input$pltvis_vol, c("Longitude","Latitude")]
-        ),
-        group = "volumes"
-      )
-    })
-    
-    observe({
-      req(input$pltvis_vol_1)
-      p <- leafletProxy("pltvis_map_1")
-      p %>% clearGroup("volumes") %>% addPolygons(
-        data = Polygon(
-          volumes()[Volume_Name %in% input$pltvis_vol_1, c("Longitude","Latitude")]
-        ),
-        group = "volumes"
-      )
-    })
-    
-    observe({
-      req(input$pltvis_vol_2)
-      p <- leafletProxy("pltvis_map_2")
-      p %>% clearGroup("volumes") %>% addPolygons(
-        data = Polygon(
-          volumes()[Volume_Name %in% input$pltvis_vol_2, c("Longitude","Latitude")]
-        ),
-        group = "volumes"
-      )
-    })
-    
-    observe({
-      req(input$pltvis_vol_3)
-      p <- leafletProxy("pltvis_map_3")
-      p %>% clearGroup("volumes") %>% addPolygons(
-        data = Polygon(
-          volumes()[Volume_Name %in% input$pltvis_vol_3, c("Longitude","Latitude")]
-        ),
-        group = "volumes"
-      )
-    })
-    
-    output$pltvis_g1 <- renderPlotly({
-      
-      d1 <- if (input$pltvis_g1_zeros) {
-        d[Activation_Time_Difference_V1_V2 != 0]
-      } else {
-        d
-      }
-      
-      d2 <- if (input$pltvis_g1_zeros) {
-        d[Activation_Time_Difference_V1_V3 != 0]
-      } else {
-        d
-      }
-      
-      if (input$pltvis_g1_sep) {
-        d1 <- d1[Non_Standard_Transition_V1 %in% input$pltvis_g1_trans1 &
-                   Non_Standard_Transition_V2 %in% input$pltvis_g1_trans2]
-        
-        d2 <- d2[Non_Standard_Transition_V1 %in% input$pltvis_g1_trans1 &
-                   Non_Standard_Transition_V3 %in% input$pltvis_g1_trans3]
-      } else {
-        d1 <- d1[Non_Standard_Transition_V1 %in% input$pltvis_g1_trans &
-                   Non_Standard_Transition_V2 %in% input$pltvis_g1_trans]
-        
-        d2 <- d2[Non_Standard_Transition_V1 %in% input$pltvis_g1_trans &
-                   Non_Standard_Transition_V3 %in% input$pltvis_g1_trans]
-      }
-
-      
-      plot_ly(alpha = 0.6) %>%
-        add_histogram(data = d1, x = ~Activation_Time_Difference_V1_V2, name = "V1 vs V2") %>%
-        add_histogram(data = d2, x = ~Activation_Time_Difference_V1_V3, name = "V1 vs V3") %>%
-        layout(
-          legend = list(x = 100, y = 0.5),
-          barmode = "overlay",
-          title = "Indicator Activation Time Difference",
-          xaxis = list(title = "Indicator Activation Time Difference"),
-          yaxis = list(title = "Frequency")
+      )))
+      p3 %>% clearGroup("ind") %>%
+        addMarkers(
+          data = d_v3,
+          lng = ~Lon,
+          lat = ~Lat,
+          label = simple_map_labels(d_v3),
+          labelOptions=labelOptions(textsize="13px", direction="auto"),
+          group="ind"
         )
-    })
-    
-    output$pltvis_g2 <- renderPlotly({
-      plot_ly(data = d, alpha = 0.6) %>%
-        add_markers(x=~Activation_Time_Difference_V1_V2, y=~Base_Leg_Altidude_V2, name="V1 vs V2") %>%
-        add_markers(x=~Activation_Time_Difference_V1_V3, y=~Base_Leg_Altidude_V3, name="V1 vs V3") %>%
-        layout(
-          legend = list(x = 100, y = 0.5),
-          title = "Activation Time Difference vs QNH",
-          xaxis = list(title = "Activation Time Difference", tickformat="%H:%M:%S"),
-          yaxis = list(title = "Base Leg Altidude")
+    } else {
+      p1 %>% clearGroup("ind")
+      p2 %>% clearGroup("ind")
+      p3 %>% clearGroup("ind")
+    }
+  })
+  
+  observeEvent(input$pltvis_vol_sep, {
+    p1 <- leafletProxy("pltvis_map_1")
+    p2 <- leafletProxy("pltvis_map_2")
+    p3 <- leafletProxy("pltvis_map_3")
+    p1 %>% clearGroup("volumes")
+    p2 %>% clearGroup("volumes")
+    p3 %>% clearGroup("volumes")
+    output$pltvis_vol_ui <- renderUI({
+      vol_v1 <- unique(as.character(volumes()[Variant == "V1"]$Volume_Name))
+      vol_v2 <- unique(as.character(volumes()[Variant == "V2"]$Volume_Name))
+      vol_v3 <- unique(as.character(volumes()[Variant == "V3"]$Volume_Name))
+      vol_all <- unique(as.character(volumes()$Volume_Name))
+      if (input$pltvis_vol_sep) {
+        div(
+          pickerInput_customised(ns("pltvis_vol_1"), "Display Volumes V1", choices=vol_v1),
+          pickerInput_customised(ns("pltvis_vol_2"), "Display Volumes V2", choices=vol_v2),
+          pickerInput_customised(ns("pltvis_vol_3"), "Display Volumes V3", choices=vol_v3)
         )
-    })
-    
-    output$pltvis_g3 <- renderPlotly({
-      if (input$pltvis_g3_sep) {
-        d1 <- d[Non_Standard_Transition_V1 %in% input$pltvis_g3_trans1]
-        d2 <- d[Non_Standard_Transition_V2 %in% input$pltvis_g3_trans2]
-        d3 <- d[Non_Standard_Transition_V3 %in% input$pltvis_g3_trans3]
       } else {
-        d1 <- d[Non_Standard_Transition_V1 %in% input$pltvis_g3_trans]
-        d2 <- d[Non_Standard_Transition_V2 %in% input$pltvis_g3_trans]
-        d3 <- d[Non_Standard_Transition_V3 %in% input$pltvis_g3_trans]
+        pickerInput_customised(ns("pltvis_vol"), "Display Volumes", choices=vol_all)
       }
-
-      plot_ly(alpha = 0.6) %>%
-        add_histogram(data = d1, x = ~Base_Leg_Lateral_Distance_V1, name = "V1") %>%
-        add_histogram(data = d2, x = ~Base_Leg_Lateral_Distance_V2, name = "V2") %>%
-        add_histogram(data = d3, x = ~Base_Leg_Lateral_Distance_V3, name = "V3") %>%
-        layout(
-          legend = list(x = 100, y = 0.5),
-          barmode = "overlay",
-          title = "Lateral Distance from Localiser when First Tracked",
-          xaxis = list(title = "Lateral Distance From Localiser"),
-          yaxis = list(title = "Frequency")
-        )
     })
+  })
+  
+  observeEvent(input$pltvis_flights_view, {
+    p1 <- leafletProxy("pltvis_map_1")
+    p2 <- leafletProxy("pltvis_map_2")
+    p3 <- leafletProxy("pltvis_map_3")
+    p1 %>% clearGroup("markers") %>% clearGroup("ind") %>% clearGroup("volumes")
+    p2 %>% clearGroup("markers") %>% clearGroup("ind") %>% clearGroup("volumes")
+    p3 %>% clearGroup("markers") %>% clearGroup("ind") %>% clearGroup("volumes")
+    updateCheckboxInput(session, "pltvis_disp_tracks", value = F)
+    updateCheckboxInput(session, "pltvis_disp_ind", value = F)
+    updatePickerInput(session, "pltvis_vol_1", selected=NA)
+    updatePickerInput(session, "pltvis_vol_2", selected=NA)
+    updatePickerInput(session, "pltvis_vol_3", selected=NA)
+    updatePickerInput(session, "pltvis_vol", selected=NA)
+  })
+  
+  # PLT Analysis Tools | Detailed Analysis Plots ----------------------------
+  
+  plt_plotdat <- eventReactive(input$pltvis_flights_view, {
+    fpid <- plt_dat()$`Flight Plan ID`[input$plt_detailed_table_rows_selected]
+    return(plt_dat()[`Flight Plan ID` %in% fpid])
+  })
+  
+  output$pltvis_g1_ui <- renderUI({
+    choices_v1 <- unique(plt_plotdat()$`Non Standard Transition V1`)
+    choices_v2 <- unique(plt_plotdat()$`Non Standard Transition V2`)
+    choices_v3 <- unique(plt_plotdat()$`Non Standard Transition V3`)
+    choices_all <- unique(c(
+      plt_plotdat()$`Non Standard Transition V1`,
+      plt_plotdat()$`Non Standard Transition V2`,
+      plt_plotdat()$`Non Standard Transition V3`
+    ))
+    if (input$pltvis_g1_sep) {
+      div(
+        pickerInput_customised(ns("pltvis_g1_trans1"), "Filter Non-Standard Transitions V1", choices=choices_v1, selected=choices_v1),
+        pickerInput_customised(ns("pltvis_g1_trans2"), "Filter Non-Standard Transitions V2", choices=choices_v2, selected=choices_v2),
+        pickerInput_customised(ns("pltvis_g1_trans3"), "Filter Non-Standard Transitions V3", choices=choices_v3, selected=choices_v3)
+      )
+    } else {
+      pickerInput_customised(ns("pltvis_g1_trans"), "Filter Non-Standard Transitions", choices=choices_all, selected=choices_all)
+    }
+  })
+  
+  output$pltvis_g3_ui <- renderUI({
+    choices_v1 <- unique(plt_plotdat()$`Non Standard Transition V1`)
+    choices_v2 <- unique(plt_plotdat()$`Non Standard Transition V2`)
+    choices_v3 <- unique(plt_plotdat()$`Non Standard Transition V3`)
+    choices_all <- unique(c(
+      plt_plotdat()$`Non Standard Transition V1`,
+      plt_plotdat()$`Non Standard Transition V2`,
+      plt_plotdat()$`Non Standard Transition V3`
+    ))
+    if (input$pltvis_g3_sep) {
+      div(
+        pickerInput_customised(ns("pltvis_g3_trans1"), "Filter Non-Standard Transitions V1", choices=choices_v1, selected=choices_v1),
+        pickerInput_customised(ns("pltvis_g3_trans2"), "Filter Non-Standard Transitions V2", choices=choices_v2, selected=choices_v2),
+        pickerInput_customised(ns("pltvis_g3_trans3"), "Filter Non-Standard Transitions V3", choices=choices_v3, selected=choices_v3)
+      )
+    } else {
+      pickerInput_customised(ns("pltvis_g3_trans"), "Filter Non-Standard Transitions", choices=choices_all, selected=choices_all)
+    }
+  })
+  
+  output$pltvis_g4_ui <- renderUI({
+    choices_v1 <- unique(plt_plotdat()$`Non Standard Transition V1`)
+    choices_v2 <- unique(plt_plotdat()$`Non Standard Transition V2`)
+    choices_v3 <- unique(plt_plotdat()$`Non Standard Transition V3`)
+    choices_all <- unique(c(
+      plt_plotdat()$`Non Standard Transition V1`,
+      plt_plotdat()$`Non Standard Transition V2`,
+      plt_plotdat()$`Non Standard Transition V3`
+    ))
+    if (input$pltvis_g4_sep) {
+      div(
+        pickerInput_customised(ns("pltvis_g4_trans1"), "Filter Non-Standard Transitions V1", choices=choices_v1, selected=choices_v1),
+        pickerInput_customised(ns("pltvis_g4_trans2"), "Filter Non-Standard Transitions V2", choices=choices_v2, selected=choices_v2),
+        pickerInput_customised(ns("pltvis_g4_trans3"), "Filter Non-Standard Transitions V3", choices=choices_v3, selected=choices_v3)
+      )
+    } else {
+      pickerInput_customised(ns("pltvis_g4_trans"), "Filter Non-Standard Transitions", choices=choices_all, selected=choices_all)
+    }
+  })
+  
+  output$pltvis_g1 <- renderPlotly({
     
-    output$pltvis_g4 <- renderPlotly({
-      dummy_date <- as.POSIXct(paste0(Sys.Date(), " 00:00:00"), tz="UTC")
+    d1 <- if (input$pltvis_g1_zeros) {
+      plt_plotdat()[`Activation Time Difference V1 V2` != 0]
+    } else {
+      plt_plotdat()
+    }
+    
+    d2 <- if (input$pltvis_g1_zeros) {
+      plt_plotdat()[`Activation Time Difference V1 V3` != 0]
+    } else {
+      plt_plotdat()
+    }
+    
+    if (input$pltvis_g1_sep) {
+      d1 <- d1[`Non Standard Transition V1` %in% input$pltvis_g1_trans1 &
+                 `Non Standard Transition V2` %in% input$pltvis_g1_trans2]
       
-      if (input$pltvis_g4_sep) {
-        d1 <- d[Non_Standard_Transition_V1 %in% input$pltvis_g4_trans1]
-        d2 <- d[Non_Standard_Transition_V2 %in% input$pltvis_g4_trans2]
-        d3 <- d[Non_Standard_Transition_V3 %in% input$pltvis_g4_trans3]
-      } else {
-        d1 <- d[Non_Standard_Transition_V1 %in% input$pltvis_g4_trans]
-        d2 <- d[Non_Standard_Transition_V2 %in% input$pltvis_g4_trans]
-        d3 <- d[Non_Standard_Transition_V3 %in% input$pltvis_g4_trans]
-      }
-
-      plot_ly(alpha = 0.6) %>%
-        add_histogram(data = d1, x = ~Indicator_Activation_Time_V1+dummy_date, name = "V1") %>%
-        add_histogram(data = d2, x = ~Indicator_Activation_Time_V2+dummy_date, name = "V2") %>%
-        add_histogram(data = d3, x = ~Indicator_Activation_Time_V3+dummy_date, name = "V3") %>%
-        layout(
-          legend = list(x = 100, y = 0.5),
-          barmode = "overlay",
-          title = "Altitude when First Tracked",
-          xaxis = list(title = "Altitude when Indicator First Activated"),
-          yaxis = list(title = "Frequency")
-        )
-    })
+      d2 <- d2[`Non Standard Transition V1` %in% input$pltvis_g1_trans1 &
+                 `Non Standard Transition V3` %in% input$pltvis_g1_trans3]
+    } else {
+      d1 <- d1[`Non Standard Transition V1` %in% input$pltvis_g1_trans &
+                 `Non Standard Transition V2` %in% input$pltvis_g1_trans]
+      
+      d2 <- d2[`Non Standard Transition V1` %in% input$pltvis_g1_trans &
+                 `Non Standard Transition V3` %in% input$pltvis_g1_trans]
+    }
     
+    
+    plot_ly(alpha = 0.6) %>%
+      add_histogram(data = d1, x = ~`Activation Time Difference V1 V2`, name = "V1 vs V2") %>%
+      add_histogram(data = d2, x = ~`Activation Time Difference V1 V3`, name = "V1 vs V3") %>%
+      layout(
+        legend = list(x = 100, y = 0.5),
+        barmode = "overlay",
+        title = "Indicator Activation Time Difference",
+        xaxis = list(title = "Indicator Activation Time Difference"),
+        yaxis = list(title = "Frequency")
+      )
+  })
+  
+  output$pltvis_g2 <- renderPlotly({
+    plot_ly(data = plt_plotdat(), alpha = 0.6) %>%
+      add_markers(x=~`Activation Time Difference V1 V2`, y=~`Base Leg Altidude V2`, name="V1 vs V2") %>%
+      add_markers(x=~`Activation Time Difference V1 V3`, y=~`Base Leg Altidude V3`, name="V1 vs V3") %>%
+      layout(
+        legend = list(x = 100, y = 0.5),
+        title = "Activation Time Difference vs QNH",
+        xaxis = list(title = "Activation Time Difference", tickformat="%H:%M:%S"),
+        yaxis = list(title = "Base Leg Altidude")
+      )
+  })
+  
+  output$pltvis_g3 <- renderPlotly({
+    if (input$pltvis_g3_sep) {
+      d1 <- plt_plotdat()[`Non Standard Transition V1` %in% input$pltvis_g3_trans1]
+      d2 <- plt_plotdat()[`Non Standard Transition V2` %in% input$pltvis_g3_trans2]
+      d3 <- plt_plotdat()[`Non Standard Transition V3` %in% input$pltvis_g3_trans3]
+    } else {
+      d1 <- plt_plotdat()[`Non Standard Transition V1` %in% input$pltvis_g3_trans]
+      d2 <- plt_plotdat()[`Non Standard Transition V2` %in% input$pltvis_g3_trans]
+      d3 <- plt_plotdat()[`Non Standard Transition V3` %in% input$pltvis_g3_trans]
+    }
+    
+    plot_ly(alpha = 0.6) %>%
+      add_histogram(data = d1, x = ~`Base Leg Lateral Distance V1`, name = "V1") %>%
+      add_histogram(data = d2, x = ~`Base Leg Lateral Distance V2`, name = "V2") %>%
+      add_histogram(data = d3, x = ~`Base Leg Lateral Distance V3`, name = "V3") %>%
+      layout(
+        legend = list(x = 100, y = 0.5),
+        barmode = "overlay",
+        title = "Lateral Distance from Localiser when First Tracked",
+        xaxis = list(title = "Lateral Distance From Localiser"),
+        yaxis = list(title = "Frequency")
+      )
+  })
+  
+  output$pltvis_g4 <- renderPlotly({
+    
+    if (input$pltvis_g4_sep) {
+      d1 <- plt_plotdat()[`Non Standard Transition V1` %in% input$pltvis_g4_trans1]
+      d2 <- plt_plotdat()[`Non Standard Transition V2` %in% input$pltvis_g4_trans2]
+      d3 <- plt_plotdat()[`Non Standard Transition V3` %in% input$pltvis_g4_trans3]
+    } else {
+      d1 <- plt_plotdat()[`Non Standard Transition V1` %in% input$pltvis_g4_trans]
+      d2 <- plt_plotdat()[`Non Standard Transition V2` %in% input$pltvis_g4_trans]
+      d3 <- plt_plotdat()[`Non Standard Transition V3` %in% input$pltvis_g4_trans]
+    }
+    
+    plot_ly(alpha = 0.6) %>%
+      add_histogram(data = d1, x = ~`Base Leg Altidude V1`, name = "V1") %>%
+      add_histogram(data = d2, x = ~`Base Leg Altidude V2`, name = "V2") %>%
+      add_histogram(data = d3, x = ~`Base Leg Altidude V3`, name = "V3") %>%
+      layout(
+        legend = list(x = 100, y = 0.5),
+        barmode = "overlay",
+        title = "Altitude when First Tracked",
+        xaxis = list(title = "Altitude when Indicator First Activated"),
+        yaxis = list(title = "Frequency")
+      )
   })
   
 }

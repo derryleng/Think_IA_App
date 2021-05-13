@@ -1,4 +1,4 @@
-load_packages <- function(req_file, install = T, update = F, silent = F) {
+(function(req_file, install = T, update = F, silent = F) {
   # req_file - .txt file containing list of required packages (one per line)
   req <- scan(req_file, character(), quiet = T)
   
@@ -20,9 +20,7 @@ load_packages <- function(req_file, install = T, update = F, silent = F) {
   if (!webshot::is_phantomjs_installed()) {
     webshot::install_phantomjs()
   }
-}
-
-load_packages("req.txt", silent = F)
+})("req.txt", silent = F)
 
 invisible(lapply(list.files(path = "modules/", pattern = "mod_ui.R|mod_server.R", recursive = T, full.names = T), source))
 

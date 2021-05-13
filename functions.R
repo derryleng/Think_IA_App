@@ -335,6 +335,37 @@ configVolume_To_pointSequence <- function(x, dbi_con) {
   
 }
 
+generic_confirm_dialogue <- function(SQLFileName, actionButtonName, dbi_con, ...) {
+  modalDialog(
+    div(
+      style = "text-align: center",
+      h3("MODIFY DATABASE WARNING")
+    ),
+    hr(),
+    div(
+      style = "text-align: center",
+      tags$b("Do you wish to proceed?")
+    ),
+    ...,
+    h5("SQL Script"),
+    if (length(SQLFileName) > 1) {
+      HTML("<li>", paste0(SQLFileName, collapse = "</li><li>"), "</li>")
+    } else {
+      SQLFileName
+    },
+    h5("Database"),
+    as.character(dbGetQuery(isolate(dbi_con), "SELECT DB_NAME()")),
+    size = "s",
+    footer = div(
+      class = "centered",
+      modalButton("Cancel"),
+      div(style = "width: 15px"),
+      actionButton(actionButtonName, "Confirm")
+    ),
+    easyClose = F
+  )
+}
+
 # ----------------------------------------------------------------------- #
 # Functions (Imported) ----------------------------------------------------
 # ----------------------------------------------------------------------- #
