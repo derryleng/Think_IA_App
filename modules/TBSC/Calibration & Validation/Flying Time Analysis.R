@@ -1,5 +1,11 @@
 
+
+
 Plot_Values <- c(3, 4, 5, 6, 7, 8)
+
+# -------------------------------------------------------------------------------------------------- #
+# GWCS Stage 2 Filter Plot
+# -------------------------------------------------------------------------------------------------- #
 
 ## Plot to Look at the GWCS Stage 2 Filters
 FT_Flag_Plot_Dir <- file.path(Adap_Iteration_Dir, paste0("GWCS Stage 2 Flag Statistics v", Adap_Iteration_Version, ".png"))
@@ -28,6 +34,10 @@ if (!file.exists(FT_Flag_Plot_Dir)){
   print(plot)
   dev.off()
 }
+
+# -------------------------------------------------------------------------------------------------- #
+# Existing Boxplots from v2.9
+# -------------------------------------------------------------------------------------------------- #
 
 # use bplot (Per Wake Cat, All Wind vs SHW) - Crude
 for (wake in c("A", "B", "C", "D", "E", "F", "G")){
@@ -70,6 +80,10 @@ png(file.path(Plot_Dir, "FT Boxplot (0DME v 1DME).png"),  width = 1100, height =
 grid.arrange(SHW_0DME_Wake, SHW_1DME_Wake)
 dev.off()
 
+# -------------------------------------------------------------------------------------------------- #
+# MC Additions 
+# -------------------------------------------------------------------------------------------------- #
+
 # Additional analysis by Landing Runway
 Summary_Wake_Runway <- Create_Summary_Main(IAS_Values, "Wake_Cat", "Runway", NA, Case_Var, Delivery_Chosen) 
 Summary_Wake_Join <- select(Summary_Wake, Wake_Cat, Separation_Distance, !!sym(Case_Var), Count, Median_Speed)
@@ -80,19 +94,59 @@ Summary_Wake_Runway <- Summary_Wake_Runway %>%
   mutate(Median_Speed_Diff = round(Median_Speed_Runway - Median_Speed, 1))
 fwrite(Summary_Wake_Runway, file.path(Local_Iteration_Dir, paste0("IAS Runway Comparison v", Local_Iteration_Version, ".csv")))
 
+# -------------------------------------------------------------------------------------------------- #
+# Follower IAS Distributions
+# -------------------------------------------------------------------------------------------------- #
 
-## Plots of Mean IAS against Reference Time
-for (i in 1:nrow(Wake_Adaptation_Speeds_Wake)){
+### Wake Follower WTC/Sep Distance Speed Distributions.
+
+# Set the Speeds & Config (assumes entire FTA Hub is run)
+SpeedsPlot <- IAS_Values
+ConfigPlot <- Wake_Adaptation_Speeds_Wake
+
+# Remove any Duplicates.
+Wake_Dist_Plot <- select(Recat_Wake_Dist, -Leader_WTC) %>% unique()
+DistPath <- file.path(Plot_Dir, "IAS Distributions")
+Create_Directory(DistPath)
+
+# Plot All v Ref Wind IAS (against ref value) for all in Wake Dist
+for (i in 1:nrow(Wake_Dist_Plot)){
   
-  LeaderWTC <- Wake_Adaptation_Speeds_Wake[i,]$Leader_WTC
-  FollowerWTC <- Wake_Adaptation_Speeds_Wake[i,]$Follower_WTC
-  Path <- file.path(Plot_Dir, paste0(LeaderWTC, "-", FollowerWTC))
-  Create_Directory(Path)
+  # Get the Sep Dist/Follower WTC
+  FollowerWTC <- Wake_Dist_Plot$Follower_WTC[i]
+  SepDist <- Wake_Dist_Plot$Reference_Wake_Separation_Distance[i]
   
-  for (j in 1:length(Separation_Time)){
-    Plot <- PlotAverageIASAgainstReference(FT_Data, Wake_Adaptation_Speeds_Wake, Recat_Wake_Dist, "Ave_SPD", "Recat", LeaderWTC, FollowerWTC)
-    #png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " ", Separation_Time[j], ".png")))
-    print(Plot)
-    #dev.off()
-  }
+  # Set up PNG object.
+  Plot1 <- PlotAgainstReferenceFTA(Data = SpeedsPlot, Reference = ConfigPlot, RefDists = Recat_Wake_Dist, 
+                                   PlotVar = "Ave_SPD", SepDist, FollowerWTC, Colour = "magenta", 
+                                   Unit = "IAS", RefWinds = "None")
+  Plot2 <- PlotAgainstReferenceFTA(Data = SpeedsPlot, Reference = ConfigPlot, RefDists = Recat_Wake_Dist, 
+                                   PlotVar = "Ave_SPD", SepDist, FollowerWTC, Colour = "magenta", 
+                                   Unit = "IAS", RefWinds = "SHW")
+  png(file.path(DistPath, paste0(FollowerWTC, "-", SepDist, " Average IAS (Ref v All Winds)", ".png")), width = 720, height = 720)
+  grid.arrange(Plot1, Plot2)
+  dev.off()
+  
 }
+
+# -------------------------------------------------------------------------------------------------- #
+# Temp Analysis
+# -------------------------------------------------------------------------------------------------- #
+
+### Quick investigation into aircraft weighting changes
+### CODE WILL ONLY WORK IF VERSION IS SET TO 7.0-1-1
+
+# Min_Percent_Diff <- 5
+# Min_Old_Obs <- 100
+# setwd(Adaptation_Compare_Dir)
+# Temp <- fread("Weightings v7.0-1-1 & v6.0-0-0.csv")
+# Temp <- arrange(Temp, Follower_WTC, Separation_Distance, Weighting_Diff)
+# Temp <- select(Temp, -Separation_Distance) %>% unique()
+# Temp <- group_by(Temp, Aircraft_Type) %>% mutate(ID = row_number()) %>% ungroup() %>% filter(ID == 1)
+# Temp <- select(Temp, -ID)
+# Temp <- arrange(Temp, desc(Weighting_Diff))
+# Temp <- filter(Temp, Weighting_Diff >= Min_Percent_Diff | (Weighting_New == 0 & Count_Old >= Min_Old_Obs))
+# fwrite(Temp, "Significant ACT Weighting Changes.csv")
+
+
+

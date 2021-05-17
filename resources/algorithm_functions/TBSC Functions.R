@@ -531,24 +531,34 @@ calculate_headwind_component <- function(runway_hdg, wind_hdg, wind_spd){
   return(headwind_component)
 }
 
-# Only works for RECAT
-PlotAgainstReferenceFTA <- function(Data, Reference, RefDists, PlotVar, SepDist, FollowerWTC, Unit, Colour){
+PlotAgainstReferenceFTA <- function(Data, Reference, RefDists, PlotVar, SepDist, FollowerWTC, Colour, Unit, RefWinds){
+  
+  if (RefWinds == "SHW"){
+    Data <- filter(Data, Surface_Headwind_Group == "(-5,5]")
+    Addon <- " (Ref Winds Only)"}
   
   # String for Title
   if (Unit == "IAS"){
-    Unit <- "IAS (kts)"
-    PlotTitle <- "Follower Mean IAS"
+    Unit <- "kts"
+    PlotTitle <- paste0("Follower Mean IAS (", FollowerWTC, " - ", SepDist, "NM)")
     names(Reference)[ncol(Reference)] <- "IAS"
     Var <- "IAS"
+    SubTitle <- paste0("Average Mode S IAS across ", SepDist, "NM Against Reference IAS (")
+    Bound_Low <- 80
+    Bound_High <- 200
   }
   
   if (Unit == "Time"){
-    Unit <- "Time (s)"
-    PlotTitle <- "Flying time"
+    Unit <- "s"
+    PlotTitle <- paste0("Flying Time (", FollowerWTC, " - ", SepDist, "NM)")
     names(Reference)[ncol(Reference)] <- "Time"
     Var <- "Time"
+    SubTitle <- paste0("Average Flying Time across ", SepDist, "NM Against Reference Time (")
+    Bound_Low <- 40
+    Bound_High <- 200
   }
   
+  if (exists("Addon")){PlotTitle <- paste0(PlotTitle, Addon)}
   names(RefDists)[ncol(RefDists)] <- "Distance"
   
   # Get variable names.
@@ -563,25 +573,16 @@ PlotAgainstReferenceFTA <- function(Data, Reference, RefDists, PlotVar, SepDist,
     RefDists <- select(Reference, -Runway) %>% unique()
   }
   Reference <- left_join(Reference, RefDists, by = c("Leader_WTC", "Follower_WTC"))
-  RefVar <- as.numeric(filter(Reference, Distance == !!sym(Dist_Var) & Follower_WTC == Follower_WTC) %>% select(!!sym(Var)))[1]
+  RefVar <- as.numeric(filter(Reference, Distance == SepDist & Follower_WTC == FollowerWTC) %>% select(!!sym(Var)))[1]
+  SubTitle <- paste0(SubTitle, RefVar, Unit, ")") 
   String <- paste0(PlotTitle)
   
   # Initialise Histogram plot
-  Plot <- ggplot(Data) + geom_histogram(mapping = aes(x = !!sym(PlotVar), y = ..density..), binwidth = 2, fill = Colour) + geom_vline(xintercept = RefVar) + 
-    labs(x = Unit, y = "Density", title = String, subtitle = PlotVar)
+  Plot <- ggplot(Data) + geom_histogram(mapping = aes(x = !!sym(PlotVar), y = ..density..), binwidth = 1, fill = Colour) + geom_vline(xintercept = RefVar) + 
+    labs(x = paste0(Var, "(", Unit, ")"), y = "Density", title = PlotTitle, subtitle = SubTitle) + xlim(Bound_Low, Bound_High)
   
   return(Plot)
   
 }
 
-
-# Uses PlotAgainstReference from functions.R
-PlotAverageIASAgainstReference <- function(Data, RefSpeeds, RefDists, SpeedVar, RecatorLegacy, LeaderWTC, FollowerWTC){
-  
-  Plot <- PlotAgainstReferenceFTA(Data, RefSpeeds, RefDists, PlotVar, SepDist, FollowerWTC, Unit, Colour)
-  Plot <- Plot + xlim(80, 240)
-  
-  return(Plot)
-  
-}
 

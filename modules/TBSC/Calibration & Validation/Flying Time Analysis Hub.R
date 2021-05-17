@@ -91,10 +91,10 @@ Operation <- "IA" # Want this to be in DB
 # Data/Output Versions (Move Adap to DB?)
 Adap_Version <-  "7.0"
 Adap_Iteration <- "1"
-Local_Iteration <- "3"
+Local_Iteration <- "0"
 
 # Version Comparisons
-Do_Version_Comparison <- T
+Do_Version_Comparison <- F
 Compare_Airfield <- "CYYZ"
 Compare_Version <- "7.0-1-1"
 
@@ -174,8 +174,8 @@ Safety_Case <- 2
 Use_Secondary_Adaptation <- F
 
 # Weighting (Recat Wake/ROT)
-Use_Weighted_Wake <- T
-Weighting_Local <- T
+Use_Weighted_Wake <- F
+Weighting_Local <- F
 Weighting_Version_Alt <- "6.0-0-0"
 Weighting_Method <- 2
 Min_Weighting_Obs <- 0
