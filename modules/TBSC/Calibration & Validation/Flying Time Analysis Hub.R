@@ -91,7 +91,7 @@ Operation <- "IA" # Want this to be in DB
 # Data/Output Versions (Move Adap to DB?)
 Adap_Version <-  "7.0"
 Adap_Iteration <- "1"
-Local_Iteration <- "0"
+Local_Iteration <- "1"
 
 # Version Comparisons
 Do_Version_Comparison <- F
@@ -285,3 +285,7 @@ source(GetScriptPath(Script_Dir, Airfield, "Flying Time Analysis.R"), local = T)
 
 # -------------------------------------------------------------------------------------------------- #
 # -------------------------------------------------------------------------------------------------- #
+
+
+  
+

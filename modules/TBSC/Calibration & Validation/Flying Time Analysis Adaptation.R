@@ -359,3 +359,22 @@ if (Operation == "IA PWS" & Operator_Enabled){
     }
   }
 }
+
+# ------------------------------------------------------------------------------------------------- #
+# TEMP: Combine Speeds from ROT/Wake.
+# ------------------------------------------------------------------------------------------------- #
+
+### TEMP:
+# ROT_Temp <- fread(file.path(Adaptation_Full_Dir, paste0("Recat ROT Adaptation v", Local_Iteration_Version, ".csv")))
+# Wake_Temp <- fread(file.path(Adaptation_Full_Dir, paste0("Recat Wake Adaptation v", Local_Iteration_Version, ".csv")))
+# 
+# ROT_Temp <- select(ROT_Temp, -Runway, -Reference_ROT_Spacing_Time) %>% unique() %>% 
+#   rename(Separation_Distance = Reference_ROT_Spacing_Distance,
+#          Reference_IAS = Assumed_ROT_Spacing_IAS)
+# 
+# Wake_Temp <- select(Wake_Temp, -Reference_Wake_Separation_Time) %>% unique() %>%
+#   rename(Separation_Distance = Reference_Wake_Separation_Distance,
+#          Reference_IAS = Assumed_Wake_Separation_IAS)
+# 
+# Temp <- rbind(Wake_Temp, ROT_Temp) %>% arrange(Leader_WTC, Follower_WTC) %>% unique()
+# fwrite(Temp, file.path(Adaptation_Full_Dir, "All_Ref_Speeds.csv"))
