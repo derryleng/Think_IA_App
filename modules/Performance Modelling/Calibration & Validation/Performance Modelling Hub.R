@@ -115,6 +115,10 @@ Use_Filter_Recat_Wake <- F
 Use_Filter_Go_Arounds <- F
 Use_Filter_Average_IAS <- F
 
+Filter_Average_IAS_Max_DME <- 4.5
+Filter_Average_IAS_Max_SPD <- 180
+Filter_Average_IAS_Min_SPD <- 120
+
 # ---------------------------------------------------- #
 # Sample Bolstering
 # ---------------------------------------------------- #

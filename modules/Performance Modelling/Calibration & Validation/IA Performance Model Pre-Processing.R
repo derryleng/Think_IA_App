@@ -33,16 +33,51 @@
 # Filtering
 # --------------------------------------------------------------------------------- #
 
+# Initialise Filter Table Columns
+Filter <- c()
+OldRows <- c()
+NewRows <- c()
+Removed <- c()
+
 # Filter for RECAT Wake Pairs Only
-if (Use_Filter_Recat_Wake){}
+if (Use_Filter_Recat_Wake){
+  Pre_Row <- nrow(Performance_Model)
+  Performance_Model <- filter(Performance_Model, !is.na(Ref_Recat_Wake_Separation_Distance))
+  Post_Row <- nrow(Performance_Model)
+  Rem_Row <- Pre_Row - Post_Row
+  Filter <- append(Filter, "Wake Pairs Only")
+  OldRows <- append(OldRows, Pre_Row)
+  NewRows <- append(NewRows, Post_Row)
+  Removed <- append(Removed, Rem_Row)
+}
 
 # Filter to remove Negative Separation Times (Go-Arounds)
-if (Use_Filter_Go_Arounds){}
+if (Use_Filter_Go_Arounds){
+  Pre_Row <- nrow(Performance_Model)
+  Performance_Model <- filter(Performance_Model, Observed_1DME_Separation_Time > 0)
+  Post_Row <- nrow(Performance_Model)
+  Rem_Row <- Pre_Row - Post_Row
+  Filter <- append(Filter, "Go-Arounds (Neg 1DME Sep Time)")
+  OldRows <- append(OldRows, Pre_Row)
+  NewRows <- append(NewRows, Post_Row)
+  Removed <- append(Removed, Rem_Row)
+}
 
 # Filter for Average IAS from Threshold to (Max_IAS_Filter_DME)DME
 if (Use_Filter_Average_IAS){
+  FAF_Segs <- filter(Segments, DME_Seg >= (Filter_Average_IAS_Max_DME - 1)) %>%
+    mutate(Weighting = ifelse(Filter_Average_IAS_Max_DME - DME_Seg > 1, 1, Filter_Average_IAS_Max_DME - DME_Seg)) %>%
+    group_by(Landing_Pair_ID) %>%
+    summarise(Leader_Ave_Flight_IAS = mean(Leader_Average_IAS, na.rm=T, Follower_Ave_Flight_IAS = mean(Follower_Average_IAS, na.rm=T))) %>%
+    ungroup()
   
+  Performance_Model <- Performance_Model %>%
+    left_join()
+
 }
+
+# Add to Filter Table.
+Filter_Table <- data.frame(Filter = Filters, Prev_Count = OldRows, New_Count = NewRows, Removed = Removed)
 
 # --------------------------------------------------------------------------------- #
 # Legacy Wake Fields
