@@ -97,106 +97,98 @@
 #
 # ----------------------------------------------------------------------- #
 
-## GC ADD 08/03: Filter Switches
-Use_Forecast_Distances <- T
-Use_Leader_WEs <- F
-Use_Filter_Sep_Accuracy <- F
-Use_Filter_Sep_Accuracy_Tight <- F
-Use_FAF_IAS_Filter <- T
+
 ## End ADD
 
 # Distances should include a Flight Plan ID, a Start Distance and End Distance
 # This can be used for PM and ORD. Outputs Speed and WE Trapezium average
 # across a distance window between start and end distance of Distances.
-Get_Average_Observed_Mode_S_Parameters <- function(LPR, Radar, Prefix, LorF, TimeorRange, Start_Var, End_Var){
-  
-  # Set the Maximum Delta between the Start Distance and the max(RTT) (NM)
-  Max_Delta <- 2
-  
-  # Get Variable Names
-  FPID <- paste0(LorF, "_Flight_Plan_ID")
-  
-  # Get Relevant Pair Data
-  Pair_Data <- select(LPR, !!sym(FPID), !!sym(Start_Var), !!sym(End_Var)) %>% rename("Flight_Plan_ID" := !!sym(FPID))
-  
-  # Join on the distances by Flight Plan ID
-  Radar <- left_join(Radar, Pair_Data, by = c("Flight_Plan_ID"))
-  
-  # Filter for RTT within the Distance Bounds
-  if (TimeorRange == "Range"){Radar <- rename(Radar, "End_Distance" := !!sym(End_Var), "Start_Distance" := !!sym(Start_Var))
-  Radar <- filter(Radar, Range_To_Threshold >= End_Distance & Range_To_Threshold <= Start_Distance)}
-  
-  # Filter for Track_Time within the Time Bounds
-  if (TimeorRange == "Time"){Radar <- rename(Radar, "End_Time" := !!sym(End_Var), "Start_Time" := !!sym(Start_Var))
-  Radar <- filter(Radar, Track_Time <= End_Time & Track_Time >= Start_Time)}
-  
-  # Filter to remove NA Wind Effect/IAS Values
-  Radar <- filter(Radar, !is.na(Mode_S_IAS) & !is.na(Wind_Effect_IAS))
-  
-  # Order by Flight Plan ID & Track Time
-  Radar <- Order_Radar(Radar)
-  
-  # Get a Sequence Number
-  Radar <- group_by(Radar, Flight_Plan_ID) %>% mutate(Sequence_Number = row_number()) %>% ungroup()
-  
-  # Take Required Fields from Radar
-  Radar2 <- select(Radar, Flight_Plan_ID, Sequence_Number, Track_Time, Mode_S_IAS, Wind_Effect_IAS)
-  
-  # Change Sequence number to next number. Change names of parameters.
-  Radar2 <- mutate(Radar2, Sequence_Number = Sequence_Number + 1) %>%
-    rename(Previous_Track_Time = Track_Time, Previous_Mode_S_IAS = Mode_S_IAS, Previous_Wind_Effect_IAS = Wind_Effect_IAS)
-  
-  # Join on the Previous Parameters
-  Radar <- left_join(Radar, Radar2, by = c("Flight_Plan_ID", "Sequence_Number"))
-  
-  # Remove Radar2
-  rm(Radar2)
-  
-  # Get the Delta beween Track_Time and Previous_Track_Time
-  Radar <- mutate(Radar, Track_Time_Delta = Track_Time - Previous_Track_Time)
-  
-  # Get each Observation's Contribution to the Trapezium sum: IAS
-  Radar <- mutate(Radar, Observed_Mean_IAS = Track_Time_Delta * (Mode_S_IAS + Previous_Mode_S_IAS) / 2)
-  
-  # Get each Observation's Contribution to the Trapezium sum: Wind Effect
-  Radar <- mutate(Radar, Observed_Mean_Wind_Effect = Track_Time_Delta * (Wind_Effect_IAS + Previous_Wind_Effect_IAS) / 2)
-  
-  # Sum Track Time Delta, Observed Mean IAS/Wind Effect by Flight Plan ID
-  Radar <- group_by(Radar, Flight_Plan_ID) %>% summarise(Total_Track_Time_Delta = sum(Track_Time_Delta, na.rm=T),
-                                                         Observed_Mean_IAS = sum(Observed_Mean_IAS, na.rm=T),
-                                                         Observed_Mean_Wind_Effect = sum(Observed_Mean_Wind_Effect, na.rm=T)) %>% ungroup()
-  
-  # Divide the Observed sums by the Track Time delta to get the Trapezium rule average
-  Radar <- mutate(Radar,
-                  Observed_Mean_IAS = Observed_Mean_IAS / Total_Track_Time_Delta,
-                  Observed_Mean_Wind_Effect = Observed_Mean_Wind_Effect / Total_Track_Time_Delta) %>%
-    select(-Total_Track_Time_Delta)
-  
-  # Get Variable Names
-  IAS_Var <- paste0("Observed_", LorF, "_", Prefix, "_IAS")
-  WE_Var <- paste0("Observed_", LorF, "_", Prefix, "_Wind_Effect")
-  
-  # Rename Appropriately
-  Radar <- rename(Radar, 
-                  !!sym(IAS_Var) := "Observed_Mean_IAS",
-                  !!sym(WE_Var) := "Observed_Mean_Wind_Effect")
-  
-  # Join on to Landing Pair Reference
-  LPR <- left_join(LPR, Radar, by = setNames("Flight_Plan_ID", FPID))
-  
-  # Return the Observed parameters.
-  return(LPR)
-  
-}
-
-Order_Radar <- function(Radar){
-  Radar <- Radar[order(Radar$Flight_Plan_ID, Radar$Track_Time),]
-  return(Radar)
-}
-
-
-
-
+# Get_Average_Observed_Mode_S_Parameters <- function(LPR, Radar, Prefix, LorF, TimeorRange, Start_Var, End_Var){
+#   
+#   # Get Variable Names
+#   FPID <- paste0(LorF, "_Flight_Plan_ID")
+#   
+#   # Get Relevant Pair Data
+#   Pair_Data <- select(LPR, !!sym(FPID), !!sym(Start_Var), !!sym(End_Var)) %>% rename("Flight_Plan_ID" := !!sym(FPID))
+#   
+#   # Join on the distances by Flight Plan ID
+#   Radar <- left_join(Radar, Pair_Data, by = c("Flight_Plan_ID"))
+#   
+#   # Filter for RTT within the Distance Bounds
+#   if (TimeorRange == "Range"){Radar <- rename(Radar, "End_Distance" := !!sym(End_Var), "Start_Distance" := !!sym(Start_Var))
+#   Radar <- filter(Radar, Range_To_Threshold >= End_Distance & Range_To_Threshold <= Start_Distance)}
+#   
+#   # Filter for Track_Time within the Time Bounds
+#   if (TimeorRange == "Time"){Radar <- rename(Radar, "End_Time" := !!sym(End_Var), "Start_Time" := !!sym(Start_Var))
+#   Radar <- filter(Radar, Track_Time <= End_Time & Track_Time >= Start_Time)}
+#   
+#   # Filter to remove NA Wind Effect/IAS Values
+#   Radar <- filter(Radar, !is.na(Mode_S_IAS) & !is.na(Wind_Effect_IAS))
+#   
+#   # Order by Flight Plan ID & Track Time
+#   Radar <- Order_Radar(Radar)
+#   
+#   # Get a Sequence Number
+#   Radar <- group_by(Radar, Flight_Plan_ID) %>% mutate(Sequence_Number = row_number()) %>% ungroup()
+#   
+#   # Take Required Fields from Radar
+#   Radar2 <- select(Radar, Flight_Plan_ID, Sequence_Number, Track_Time, Mode_S_IAS, Wind_Effect_IAS)
+#   
+#   # Change Sequence number to next number. Change names of parameters.
+#   Radar2 <- mutate(Radar2, Sequence_Number = Sequence_Number + 1) %>%
+#     rename(Previous_Track_Time = Track_Time, Previous_Mode_S_IAS = Mode_S_IAS, Previous_Wind_Effect_IAS = Wind_Effect_IAS)
+#   
+#   # Join on the Previous Parameters
+#   Radar <- left_join(Radar, Radar2, by = c("Flight_Plan_ID", "Sequence_Number"))
+#   
+#   # Remove Radar2
+#   rm(Radar2)
+#   
+#   # Get the Delta beween Track_Time and Previous_Track_Time
+#   Radar <- mutate(Radar, Track_Time_Delta = Track_Time - Previous_Track_Time)
+#   
+#   # Get each Observation's Contribution to the Trapezium sum: IAS
+#   Radar <- mutate(Radar, Observed_Mean_IAS = Track_Time_Delta * (Mode_S_IAS + Previous_Mode_S_IAS) / 2)
+#   
+#   # Get each Observation's Contribution to the Trapezium sum: Wind Effect
+#   Radar <- mutate(Radar, Observed_Mean_Wind_Effect = Track_Time_Delta * (Wind_Effect_IAS + Previous_Wind_Effect_IAS) / 2)
+#   
+#   # Sum Track Time Delta, Observed Mean IAS/Wind Effect by Flight Plan ID
+#   Radar <- group_by(Radar, Flight_Plan_ID) %>% summarise(Total_Track_Time_Delta = sum(Track_Time_Delta, na.rm=T),
+#                                                          Observed_Mean_IAS = sum(Observed_Mean_IAS, na.rm=T),
+#                                                          Observed_Mean_Wind_Effect = sum(Observed_Mean_Wind_Effect, na.rm=T)) %>% ungroup()
+#   
+#   # Divide the Observed sums by the Track Time delta to get the Trapezium rule average
+#   Radar <- mutate(Radar,
+#                   Observed_Mean_IAS = Observed_Mean_IAS / Total_Track_Time_Delta,
+#                   Observed_Mean_Wind_Effect = Observed_Mean_Wind_Effect / Total_Track_Time_Delta) %>%
+#     select(-Total_Track_Time_Delta)
+#   
+#   # Get Variable Names
+#   IAS_Var <- paste0("Observed_", LorF, "_", Prefix, "_IAS")
+#   WE_Var <- paste0("Observed_", LorF, "_", Prefix, "_Wind_Effect")
+#   
+#   # Rename Appropriately
+#   Radar <- rename(Radar, 
+#                   !!sym(IAS_Var) := "Observed_Mean_IAS",
+#                   !!sym(WE_Var) := "Observed_Mean_Wind_Effect")
+#   
+#   # Join on to Landing Pair Reference
+#   LPR <- left_join(LPR, Radar, by = setNames("Flight_Plan_ID", FPID))
+#   
+#   # Return the Observed parameters.
+#   return(LPR)
+#   
+# }
+# 
+# Order_Radar <- function(Radar){
+#   Radar <- Radar[order(Radar$Flight_Plan_ID, Radar$Track_Time),]
+#   return(Radar)
+# }
+# 
+# 
+# 
+# 
 
 
 
@@ -252,34 +244,6 @@ if (!exists("performance_model_source") | is.na(performance_model_source)) {
 } else {
   pdata1 <- fread(performance_model_source)
 }
-
-
-### GC ADD 0803: Get Radar Data
-Radar_Query <- "SELECT 
-RTPD.Flight_Plan_ID,
-Track_Time,
-Range_To_Threshold,
-ILS_Locus_RTT,
-Range_To_ILS,
-Path_Leg_Type,
-Wind_Effect_IAS,
-Mode_S_IAS
-FROM vw_Radar_Track_Point_Derived RTPD
-LEFT JOIN tbl_Flight_Plan FP
-ON RTPD.Flight_Plan_ID = FP.Flight_Plan_ID
-LEFT JOIN tbl_Flight_Plan_Derived FPD
-ON RTPD.Flight_Plan_ID = FPD.Flight_Plan_ID
-LEFT JOIN tbl_Runway R1
-ON R1.Runway_Name = RTPD.Mode_S_Wind_Localiser_Capture
-LEFT JOIN tbl_Runway R2
-ON R2.Runway_Name = FP.Landing_Runway
-WHERE FP.Landing_Runway = RTPD.Mode_S_Wind_Localiser_Capture
-OR FPD.Landing_Runway = RTPD.Mode_S_Wind_Localiser_Capture
-OR R1.Runway_Group = R2.Runway_Group
-OR RTPD.Mode_S_Wind_Localiser_Capture IS NULL
-ORDER BY Flight_Plan_ID, Track_Time"
-
-Radar <- sqlQuery(con, Radar_Query, stringsAsFactors = F)
 
 
 
@@ -454,192 +418,236 @@ data1$ORD_Compression <- ((data1$Leader_FAF_RTT - data1$Leader_0DME_RTT)/(data1$
   ((data1$ORD_Mean_Follower_IAS + data1$Forecast_Mean_Follower_Wind_Effect) - 
      (data1$ORD_Mean_Leader_IAS + data1$Forecast_Mean_Leader_Wind_Effect))
 
-data1o <- data1
-Radaro <- Radar
-if (Use_Forecast_Distances){
-  
-  # Adaptation Data
-  Allowed_Path_Legs <- c("ILS_Leg", "Landing_Leg", "Intercept_Leg", "Extended_Intercept")
-  Max_Range_To_ILS <- 4
-  FAF_Distance_Val <- 4.5 #(Should be matched..)
-  Sep_Buffer <- 1
-  Max_Allowable_Inside_Sep <- 1
-  
-  # data1 reversal (testing)
-  data1 <- data1o
-  Radar <- Radaro
-  
-  # Data Field removal
-  data1 <- select(data1, -c("Observed_Mean_Follower_IAS", "Observed_Mean_Follower_Wind_Effect"))
-  
-  # Change Range to Threshold value based on intercept ILS criteria
-  Radar <- mutate(Radar,
-                  ILS_Intercept_Flag = ifelse(is.na(Range_To_Threshold) & Path_Leg_Type %in% Allowed_Path_Legs & Range_To_ILS <= Max_Range_To_ILS, 1, 0),
-                  ILS_Intercept_Flag = ifelse(is.na(ILS_Intercept_Flag), 0, ILS_Intercept_Flag),
-                  Range_To_Threshold = ifelse(ILS_Intercept_Flag == 1, ILS_Locus_RTT, Range_To_Threshold))
-  
-  # Get the Forecast Compression Start/End Distances for the follower aircraft. (Assume 4.5NM LST)
-  data1 <- mutate(data1, 
-                  Follower_Forecast_Start_Distance = ORD_Compression + FAF_Distance_Val + ORD_Separation_Distance + Sep_Buffer,
-                  Follower_Forecast_End_Distance = ORD_Separation_Distance + Sep_Buffer)
-  
-  # Get the max RTTs
-  data1_allowed <- Radar %>% group_by(Flight_Plan_ID) %>%
-    filter(!is.na(Range_To_Threshold)) %>%
-    mutate(ID = row_number()) %>% ungroup() %>%
-    arrange(Flight_Plan_ID, desc(Range_To_Threshold)) %>%
-    filter(ID == 1) %>%
-    select(Flight_Plan_ID, Max_RTT_Follower = Range_To_Threshold, Follower_Max_ILS_Intercept_Flag = ILS_Intercept_Flag)
-  
-  data_it <- filter(data1, Landing_Pair_Type != "Not_In_Trail")
-  data_nit <- filter(data1, Landing_Pair_Type == "Not_In_Trail")
-  
-  foll_start_dist_it <- select(data_it, Follower_Flight_Plan_ID, Follower_Forecast_Start_Distance)
-  foll_start_dist_nit <- select(data_nit, Follower_Flight_Plan_ID, Follower_Forecast_Start_Distance)
-  
-  data1_sep1 <- Radar %>%
-    left_join(foll_start_dist_it, by = c("Flight_Plan_ID" = "Follower_Flight_Plan_ID")) %>%
-    filter(!is.na(Range_To_Threshold)) %>%
-    filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
-    arrange(Flight_Plan_ID, Track_Time) %>%
-    group_by(Flight_Plan_ID) %>%
-    mutate(ID = row_number()) %>%
-    ungroup() %>%
-    filter(ID == 1) %>% 
-    select(Flight_Plan_ID, Est_Start_RTT_Follower = Range_To_Threshold, Follower_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
-  
-  data_it <- left_join(data_it, data1_sep1, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
-  
-  data1_sep2 <- Radar %>%
-    left_join(foll_start_dist_nit, by = c("Flight_Plan_ID" = "Follower_Flight_Plan_ID")) %>%
-    filter(!is.na(Range_To_Threshold)) %>%
-    filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
-    arrange(Flight_Plan_ID, Track_Time) %>%
-    group_by(Flight_Plan_ID) %>%
-    mutate(ID = row_number()) %>%
-    ungroup() %>%
-    filter(ID == 1) %>% 
-    select(Flight_Plan_ID, Est_Start_RTT_Follower = Range_To_Threshold, Follower_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
-  
-  data_nit <- left_join(data_nit, data1_sep2, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
-  
-  data1 <- rbind(data_it, data_nit)
-  
-  # Join on the Max RTTs
-  data1 <- left_join(data1, data1_allowed, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
-  
-  data_it <- filter(data1, Landing_Pair_Type != "Not_In_Trail")
-  data_nit <- filter(data1, Landing_Pair_Type == "Not_In_Trail")
-  
-  lead_start_dist_nit <- select(data_nit, Leader_Flight_Plan_ID, Follower_Forecast_Start_Distance)
-  lead_start_dist_it <- select(data_it, Leader_Flight_Plan_ID, Follower_Forecast_Start_Distance)
-  
-  data1_sep1 <- Radar %>%
-    left_join(lead_start_dist_it, by = c("Flight_Plan_ID" = "Leader_Flight_Plan_ID")) %>%
-    filter(!is.na(Range_To_Threshold)) %>%
-    filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
-    arrange(Flight_Plan_ID, Track_Time) %>%
-    group_by(Flight_Plan_ID) %>%
-    mutate(ID = row_number()) %>%
-    ungroup() %>%
-    filter(ID == 1) %>% 
-    select(Flight_Plan_ID, Est_Start_RTT_Leader = Range_To_Threshold, Leader_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
-  
-  data_it <- left_join(data_it, data1_sep1, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID"))
-  
-  data1_sep2 <- Radar %>%
-    left_join(lead_start_dist_nit, by = c("Flight_Plan_ID" = "Leader_Flight_Plan_ID")) %>%
-    filter(!is.na(Range_To_Threshold)) %>%
-    filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
-    arrange(Flight_Plan_ID, Track_Time) %>%
-    group_by(Flight_Plan_ID) %>%
-    mutate(ID = row_number()) %>%
-    ungroup() %>%
-    filter(ID == 1) %>% 
-    select(Flight_Plan_ID, Est_Start_RTT_Leader = Range_To_Threshold, Leader_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
-  
-  data_nit <- left_join(data_nit, data1_sep2, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID"))
-  
-  data1 <- rbind(data_it, data_nit)
-  
-  # Change data1_allowed for use of Leader parameters
-  data1_allowed <- rename(data1_allowed, 
-                          Max_RTT_Leader = Max_RTT_Follower,
-                          Leader_Max_ILS_Intercept_Flag = Follower_Max_ILS_Intercept_Flag)
-  
-  
-  # Join on the Max RTTs (Leader!)
-  data1 <- left_join(data1, data1_allowed, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID"))
-  
-  # Follower Filter flag
-  data1 <- mutate(data1, Invalid_Follower_Flag = ifelse(Max_RTT_Follower < (Follower_Forecast_Start_Distance - Max_Allowable_Inside_Sep), 1, 0)) %>%
-    mutate(Invalid_Follower_Flag = ifelse(is.na(Invalid_Follower_Flag), 1, Invalid_Follower_Flag))
-  
-  # Filter for the Allowed/Not Allowed
-  data1_fol <- filter(data1, Invalid_Follower_Flag == 0)
-  data1_nofol <- filter(data1, Invalid_Follower_Flag == 1) %>% mutate(Observed_Mean_Follower_IAS = NA,
-                                                                      Failed_Valid_Follower_Flag = 0)
-  
-  # Perform calculations for Allowed Pairs
-  data1_fol <- Get_Average_Observed_Mode_S_Parameters(data1_fol, Radar, 
-                                                      Prefix = "Rename_Me",
-                                                      "Follower",
-                                                      "Range", 
-                                                      Start_Var = "Follower_Forecast_Start_Distance", 
-                                                      End_Var = "Follower_Forecast_End_Distance") %>%
-    rename(Observed_Mean_Follower_Wind_Effect = Observed_Follower_Rename_Me_Wind_Effect,
-           Observed_Mean_Follower_IAS = Observed_Follower_Rename_Me_IAS)
-  
-  # Get the Failed Follower Attempts
-  data1_folfailed <- filter(data1_fol, is.na(Observed_Mean_Follower_Wind_Effect)) %>% select(-Observed_Mean_Follower_Wind_Effect) %>%
-    mutate(Invalid_Follower_Flag = 1,
-           Failed_Valid_Follower_Flag = 1)
-  
-  # Remove these from the follower dataset - this is now complete
-  data1_fol <- filter(data1_fol, !is.na(Observed_Mean_Follower_Wind_Effect)) %>% mutate(Failed_Valid_Follower_Flag = 0)
-  
-  # Bind on to the Nofol data
-  data1_nofol <- rbind(data1_nofol, data1_folfailed)
-  
-  # Leader Filter flag
-  data1_nofol <- mutate(data1_nofol, Invalid_Leader_Flag = ifelse(Max_RTT_Leader < (Follower_Forecast_Start_Distance - Max_Allowable_Inside_Sep), 1, 0)) %>%
-    mutate(Invalid_Leader_Flag = ifelse(is.na(Invalid_Leader_Flag), 1, Invalid_Leader_Flag))
-  
-  # Filter for the Allowed/Not Allowed
-  data1_nofol1 <- filter(data1_nofol, Invalid_Leader_Flag == 0) %>% select(-Invalid_Leader_Flag)
-  data1_nofol2 <- filter(data1_nofol, Invalid_Leader_Flag == 1) %>% select(-Invalid_Leader_Flag) %>% mutate(Observed_Mean_Follower_Wind_Effect = NA)
-  
-  # Perform calculations for Allowed Pairs
-  data1_nofol1 <- Get_Average_Observed_Mode_S_Parameters(data1_nofol1, Radar, 
-                                                      Prefix = "Rename_Me",
-                                                      "Leader",
-                                                      "Range", 
-                                                      Start_Var = "Follower_Forecast_Start_Distance", 
-                                                      End_Var = "Follower_Forecast_End_Distance") %>%
-    rename(Observed_Mean_Follower_Wind_Effect = Observed_Leader_Rename_Me_Wind_Effect) %>%
-    select(-Observed_Leader_Rename_Me_IAS)
-  
-  # Bind together Leader data
-  data1_nofol <- rbind(data1_nofol1, data1_nofol2)
-  
-  # Bind datasets together again
-  data1 <- rbind(data1_fol, data1_nofol)
-  
-  data1 <- mutate(data1, Forecast_Mean_Follower_Wind_Effect_Error = Observed_Mean_Follower_Wind_Effect - Forecast_Mean_Follower_Wind_Effect)
-  data1 <- arrange(data1, desc(Forecast_Mean_Follower_Wind_Effect_Error))
-  
-  data1 <- mutate(data1,
-                  Not_Calculated_Flag = ifelse(is.na(Observed_Mean_Follower_Wind_Effect), 1, 0),
-                  Follower_Standard_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 0 & Follower_Start_ILS_Intercept_Flag == 0, 1, 0),
-                  Follower_Extended_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 0 & Follower_Start_ILS_Intercept_Flag == 1, 1, 0),
-                  Leader_Standard_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 1 & Leader_Start_ILS_Intercept_Flag == 0, 1, 0),
-                  Leader_Extended_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 1 & Leader_Start_ILS_Intercept_Flag == 1, 1, 0)
-                  )
-  
-  # How many will be removed? 
-  print(paste0("Will Remove ", nrow(filter(data1, is.na(Forecast_Mean_Follower_Wind_Effect))), " Observations out of ", nrow(data1), "."))
 
+# if (Use_Forecast_Distances){
+
+  # Radar_Query <- "SELECT 
+  # RTPD.Flight_Plan_ID,
+  # Track_Time,
+  # Range_To_Threshold,
+  # ILS_Locus_RTT,
+  # Range_To_ILS,
+  # Path_Leg_Type,
+  # Wind_Effect_IAS,
+  # Mode_S_IAS
+  # FROM vw_Radar_Track_Point_Derived RTPD
+  # LEFT JOIN tbl_Flight_Plan FP
+  # ON RTPD.Flight_Plan_ID = FP.Flight_Plan_ID
+  # LEFT JOIN tbl_Flight_Plan_Derived FPD
+  # ON RTPD.Flight_Plan_ID = FPD.Flight_Plan_ID
+  # LEFT JOIN tbl_Runway R1
+  # ON R1.Runway_Name = RTPD.Mode_S_Wind_Localiser_Capture
+  # LEFT JOIN tbl_Runway R2
+  # ON R2.Runway_Name = FP.Landing_Runway
+  # WHERE FP.Landing_Runway = RTPD.Mode_S_Wind_Localiser_Capture
+  # OR FPD.Landing_Runway = RTPD.Mode_S_Wind_Localiser_Capture
+  # OR R1.Runway_Group = R2.Runway_Group
+  # OR RTPD.Mode_S_Wind_Localiser_Capture IS NULL
+  # ORDER BY Flight_Plan_ID, Track_Time"
+  # 
+  # Radar <- sqlQuery(con, Radar_Query, stringsAsFactors = F)
+
+#   
+#   # Adaptation Data
+#   Allowed_Path_Legs <- c("ILS_Leg", "Landing_Leg", "Intercept_Leg", "Extended_Intercept")
+#   Max_Range_To_ILS <- 4
+#   FAF_Distance_Val <- 4.5 #(Should be matched..)
+#   Sep_Buffer <- 1
+#   Max_Allowable_Inside_Sep <- 1
+#   
+#   # data1 reversal (testing)
+#   data1 <- data1o
+#   Radar <- Radaro
+#   
+#   # Data Field removal
+#   data1 <- select(data1, -c("Observed_Mean_Follower_IAS", "Observed_Mean_Follower_Wind_Effect"))
+#   
+#   # Change Range to Threshold value based on intercept ILS criteria
+#   Radar <- mutate(Radar,
+#                   ILS_Intercept_Flag = ifelse(is.na(Range_To_Threshold) & Path_Leg_Type %in% Allowed_Path_Legs & Range_To_ILS <= Max_Range_To_ILS, 1, 0),
+#                   ILS_Intercept_Flag = ifelse(is.na(ILS_Intercept_Flag), 0, ILS_Intercept_Flag),
+#                   Range_To_Threshold = ifelse(ILS_Intercept_Flag == 1, ILS_Locus_RTT, Range_To_Threshold))
+#   
+#   # Get the Forecast Compression Start/End Distances for the follower aircraft. (Assume 4.5NM LST)
+#   data1 <- mutate(data1, 
+#                   Follower_Forecast_Start_Distance = ORD_Compression + FAF_Distance_Val + ORD_Separation_Distance + Sep_Buffer,
+#                   Follower_Forecast_End_Distance = ORD_Separation_Distance + Sep_Buffer)
+#   
+#   # Get the max RTTs
+#   data1_allowed <- Radar %>% group_by(Flight_Plan_ID) %>%
+#     filter(!is.na(Range_To_Threshold)) %>%
+#     mutate(ID = row_number()) %>% ungroup() %>%
+#     arrange(Flight_Plan_ID, desc(Range_To_Threshold)) %>%
+#     filter(ID == 1) %>%
+#     select(Flight_Plan_ID, Max_RTT_Follower = Range_To_Threshold, Follower_Max_ILS_Intercept_Flag = ILS_Intercept_Flag)
+#   
+#   data_it <- filter(data1, Landing_Pair_Type != "Not_In_Trail")
+#   data_nit <- filter(data1, Landing_Pair_Type == "Not_In_Trail")
+#   
+#   foll_start_dist_it <- select(data_it, Follower_Flight_Plan_ID, Follower_Forecast_Start_Distance)
+#   foll_start_dist_nit <- select(data_nit, Follower_Flight_Plan_ID, Follower_Forecast_Start_Distance)
+#   
+#   data1_sep1 <- Radar %>%
+#     left_join(foll_start_dist_it, by = c("Flight_Plan_ID" = "Follower_Flight_Plan_ID")) %>%
+#     filter(!is.na(Range_To_Threshold)) %>%
+#     filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
+#     arrange(Flight_Plan_ID, Track_Time) %>%
+#     group_by(Flight_Plan_ID) %>%
+#     mutate(ID = row_number()) %>%
+#     ungroup() %>%
+#     filter(ID == 1) %>% 
+#     select(Flight_Plan_ID, Est_Start_RTT_Follower = Range_To_Threshold, Follower_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
+#   
+#   data_it <- left_join(data_it, data1_sep1, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
+#   
+#   data1_sep2 <- Radar %>%
+#     left_join(foll_start_dist_nit, by = c("Flight_Plan_ID" = "Follower_Flight_Plan_ID")) %>%
+#     filter(!is.na(Range_To_Threshold)) %>%
+#     filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
+#     arrange(Flight_Plan_ID, Track_Time) %>%
+#     group_by(Flight_Plan_ID) %>%
+#     mutate(ID = row_number()) %>%
+#     ungroup() %>%
+#     filter(ID == 1) %>% 
+#     select(Flight_Plan_ID, Est_Start_RTT_Follower = Range_To_Threshold, Follower_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
+#   
+#   data_nit <- left_join(data_nit, data1_sep2, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
+#   
+#   data1 <- rbind(data_it, data_nit)
+#   
+#   # Join on the Max RTTs
+#   data1 <- left_join(data1, data1_allowed, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
+#   
+#   data_it <- filter(data1, Landing_Pair_Type != "Not_In_Trail")
+#   data_nit <- filter(data1, Landing_Pair_Type == "Not_In_Trail")
+#   
+#   lead_start_dist_nit <- select(data_nit, Leader_Flight_Plan_ID, Follower_Forecast_Start_Distance)
+#   lead_start_dist_it <- select(data_it, Leader_Flight_Plan_ID, Follower_Forecast_Start_Distance)
+#   
+#   data1_sep1 <- Radar %>%
+#     left_join(lead_start_dist_it, by = c("Flight_Plan_ID" = "Leader_Flight_Plan_ID")) %>%
+#     filter(!is.na(Range_To_Threshold)) %>%
+#     filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
+#     arrange(Flight_Plan_ID, Track_Time) %>%
+#     group_by(Flight_Plan_ID) %>%
+#     mutate(ID = row_number()) %>%
+#     ungroup() %>%
+#     filter(ID == 1) %>% 
+#     select(Flight_Plan_ID, Est_Start_RTT_Leader = Range_To_Threshold, Leader_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
+#   
+#   data_it <- left_join(data_it, data1_sep1, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID"))
+#   
+#   data1_sep2 <- Radar %>%
+#     left_join(lead_start_dist_nit, by = c("Flight_Plan_ID" = "Leader_Flight_Plan_ID")) %>%
+#     filter(!is.na(Range_To_Threshold)) %>%
+#     filter(Range_To_Threshold <= Follower_Forecast_Start_Distance) %>%
+#     arrange(Flight_Plan_ID, Track_Time) %>%
+#     group_by(Flight_Plan_ID) %>%
+#     mutate(ID = row_number()) %>%
+#     ungroup() %>%
+#     filter(ID == 1) %>% 
+#     select(Flight_Plan_ID, Est_Start_RTT_Leader = Range_To_Threshold, Leader_Start_ILS_Intercept_Flag = ILS_Intercept_Flag)
+#   
+#   data_nit <- left_join(data_nit, data1_sep2, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID"))
+#   
+#   data1 <- rbind(data_it, data_nit)
+#   
+#   # Change data1_allowed for use of Leader parameters
+#   data1_allowed <- rename(data1_allowed, 
+#                           Max_RTT_Leader = Max_RTT_Follower,
+#                           Leader_Max_ILS_Intercept_Flag = Follower_Max_ILS_Intercept_Flag)
+#   
+#   
+#   # Join on the Max RTTs (Leader!)
+#   data1 <- left_join(data1, data1_allowed, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID"))
+#   
+#   # Follower Filter flag
+#   data1 <- mutate(data1, Invalid_Follower_Flag = ifelse(Max_RTT_Follower < (Follower_Forecast_Start_Distance - Max_Allowable_Inside_Sep), 1, 0)) %>%
+#     mutate(Invalid_Follower_Flag = ifelse(is.na(Invalid_Follower_Flag), 1, Invalid_Follower_Flag))
+#   
+#   # Filter for the Allowed/Not Allowed
+#   data1_fol <- filter(data1, Invalid_Follower_Flag == 0)
+#   data1_nofol <- filter(data1, Invalid_Follower_Flag == 1) %>% mutate(Observed_Mean_Follower_IAS = NA,
+#                                                                       Failed_Valid_Follower_Flag = 0)
+#   
+#   # Perform calculations for Allowed Pairs
+#   data1_fol <- Get_Average_Observed_Mode_S_Parameters(data1_fol, Radar, 
+#                                                       Prefix = "Rename_Me",
+#                                                       "Follower",
+#                                                       "Range", 
+#                                                       Start_Var = "Follower_Forecast_Start_Distance", 
+#                                                       End_Var = "Follower_Forecast_End_Distance") %>%
+#     rename(Observed_Mean_Follower_Wind_Effect = Observed_Follower_Rename_Me_Wind_Effect,
+#            Observed_Mean_Follower_IAS = Observed_Follower_Rename_Me_IAS)
+#   
+#   # Get the Failed Follower Attempts
+#   data1_folfailed <- filter(data1_fol, is.na(Observed_Mean_Follower_Wind_Effect)) %>% select(-Observed_Mean_Follower_Wind_Effect) %>%
+#     mutate(Invalid_Follower_Flag = 1,
+#            Failed_Valid_Follower_Flag = 1)
+#   
+#   # Remove these from the follower dataset - this is now complete
+#   data1_fol <- filter(data1_fol, !is.na(Observed_Mean_Follower_Wind_Effect)) %>% mutate(Failed_Valid_Follower_Flag = 0)
+#   
+#   # Bind on to the Nofol data
+#   data1_nofol <- rbind(data1_nofol, data1_folfailed)
+#   
+#   # Leader Filter flag
+#   data1_nofol <- mutate(data1_nofol, Invalid_Leader_Flag = ifelse(Max_RTT_Leader < (Follower_Forecast_Start_Distance - Max_Allowable_Inside_Sep), 1, 0)) %>%
+#     mutate(Invalid_Leader_Flag = ifelse(is.na(Invalid_Leader_Flag), 1, Invalid_Leader_Flag))
+#   
+#   # Filter for the Allowed/Not Allowed
+#   data1_nofol1 <- filter(data1_nofol, Invalid_Leader_Flag == 0) %>% select(-Invalid_Leader_Flag)
+#   data1_nofol2 <- filter(data1_nofol, Invalid_Leader_Flag == 1) %>% select(-Invalid_Leader_Flag) %>% mutate(Observed_Mean_Follower_Wind_Effect = NA)
+#   
+#   # Perform calculations for Allowed Pairs
+#   data1_nofol1 <- Get_Average_Observed_Mode_S_Parameters(data1_nofol1, Radar, 
+#                                                       Prefix = "Rename_Me",
+#                                                       "Leader",
+#                                                       "Range", 
+#                                                       Start_Var = "Follower_Forecast_Start_Distance", 
+#                                                       End_Var = "Follower_Forecast_End_Distance") %>%
+#     rename(Observed_Mean_Follower_Wind_Effect = Observed_Leader_Rename_Me_Wind_Effect) %>%
+#     select(-Observed_Leader_Rename_Me_IAS)
+#   
+#   # Bind together Leader data
+#   data1_nofol <- rbind(data1_nofol1, data1_nofol2)
+#   
+#   # Bind datasets together again
+#   data1 <- rbind(data1_fol, data1_nofol)
+#   
+#   data1 <- mutate(data1, Forecast_Mean_Follower_Wind_Effect_Error = Observed_Mean_Follower_Wind_Effect - Forecast_Mean_Follower_Wind_Effect)
+#   data1 <- arrange(data1, desc(Forecast_Mean_Follower_Wind_Effect_Error))
+#   
+#   data1 <- mutate(data1,
+#                   Not_Calculated_Flag = ifelse(is.na(Observed_Mean_Follower_Wind_Effect), 1, 0),
+#                   Follower_Standard_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 0 & Follower_Start_ILS_Intercept_Flag == 0, 1, 0),
+#                   Follower_Extended_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 0 & Follower_Start_ILS_Intercept_Flag == 1, 1, 0),
+#                   Leader_Standard_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 1 & Leader_Start_ILS_Intercept_Flag == 0, 1, 0),
+#                   Leader_Extended_Flag = ifelse(Not_Calculated_Flag == 0 & Invalid_Follower_Flag == 1 & Leader_Start_ILS_Intercept_Flag == 1, 1, 0)
+#                   )
+#   
+#   # How many will be removed? 
+#   print(paste0("Will Remove ", nrow(filter(data1, is.na(Forecast_Mean_Follower_Wind_Effect))), " Observations out of ", nrow(data1), "."))
+# 
+# }
+if (Use_Proxy_Wind){
+  RTTPathLegs <- c("ILS_Leg", "Landing_Leg", "Intercept_Leg", "Extended_Intercept")
+  WEPathLegs <- c("Intercept_Leg", "Extended_Intercept")
+  MaxILSRange <- 4
+  FAF_Distance_Val <- 4.5
+  MaxInsideBuffer <- 2
+  Radar <- sqlQuery(con, GetORDAnalysisRadarQuery(), stringsAsFactors = F)
+  RadarOrig <- Radar
+  Radar <- RecalculateRadarValuesORD(Radar, RTTPathLegs, WEPathLegs, MaxILSRange)
+  data1 <- GenerateProxyWindEffect(data1, Radar, Algo = "ORD", LorFIn = "Follower", LorFOut = "Follower", MaxInsideBuffer, FAF_Distance_Val, Remove_Old_Observations)
+  if (Use_Proxy_Wind & Use_Proxy_Wind_Leader){
+    data1 <- GenerateProxyWindEffect(data1, Radar, Algo = "ORD", LorFIn = "Leader", LorFOut = "Follower", MaxInsideBuffer, FAF_Distance_Val, Remove_Old_Observations)
+  }
+  data1 <- ORDRealignFlags(data1)
+  ORDProxySummary <- QuickProxyTablePlot(data1, "ORD", "Summary")
 }
+
+# Radar <- RadarOrig
 
 # ---------------------------------------------------------------------------------------------------------------------------------------- #
 
@@ -2638,7 +2646,7 @@ saveBook(wb, file.path(out_data, "ORD Summary Performance.xlsx"))
 #          Follower_Extended_Flag,
 #          ORD_Leader_IAS_Error)
 # 
-# quantile(data2$ORD_Compression_Error, 0.995)
+# quantile(data2$ORD_Compression_Error, 0.99)
 
 count1 <- nrow(filter(data2, !is.na(ORD_Compression_Error)))
 count2 <- nrow(filter(data2, ORD_Compression_Error > 0.05))

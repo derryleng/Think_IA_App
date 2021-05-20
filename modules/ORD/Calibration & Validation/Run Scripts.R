@@ -333,6 +333,7 @@ source(file.path(Script_Dir, "Vref Comparison.R"), local = F)
 # ----------------------------------------------------------------------- #
 
 # Name of output folder in project directory ---------------------------- #
+version <- "GC TEST 20-05 ProxyFolOnly"
 outdir_validation_analysis <- paste0("Validation/", version)
 # outdir_validation_analysis <- "Validation 26-04-21 AH TEST"
 
@@ -413,6 +414,19 @@ separation_adjustment <- F
 #pc_under <- 0.03
 # End Add
 
+## GC ADD 08/03: Filter Switches (Deprecated)
+Use_Forecast_Distances <- F
+Use_Leader_WEs <- F
+
+## Filter Switches (Replacements)
+Use_Proxy_Wind <- T
+Use_Proxy_Wind_Leader <- T
+Remove_Old_Observations <- T
+
+## Filter Switches
+Use_Filter_Sep_Accuracy <- F
+Use_Filter_Sep_Accuracy_Tight <- F
+Use_FAF_IAS_Filter <- T
 
 # Run Validation Analysis ----------------------------------------------- #
 source(file.path(Script_Dir, "Validation Analysis.R"), local = F)

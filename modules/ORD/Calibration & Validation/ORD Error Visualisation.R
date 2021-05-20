@@ -30,8 +30,9 @@ library(getPass)
 
 
 #Use a version number derived from date or define manually
-version <- paste0(Sys.Date(), " ","V1.0 (AH)")
+#version <- paste0(Sys.Date(), " ","V1.0 (AH)")
 # version <- "2021-05-04 V1.0 (AH)"
+version <- "GC TEST 20-05 ProxyFolOnly"
 
 use_same_input_version <- T
 
@@ -430,7 +431,7 @@ plot_single_wind_effect <- function(fp_id, lp_id, role, min, max, title_text, su
 # Plot the set of large errors
 
 for (i in 1:nrow(ord_large_errors)){
-# for (i in 1:100){
+# for (i in 1:10){
 
   # i <- 1
   le_line <- ord_large_errors[i, ]
