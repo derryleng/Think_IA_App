@@ -318,7 +318,7 @@ GenerateProxyWindEffect <- function(Data, Radar, Algo, LorFIn, LorFOut, MaxInsid
     TrailData <- filter(Data, Landing_Pair_Type == Trail)
     
     # Generate the Forecast start and end distance bounds for use in the average WE/Speed calculations
-    TrailData <- GetForecastDistances(TrailData, Algo, LorFOut, FAF_Distance)
+    TrailData <- GetForecastDistances(TrailData, Algo, LorFOut, Delivery_Point)
     
     # Get the Max RTT values from the aircraft, to make sure the aircraft doesn't start too far inside the bound.
     TrailData <- GetMaxRTTs(TrailData, Radar, LorFIn)
@@ -331,7 +331,7 @@ GenerateProxyWindEffect <- function(Data, Radar, Algo, LorFIn, LorFOut, MaxInsid
     TrailData <- rename(TrailData, !!sym(paste0(LorFIn, "_Max_RTT")) := Max_RTT)
     
     # Recalculate Flag if using Leader - Discount if Leader time is before prediction time. (What time are we using?)
-    if (LorFIn == "Leader"){TrailData <- TrailData %>% mutate(Flag = ifelse(!!sym(GetLeaderLatestTimeVar(Algo)) < Prediction_Time, 1, Flag))}
+    if (LorFIn == "Leader" & LorFOut == "Follower"){TrailData <- TrailData %>% mutate(Flag = ifelse(!!sym(GetLeaderLatestTimeVar(Algo)) < Prediction_Time, 1, Flag))}
     
     # Split the Data into "Bad" (we can't proxy) and "Good" (we can proxy)
     TrailData <- TrailData %>% mutate(!!sym(IASVar) := NA, !!sym(WEVar) := NA)
@@ -369,23 +369,41 @@ GenerateProxyWindEffect <- function(Data, Radar, Algo, LorFIn, LorFOut, MaxInsid
   
 }
 
-GetForecastDistances <- function(Data, Algo, LorFOut, FAF_Distance){
+GetForecastDistances <- function(Data, Algo, LorFOut, Delivery_Point){
+  
+  ### NOTE: CCT SHOULD BE IN WAD VIEW AND NOT HARDCODED HERE.
+  CCT <- 10
   
   ## Not generalised for now - just in case method changes. Assumes LorFOut is Follower.
-  if (Algo == "ORD"){
+  if (Algo == "ORD" & LorFOut == "Follower"){
     Data <- Data %>%
       mutate(Forecast_Start_Distance = ORD_Compression + ORD_Separation_Distance + FAF_Distance,
-             Forecast_End_Distance = ORD_Separation_Distance)
+             Forecast_End_Distance = ORD_Separation_Distance + Delivery_Point)
   }
-  if (Algo == "WAD"){
-    Data <- Data %>%
-      mutate(Forecast_Start_Distance = WAD_Compression + Currently_Used_WAD_Separation_Distance + (Leader_CC_RTT - Leader_FAF_RTT),
-             Forecast_End_Distance = Currently_Used_WAD_Separation_Distance)
-  }
-  if (Algo == "Both"){
+  if (Algo == "WAD" & LorFOut == "Follower"){
     Data <- Data %>%
       mutate(Forecast_Start_Distance = WAD_Compression + WAD_Separation_Distance + (Leader_CC_RTT - Leader_FAF_RTT),
-             Forecast_End_Distance = ORD_Separation_Distance)
+             Forecast_End_Distance = WAD_Separation_Distance)
+  }
+  if (Algo == "Both" & LorFOut == "Follower"){
+    Data <- Data %>%
+      mutate(Forecast_Start_Distance = WAD_Compression + WAD_Separation_Distance + (Leader_CC_RTT - Leader_FAF_RTT),
+             Forecast_End_Distance = ORD_Separation_Distance + Delivery_Point)
+  }
+  if (Algo == "ORD" & LorFOut == "Leader"){
+    Data <- Data %>%
+      mutate(Forecast_Start_Distance = FAF_Distance,
+             Forecast_End_Distance = Delivery_Point)
+  }
+  if (Algo == "WAD" & LorFOut == "Leader"){
+    Data <- Data %>%
+      mutate(Forecast_Start_Distance = Leader_CC_RTT,
+             Forecast_End_Distance = Leader_FAF_RTT)
+  }
+  if (Algo == "Both" & LorFOut == "Leader"){
+    Data <- Data %>%
+      mutate(Forecast_Start_Distance = Leader_CC_RTT,
+             Forecast_End_Distance = Delivery_Point)
   }
   
   return(Data)
@@ -415,26 +433,49 @@ GetMaxRTTs <- function(Data, Radar, LorFIn){
   
 }
 
-ORDRealignFlags <- function(Data){
+ORDRealignFlags <- function(Data, LorFOut){
   
-  if ("Leader_Invalid_Flag" %in% names(Data)){
-    Data <- Data %>%
-      mutate(OriginalFlag = ExistFlag,
-             CalcFlagFollower = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 0 & Follower_Invalid_Flag == 0, 1, 0),
-             CalcFlagLeader = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 0 & Follower_Invalid_Flag == 1, 1, 0)) %>%
-      mutate(Calc_Type = ifelse(OriginalFlag == 1, "Original", "Unavailable"),
-             Calc_Type = ifelse(CalcFlagLeader == 1, "Leader Proxy", Calc_Type),
-             Calc_Type = ifelse(CalcFlagFollower == 1, "Follower Proxy", Calc_Type)) %>%
-      select(-ExistFlag, -Leader_Invalid_Flag, -Follower_Invalid_Flag, -OriginalFlag, -CalcFlagLeader, -CalcFlagFollower)
+  if (LorFOut == "Follower"){
+    if ("Leader_Invalid_Flag" %in% names(Data)){
+      Data <- Data %>%
+        mutate(OriginalFlag = ExistFlag,
+               CalcFlagFollower = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 0 & Follower_Invalid_Flag == 0, 1, 0),
+               CalcFlagLeader = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 0 & Follower_Invalid_Flag == 1, 1, 0)) %>%
+        mutate(Calc_Type = ifelse(OriginalFlag == 1, "Original", "Unavailable"),
+               Calc_Type = ifelse(CalcFlagLeader == 1, "Leader Proxy", Calc_Type),
+               Calc_Type = ifelse(CalcFlagFollower == 1, "Follower Proxy", Calc_Type)) %>%
+        select(-ExistFlag, -Leader_Invalid_Flag, -Follower_Invalid_Flag, -OriginalFlag, -CalcFlagLeader, -CalcFlagFollower)
+    } else {
+      Data <- Data %>%
+        mutate(OriginalFlag = ExistFlag,
+               CalcFlagFollower = ifelse(ExistFlag == 0 & Follower_Invalid_Flag == 0, 1, 0)) %>%
+        mutate(Calc_Type = ifelse(OriginalFlag == 1, "Original", "Unavailable"),
+               Calc_Type = ifelse(CalcFlagFollower == 1, "Follower Proxy", Calc_Type)) %>%
+        select(-ExistFlag, -Follower_Invalid_Flag, -OriginalFlag, -CalcFlagFollower)
+    }
   } else {
-    Data <- Data %>%
-      mutate(OriginalFlag = ExistFlag,
-             CalcFlagFollower = ifelse(ExistFlag == 0 & Follower_Invalid_Flag == 0, 1, 0)) %>%
-      mutate(Calc_Type = ifelse(OriginalFlag == 1, "Original", "Unavailable"),
-             Calc_Type = ifelse(CalcFlagFollower == 1, "Follower Proxy", Calc_Type)) %>%
-      select(-ExistFlag, -Follower_Invalid_Flag, -OriginalFlag, -CalcFlagFollower)
+    if ("Follower_Invalid_Flag" %in% names(Data)){
+      Data <- Data %>%
+        mutate(OriginalFlag = ExistFlag,
+               CalcFlagFollower = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 1 & Follower_Invalid_Flag == 0, 1, 0),
+               CalcFlagLeader = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 0 & Follower_Invalid_Flag == 0, 1, 0)) %>%
+        mutate(Calc_Type = ifelse(OriginalFlag == 1, "Original", "Unavailable"),
+               Calc_Type = ifelse(CalcFlagLeader == 1, "Leader Proxy", Calc_Type),
+               Calc_Type = ifelse(CalcFlagFollower == 1, "Follower Proxy", Calc_Type)) %>%
+        select(-ExistFlag, -Leader_Invalid_Flag, -Follower_Invalid_Flag, -OriginalFlag, -CalcFlagLeader, -CalcFlagFollower)
+    } else {
+      Data <- Data %>%
+        mutate(OriginalFlag = ExistFlag,
+               CalcFlagLeader = ifelse(ExistFlag == 0 & Leader_Invalid_Flag == 0, 1, 0)) %>%
+        mutate(Calc_Type = ifelse(OriginalFlag == 1, "Original", "Unavailable"),
+               Calc_Type = ifelse(CalcFlagLeader == 1, "Leader Proxy", Calc_Type)) %>%
+        select(-ExistFlag, -Leader_Invalid_Flag, -OriginalFlag, -CalcFlagLeader)
+    }
   }
   
+  # Rename
+  Data <- Data %>% rename(!!sym(paste0(LorFOut, "_Calc_Type")) := Calc_Type)
+
   return(Data)
   
 } 
@@ -474,12 +515,13 @@ GetORDAnalysisRadarQuery <- function(){
   
 }
 
-QuickProxyTablePlot <- function(Data, Algo, ReturnWhat){
+QuickProxyTablePlot <- function(Data, Algo, ReturnWhat, LorFOut){
   
-  Table <- Data %>% group_by(Calc_Type) %>% summarise(Count = n()) %>% ungroup() %>%
+  Table <- Data %>% group_by(!!sym(paste0(LorFOut, "_Calc_Type"))) %>% summarise(Count = n()) %>% ungroup() %>%
     mutate(Percent = round(100*(Count / sum(Count)), 2))
   
-  Plot <- ggplot() + geom_col(data = Table, mapping = aes(y = Count, x = Calc_Type)) + labs(title = paste0("Calculation Type Counts for Proxy Method (", Algo, ")"), x = "Calculation Type", y = "Total Number")
+  Plot <- ggplot() + geom_col(data = Table, mapping = aes(y = Count, x = !!sym(paste0(LorFOut, "_Calc_Type")))) +
+    labs(title = paste0("Calculation Type Counts for Proxy Method (", Algo, ")"), x = "Calculation Type", y = "Total Number")
   print(Plot)
   
   if (ReturnWhat == "Plot"){return(Plot)} else {return(Table)}

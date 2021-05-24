@@ -414,6 +414,8 @@ separation_adjustment <- F
 #pc_under <- 0.03
 # End Add
 
+ORD_Delivery_Point <- 0
+
 ## GC ADD 08/03: Filter Switches (Deprecated)
 Use_Forecast_Distances <- F
 Use_Leader_WEs <- F
