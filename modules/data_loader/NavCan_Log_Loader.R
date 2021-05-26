@@ -658,15 +658,15 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
     x$`I062/380/BPS/BPS` <- ifelse(as.numeric(x$`I062/295/BPS/BPS`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/BPS/BPS`)
 
   }
-
+  
   out <- data.table(
     Flight_Plan_ID = NA,
-    Track_Date = ifelse(x$`I062/070/Time` >= x$`I062/070/Time`[1], Date_String, Next_Day),
+    Track_Date = ifelse(as.numeric(x$`I062/070/Time`) >= as.numeric(x$`I062/070/Time`[1]), Date_String, Next_Day),
     Track_Time = as.numeric(x$`I062/070/Time`),
     # Callsign = ifelse(!is.na(x$`I062/380/ID/ID`), x$`I062/380/ID/ID`, " "),
     # Callsign = gsub(" ", "", ifelse(nchar(x$`I062/390/CSN/CSN`) < nchar(x$`I062/380/ID/ID`), x$`I062/380/ID/ID`, x$`I062/390/CSN/CSN`)),
     Callsign = x$`I062/380/ID/ID`,
-    SSR_Code = x$`I062/060/Mode3A`,
+    SSR_Code = as.numeric(x$`I062/060/Mode3A`),
     X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I062/100/X`},
     Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
