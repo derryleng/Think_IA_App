@@ -212,9 +212,10 @@ d_filter <- F
 d_min <- 0
 d_max <- 50
 
-use_vref_for_decel <- T
-min_vref <- 10
-max_vref <- 10
+# Used in "Second Pass at Type Params to filter for the decel values near vref"
+# use_vref_for_decel <- T
+# min_vref <- 10
+# max_vref <- 10
 
 
 type_adaptation_input_table <- data.table(

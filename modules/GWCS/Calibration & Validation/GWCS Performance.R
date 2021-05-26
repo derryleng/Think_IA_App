@@ -185,7 +185,7 @@ apply_speed_buffer <- T
 # ----------------------------------------------------------------------- #
 # Wake pair proportions - update folder name
 # prop_str <-  paste("C:\\Users\\", user, "\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\Sample_Weighting_Output\\2021.04.13\\Wake Pair Proportions.csv", sep = "")
-#Using 1 here to force NavCan directory
+
 prop_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", version, "Wake Pair Proportions.csv", sep = "/"), "Outputs")
 prop <- fread(prop_str)
 
@@ -384,7 +384,10 @@ gwcs_data_proc$gwcs_band <- cut(gwcs_data_proc$Observed_Wind_Effect_IAS, c(-Inf,
 # Band the data by the max forecast offset time
 gwcs_data_proc$max_forecast_offset <- cut(gwcs_data_proc$Max_Forecast_Offset_Time, c(seq(0, 8 * 120, 120)))
 # Calculate the inter-arrival (4DME) time
-gwcs_data_proc <- arrange(gwcs_data_proc, FP_Date, Runway_Group) %>% group_by(FP_Date, Runway_Group) %>% mutate(Inter_Arrival_Time = Time_At_4DME - lag(Time_At_4DME, n = 1), IAT_Group = cut(Inter_Arrival_Time, c(seq(0, 8 * 120, 120), Inf))) %>% ungroup()
+gwcs_data_proc <- arrange(gwcs_data_proc, FP_Date, Runway_Group) %>%
+                    group_by(FP_Date, Runway_Group) %>%
+                    mutate(Inter_Arrival_Time = Time_At_4DME - lag(Time_At_4DME, n = 1), IAT_Group = cut(Inter_Arrival_Time, c(seq(0, 8 * 120, 120), Inf))) %>%
+                    ungroup()
 
 
 # # TEMP (VERY IMPORTANT TO REMOVE)

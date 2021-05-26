@@ -1,9 +1,9 @@
 data_loader_ui <- function(id) {
-  
+
   ns <- NS(id)
-  
+
   div(
-    
+
     box(
       title = "Messages",
       status = "primary",
@@ -15,7 +15,7 @@ data_loader_ui <- function(id) {
         h5("NOTE: Please ensure your user has database write permission.")
       )
     ),
-    
+
     div(
       style = "
         display: flex;
@@ -57,7 +57,7 @@ data_loader_ui <- function(id) {
             actionButton(ns("export_xml"), "Export XML")
           )
         ),
-        
+
         box(
           title = "Data Loading",
           status = "primary",
@@ -77,6 +77,7 @@ data_loader_ui <- function(id) {
                 "Non-Mode_S radar (NAVCAN)",
                 "Flight Plan logs (NAVCAN)",
                 "Alt Flight Plan logs (NAVCAN)",
+                "FP New Format (NAVCAN)",
                 "Ground radar (NAVCAN)",
                 "Surface wind and QNH (NAVCAN)",
                 "Cat62 Fusion (NAVCAN)",
@@ -169,7 +170,7 @@ data_loader_ui <- function(id) {
         )
       )
     )
-    
+
   )
-  
+
 }

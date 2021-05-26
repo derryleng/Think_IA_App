@@ -9,11 +9,11 @@ source("modules/data_loader/LVNL_Log_Loader.R", local = T)
 source("modules/data_loader/Config_Management.R", local = T)
 
 read_logs <- function(LogFilePaths, input, dbi_con) {
-  
+
   tbl_list <- c("tbl_Adaptation_Data", "tbl_Runway", "tbl_Airfield")
   tbl <- lapply(tbl_list, function(i) as.data.table(dbGetQuery(dbi_con, paste("SELECT * FROM", i))))
   names(tbl) <- gsub("^tbl_(.*)$", "\\1", tbl_list)
-  
+
   t0 <- Sys.time()
   for (i in 1:length(LogFilePaths)) {
     message("[",Sys.time(),"] ", "Begin loading file: ", basename(LogFilePaths[i]), " (", i, " of ", length(LogFilePaths), ")")
@@ -48,19 +48,21 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
       process_LVNL_SurfaceWind(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "CAV logs") {
       process_CAV_logs(LogFilePaths[i], dbi_con)
+    } else if (input$logs_type == "FP New Format (NAVCAN)") {
+      process_NavCan_FP_new_format(LogFilePaths[i], dbi_con)
     }
     t2 <- Sys.time()
     message("[",Sys.time(),"] ", "Finished loading file: ", basename(LogFilePaths[i]), " (time elapsed: ", Time_String_From_Seconds(as.numeric(difftime(t2, t1, units = "secs"))), ")")
   }
   t4 <- Sys.time()
   message("[",Sys.time(),"] ", "Finished loading ", length(LogFilePaths), " file(s) - total time elapsed: ", Time_String_From_Seconds(as.numeric(difftime(t4, t0, units = "secs"))))
-  
+
 }
 
 additional_processing <- function(dbi_con) {
-  
+
   Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
-  
+
   if (Airfield_Name == "EHAM") {
     dbSendQuery(dbi_con, read_SQL_File("modules/data_loader/Schiphol_UTMA_Validation_DB_Scripts/Schiphol_Generate_Surface_Wind_Entries.sql"))
   } else if (Airfield_Name == "CYYZ") {
@@ -70,21 +72,21 @@ additional_processing <- function(dbi_con) {
     Sys.sleep(5)
     dbSendQuery(dbi_con, read_SQL_File("modules/data_loader/Toronto_UTMA_Validation_DB_Scripts/Toronto_Generate_Surface_Wind_Entries.sql"))
   }
-  
+
 }
 
 data_loader_server <- function(input, output, session, con, dbi_con) {
 
   ns <- session$ns
-  
+
   # Load Config
-  
+
   shinyDirChoose(input, "load_config_folder", roots=getVolumes()(), session=session, restrictions = system.file(package = 'base'))
-  
+
   config_files <- reactive({
     return(parseDirPath(roots=getVolumes()(), input$load_config_folder))
   })
-  
+
   observeEvent(input$load_config, {
     showModal(modalDialog(
       div(
@@ -111,7 +113,7 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       easyClose = F
     ))
   })
-  
+
   observeEvent(input$load_config_confirm, {
     removeModal()
     withCallingHandlers({
@@ -125,15 +127,15 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
   })
-  
+
   # Export Config
-  
+
   shinyDirChoose(input, "export_config_folder", roots=getVolumes()(), session=session, restrictions = system.file(package = 'base'))
-  
+
   export_dir <- reactive({
     return(parseDirPath(roots=getVolumes()(), input$export_config_folder))
   })
-  
+
   observeEvent(input$export_xml, {
     withCallingHandlers({
       shinyjs::html("console_output", "")
@@ -143,13 +145,13 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
   })
-  
+
   # Clear Database
-  
+
   observeEvent(input$clear_db, {
     showModal(generic_confirm_dialogue("usp_DL_Clear_Main_Tables.sql", ns("clear_db_confirmed"), dbi_con))
   })
-  
+
   observeEvent(input$clear_db_confirmed, {
     removeModal()
     withCallingHandlers({
@@ -161,9 +163,9 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
   })
-  
+
   # Load Raw Data
-  
+
   observeEvent(input$logs_load, {
     showModal(modalDialog(
       div(
@@ -189,13 +191,13 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       easyClose = F
     ))
   })
-  
+
   shinyFileChoose(input, "logs_select", roots=getVolumes())
-  
+
   log_files <- reactive({
     as.vector(parseFilePaths(roots=getVolumes(), input$logs_select)$datapath)
   })
-  
+
   observeEvent(input$logs_load_confirm, {
     removeModal()
     withCallingHandlers({
@@ -206,13 +208,13 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
     })
   })
-  
+
   # Additional Processing
-  
+
   observeEvent(input$add_proc, {
-    
+
     Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
-    
+
     if (Airfield_Name == "EHAM") {
       showModal(generic_confirm_dialogue("Schiphol_Generate_Surface_Wind_Entries.sql", ns("add_proc_confirm"), dbi_con, "Detected airport as EHAM."))
     } else if (Airfield_Name == "CYYZ") {
@@ -220,20 +222,20 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
         "Remove_Stationary_Track_Updates.sql", "Remove_Stationary_Track_Updates.sql", "Toronto_Generate_Surface_Wind_Entries.sql"
       ), ns("add_proc_confirm"), dbi_con, "Detected airport as CYYZ."))
     }
-    
+
   })
-  
+
   observeEvent(input$add_proc_confirm, {
     removeModal()
     additional_processing(dbi_con)
   })
-  
+
   # IA Processing
-  
+
   observeEvent(input$ord_pre_proc, {
     showModal(generic_confirm_dialogue("UTMA_ORD_Validation_Pre_Processing.sql", ns("ord_pre_proc_confirm"), dbi_con))
   })
-  
+
   observeEvent(input$ord_pre_proc_confirm, {
     removeModal()
     ord_pre_proc_date <- input$ord_pre_proc_date
@@ -243,11 +245,11 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     }
     dbGetQuery(dbi_con, ord_pre_proc)
   })
-  
+
   observeEvent(input$ord_proc, {
     showModal(generic_confirm_dialogue("UTMA_ORD_Validation_Run.sql", ns("ord_proc_confirm"), dbi_con))
   })
-  
+
   observeEvent(input$ord_proc_confirm, {
     removeModal()
     ord_proc_date <- input$ord_proc_date
@@ -257,11 +259,11 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     }
     dbGetQuery(dbi_con, ord_proc)
   })
-  
+
   observeEvent(input$plt_pre_proc, {
     showModal(generic_confirm_dialogue("UTMA_PLT_Validation_Pre_Processing.sql", ns("plt_pre_proc_confirm"), dbi_con))
   })
-  
+
   observeEvent(input$plt_pre_proc_confirm, {
     removeModal()
     plt_pre_proc_date <- input$plt_pre_proc_date
@@ -271,11 +273,11 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     }
     dbGetQuery(dbi_con, plt_pre_proc)
   })
-  
+
   observeEvent(input$plt_proc, {
     showModal(generic_confirm_dialogue("UTMA_PLT_Validation_Run.sql", ns("plt_proc_confirm"), dbi_con))
   })
-  
+
   observeEvent(input$plt_proc_confirm, {
     removeModal()
     plt_proc_date <- input$plt_proc_date
@@ -285,11 +287,11 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     }
     dbGetQuery(dbi_con, plt_proc)
   })
-  
+
   observeEvent(input$selective_purge, {
     showModal(generic_confirm_dialogue("usp_DL_Clear_Days_By_Aircraft_Type.sql", ns("selective_purge_confirm"), dbi_con))
   })
-  
+
   observeEvent(input$selective_purge_confirm, {
     removeModal()
     selective_purge_actype <- input$selective_purge_actype
@@ -297,5 +299,5 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
     sqlInterpolate(ANSI(), selective_purge, actype = selective_purge_actype)
     dbGetQuery(dbi_con, selective_purge)
   })
-  
+
 }
