@@ -658,7 +658,7 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
     x$`I062/380/BPS/BPS` <- ifelse(as.numeric(x$`I062/295/BPS/BPS`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/BPS/BPS`)
 
   }
-  
+
   out <- data.table(
     Flight_Plan_ID = NA,
     Track_Date = ifelse(as.numeric(x$`I062/070/Time`) >= as.numeric(x$`I062/070/Time`[1]), Date_String, Next_Day),
@@ -700,6 +700,7 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
 
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
     out2 <- generateFPID_fusion(out, dbi_con)
+    out2$SSR_Code <- as.character(out2$SSR_Code)
     message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
 
     # # FOR TROUBLESHOOTING ONLY
