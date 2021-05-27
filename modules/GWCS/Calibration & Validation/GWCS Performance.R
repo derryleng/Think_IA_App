@@ -138,7 +138,6 @@ outlier_dir <- paste(ModuleFolder, "Outlier Investigation", version, sep = "/")
 out_plot <- GetSaveDirectory(Project = project, Algorithm = outlier_dir, IorO = "Outputs")
 Create_Directory(out_plot)
 
-
 out_data <- Base_Dir
 
 #Set the database name for SQL connection
@@ -147,38 +146,14 @@ database <- "NavCan_TBS_V3"
 con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
 
 
-
-# version <- "v2.2 30.04.21 January and February Data Buffer"
-# # user <- "Catherine"
-# #user <- "George Clark"
-# user <- "Michael Cowham"
-# #user <-  "Andy Hyde"
-#
-# # Output directory
-# out_data <-paste0("C:\\Users\\",user,"\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\GWCS\\Performance Results\\",version)
-# if (!dir.exists(out_data)) dir.create(out_data)
-#
-# # Output directory for plots
-# out_plot <-paste0("C:\\Users\\",user,"\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\GWCS\\Outlier Investigation\\13.04.2021\\")
-# if (!dir.exists(out_plot)) dir.create(out_plot)
-#
-# # Input - Update
-# input <- paste0("C:\\Users\\", user, "\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Inputs\\GWCS_Input\\2021.04.13")
-#
-# # RefTimes <- c(3, 4, 5, 6, 7, 8)
-# # # LVNL Ref Time
-# # RefTimes <- cbind(RefTimes, c(76, 101, 124, 147, 177, 194))
-#
-#  # Database name
-# #database <- "NavCan_UTMA_Validation_DB2"
-# #database <- "NavCan_TBS_Analysis_UTMA_Validation"
-# database <- "NavCan_TBS_V3"
-# #database <- "App_Test_NavCan_Fusion"
-
 # MC Add 06/04.  Flag to control the application of speed buffers.  Important to ensure this
 # is set correctly as it will impact the results
 
 apply_speed_buffer <- T
+
+seps <- c(3, 3.5, 4, 5, 6, 7, 8)
+speed_buffer <- c(2.5, 2.5, 2.5, 3.3, 5.1, 6.4, 7.4)
+half_distances <- c(3.5)
 
 # ----------------------------------------------------------------------- #
 # Load Data --------------------------------------------------------------
@@ -186,12 +161,12 @@ apply_speed_buffer <- T
 # Wake pair proportions - update folder name
 # prop_str <-  paste("C:\\Users\\", user, "\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\Sample_Weighting_Output\\2021.04.13\\Wake Pair Proportions.csv", sep = "")
 
-prop_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", version, "Wake Pair Proportions.csv", sep = "/"), "Outputs")
+prop_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", input_version, "Wake Pair Proportions.csv", sep = "/"), "Outputs")
 prop <- fread(prop_str)
 
 #Arrival totals - update folder name
 # arr_str <- paste("C:\\Users\\", user, "\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\Sample_Weighting_Output\\2021.04.13\\Arrival Totals.csv", sep = "")
-arr_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", version, "Arrival Totals.csv", sep = "/"), "Outputs")
+arr_str <- GetSaveDirectory(project, paste("GWCS", "Sample Weighting", input_version, "Arrival Totals.csv", sep = "/"), "Outputs")
 arr <- fread(arr_str)
 
 # Load the Segment Data
@@ -209,13 +184,6 @@ for (sepdist in c(3, 3.5, 4:8)){
         }
         rm(gwcs_dist)
 }
-
-# #Connect to database (Update IP 192.168.1.39 or 192.168.1.23)
-# con <- odbcDriverConnect(connection=sprintf(
-#         "Driver={%s};Server={%s};Database={%s};Uid={%s};Pwd={%s};",
-#         "SQL Server", "192.168.1.23", database, "ruser", "Th!nkruser"
-# ))
-
 
 rawsegs <- as.data.table(sqlQuery(con, "SELECT Mode_S_Wind_Seg_ID, FP_Date, Min_Track_Time, Max_Track_Time, Callsign FROM vw_Mode_S_Wind_Seg"))
 rawsegs_FPID <-  unique(as.data.table(sqlQuery(con, "SELECT [Flight_Plan_ID], [Mode_S_Wind_Seg_ID] FROM tbl_Mode_S_Wind_Seg")))
@@ -235,7 +203,7 @@ fwrite(flights_greater_200, file.path(out_plot, "flights_greater_200.csv"))
 
 # Read in the anemometer data
 anem <- as.data.table(sqlQuery(con, "SELECT
-        FP.Flight_Plan_ID,
+  FP.Flight_Plan_ID,
 	FP.FP_Date,
 	FP.FP_Time,
 	FP.Landing_Runway,
@@ -244,14 +212,14 @@ anem <- as.data.table(sqlQuery(con, "SELECT
 	Surface_Wind_SPD = (SELECT TOP 1 Anemo_SPD FROM tbl_Anemometer WHERE Landing_Runway = FP.Landing_Runway AND Anemo_Date = FP.FP_Date AND Anemo_Time > FPD.Time_At_4DME - 300 AND Anemo_Time <= FPD.Time_At_4DME + 300  ORDER BY ABS(Anemo_Time-FPD.Time_At_4DME)) / dbo.fnc_GI_Kts_To_M_Per_Sec(),
 	--Surface_Wind_SPD = (SELECT AVG(Anemo_SPD) FROM tbl_Anemometer WHERE Landing_Runway = FP.Landing_Runway AND Anemo_Date = FP.FP_Date AND Anemo_Time > FPD.Time_At_4DME AND Anemo_Time <= FPD.Time_At_1DME + 22.5) / dbo.fnc_GI_Kts_To_M_Per_Sec(),
 	Surface_Wind_HDG = (SELECT TOP 1 Anemo_HDG FROM tbl_Anemometer WHERE Landing_Runway = FP.Landing_Runway AND Anemo_Date = FP.FP_Date AND Anemo_Time > FPD.Time_At_4DME - 300 AND Anemo_Time <= FPD.Time_At_4DME + 300  ORDER BY ABS(Anemo_Time-FPD.Time_At_4DME)) / dbo.fnc_GI_Degs_To_Rads()
-FROM tbl_Flight_Plan AS FP
-JOIN tbl_Flight_Plan_Derived AS FPD
-ON FP.Flight_Plan_ID = FPD.Flight_Plan_ID", stringsAsFactors = F))
+  FROM tbl_Flight_Plan AS FP
+  JOIN tbl_Flight_Plan_Derived AS FPD
+  ON FP.Flight_Plan_ID = FPD.Flight_Plan_ID", stringsAsFactors = F))
 
 
 # Load TBS Reference times
 RefTimes <- as.data.table(sqlQuery(con, "SELECT Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852
-                                                ,Reference_Wake_Separation_Time
+                                         ,Reference_Wake_Separation_Time
                                          FROM tbl_Reference_TBS_Table_Time"))
 
 # Get landing runway info
@@ -264,12 +232,6 @@ runway_list <- sqlQuery(con, sprintf("SELECT Runway_Name FROM tbl_Runway"))
 # Read in the runway groups
 
 RunGroups <- as.data.table(sqlQuery(con, "SELECT Runway_Name, Runway_Group FROM tbl_Runway", stringsAsFactors = F))
-
-seps <- c(3, 3.5, 4, 5, 6, 7, 8)
-#speed_buffer <- c(0, 0, 0, 0.8, 2.6, 3.9, 4.9)
-#speed_buffer <- c(5, 5, 5, 5.8, 7.6, 8.9, 9.9)
-speed_buffer <- c(2.5, 2.5, 2.5, 3.3, 5.1, 6.4, 7.4)
-
 
 speed_buffer <- data.frame(seps, speed_buffer)
 names(speed_buffer) <- c("Sep_Dist", "Speed_Buffer")
@@ -314,8 +276,6 @@ gwcs_data_proc <- inner_join(gwcs_data_proc, RunGroups, by = c("Landing_Runway" 
 # }
 
 gwcs_data_proc <- gwcs_data_proc %>% as.data.frame()
-
-half_distances <- c(3.5)
 
 gwcs_data_proc <- gwcs_data_proc %>%
         mutate(Sep_Dist = ifelse(Forecast_Seg_Max %in% half_distances, (Forecast_Seg_Max - Forecast_Seg_Min), (Forecast_Seg_Max - Forecast_Seg_Min + 1))) %>%

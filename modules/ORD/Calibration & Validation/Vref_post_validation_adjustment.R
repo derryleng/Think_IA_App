@@ -1,11 +1,32 @@
+# ----------------------------------------------------------------------- #
+#                |                                                        #
+# Title          |  Vref_post_validation_adjustment                       #
+#                |                                                        #
+# Version No.    |  1.0                                                   #
+#                |                                                        #
+# Date Modified  |  27/05/2021                                            #
+#                |                                                        #
+# Author(s)      |  Andy Hyde                                             #
+#                |                                                        #
+# Project        |  eTBS Related Projects                                 #
+#                |                                                        #
+# Purpose        |  Time based calculation to add or remove compression   #
+#                |  to meet performance requirements                      #
+# ----------------------------------------------------------------------- #
+
+# Version History ------------------------------------------------------- #
+#
+# 1.0 Initial Version
+#
+# ----------------------------------------------------------------------- #
+
+
 rm(list = ls())
 
 library(tidyverse)
 library(data.table)
 library(gridExtra)
 library(getPass)
-
-
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
@@ -86,45 +107,16 @@ ref_data <- file.path(inputs_dir, "Reference Data")
 # out_data <- Base_Dir
 ord_dir <- Base_Dir
 
-ref_data <- file.path(ord_dir, "Validation", version)
+ref_data <- file.path(ord_dir, "Validation", input_version)
 
-adaptation_dir <- file.path(ord_dir, "Adaptation", version)
+adaptation_dir <- file.path(ord_dir, "Adaptation", input_version)
 
-prof_data <- file.path(ord_dir, "Speed Profiles", version)
+prof_data <- file.path(ord_dir, "Speed Profiles", input_version)
 
 out_data <- file.path(ord_dir, "Post Validation Adjustment", version)
 if (!dir.exists(out_data)) dir.create(out_data)
 
 con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
-
-
-
-# # Get Database Connection (RODBC)
-# Get_RODBC_Database_Connection <- function(IP, Database){
-#   User <- getPass(msg = "Username: ", noblank = FALSE, forcemask = FALSE)
-#   Pass <- getPass(msg = "Password: ", noblank = FALSE, forcemask = TRUE)
-#   con <- RODBC::odbcDriverConnect(connection=paste0("Driver={SQL Server};
-#                                   Server={",IP,"};Database={", Database, "};
-#                                   Uid={",User,"};Pwd={",Pass,"};"))
-#   return(con)
-# }
-#
-# con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
-
-
-
-#
-# user <- "Andy Hyde"
-#
-# base_dir <- file.path("C:", "Users", user, "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis", "Outputs", "ORD Output")
-#
-# ref_data <- file.path(base_dir, "Validation 26-04-21 AH TEST")
-#
-# out_data <- file.path(base_dir, "Validation 26-04-21 AH TEST")
-#
-# adaptation_dir <- file.path(base_dir, "Adaptation V3 23_04_21")
-#
-# setwd(out_data)
 
 ord_data <- fread(file.path(ref_data, "Validation Data Post SepN Accuracy.csv"))
 
@@ -141,6 +133,7 @@ DBS_adaptation <- fread(file.path(adaptation_dir, "Populate_tbl_ORD_DBS_Adaptati
 
 thousand_ft_gate <- 5321.9/1852
 target_reduction <- 0.25
+reference_wind <- 5
 
 
 adjust_Vapp <- function(v2, m2, thousand_ft_gate, t, vref_lead) {
@@ -172,24 +165,6 @@ adjust_Vapp <- function(v2, m2, thousand_ft_gate, t, vref_lead) {
 
 }
 
-calc_landing_adjustment <- function(landing_type, headwind) {
-  return(
-    if (landing_type %in% c(0, 10, 11, 12)) {
-      sapply(headwind / 2, function(hw_adj) ifelse(hw_adj < 5, 5, ifelse(hw_adj > 20, 20, hw_adj)))
-    } else if (landing_type %in% c(1, 2, 3, 4, 5)) {
-      sapply(headwind / 3, function(hw_adj) ifelse(hw_adj < 5, 5, ifelse(hw_adj > 15, 15, hw_adj)))
-    } else if (landing_type %in% c(6)) {
-      sapply(headwind / 2, function(hw_adj) ifelse(hw_adj < 0, 0, ifelse(hw_adj > 20, 20, hw_adj)))
-    } else if (landing_type %in% c(7)) {
-      sapply(headwind, function(hw_adj) 10)
-    } else if (landing_type %in% c(8)) {
-      sapply(headwind, function(hw_adj) 0)
-    } else if (landing_type %in% c(9)) {
-      sapply(headwind, function(hw_adj) ifelse(hw_adj > 20, 15, ifelse(hw_adj > 10, 10, 5)))
-    }
-  )
-}
-
 # ----------------------------------------------------------------------- #
 # Vref adjustment for type adaptation -------------------------------------
 # ----------------------------------------------------------------------- #
@@ -211,7 +186,7 @@ vref_adjust$Adjusted_Vref <- rep(NA, nrow(vref_adjust))
 
 for (i in 1:nrow(vref_adjust)) {
 
-  vref_adjust$Vapp_lead[i] <- vref_adjust$Min_Safe_Landing_Speed_Lead[i] + calc_landing_adjustment(vref_adjust$Landing_Stabilisation_Speed_Type_Lead[i], 5)
+  vref_adjust$Vapp_lead[i] <- vref_adjust$Min_Safe_Landing_Speed_Lead[i] + calc_landing_adjustment(vref_adjust$Landing_Stabilisation_Speed_Type_Lead[i], reference_wind)
   vref_adjust$m2[i] <- (vref_adjust$Steady_Procedural_Speed_Lead[i] - vref_adjust$Vapp_lead[i] + vref_adjust$Final_Deceleration_Lead[i] * thousand_ft_gate) / vref_adjust$Final_Deceleration_Lead[i]
 
   vref_adjust$ToF[i] <- thousand_ft_gate / vref_adjust$Vapp_lead[i] +
@@ -223,7 +198,7 @@ for (i in 1:nrow(vref_adjust)) {
 
   vref_adjust$Vapp_adj[i] <- adjust_Vapp(vref_adjust$Steady_Procedural_Speed_Lead[i], vref_adjust$m2[i], thousand_ft_gate, vref_adjust$ToF_adj[i], vref_adjust$Vapp_lead[i])
 
-  vref_adjust$Adjusted_Vref[i] <- vref_adjust$Vapp_adj[i] - calc_landing_adjustment(vref_adjust$Landing_Stabilisation_Speed_Type_Lead[i], 5)
+  vref_adjust$Adjusted_Vref[i] <- vref_adjust$Vapp_adj[i] - calc_landing_adjustment(vref_adjust$Landing_Stabilisation_Speed_Type_Lead[i], reference_wind)
 
 }
 
@@ -256,7 +231,7 @@ vref_adjust_wake$Adjusted_Vref <- rep(NA, nrow(vref_adjust_wake))
 
 for (i in 1:nrow(vref_adjust_wake)) {
 
-  vref_adjust_wake$Vapp_lead[i] <- vref_adjust_wake$Min_Safe_Landing_Speed_Lead[i] + calc_landing_adjustment(vref_adjust_wake$Landing_Stabilisation_Speed_Type_Lead[i], 5)
+  vref_adjust_wake$Vapp_lead[i] <- vref_adjust_wake$Min_Safe_Landing_Speed_Lead[i] + calc_landing_adjustment(vref_adjust_wake$Landing_Stabilisation_Speed_Type_Lead[i], reference_wind)
   vref_adjust_wake$m2[i] <- (vref_adjust_wake$Steady_Procedural_Speed_Lead[i] - vref_adjust_wake$Vapp_lead[i] + vref_adjust_wake$Final_Deceleration_Lead[i] * thousand_ft_gate) / vref_adjust_wake$Final_Deceleration_Lead[i]
 
   vref_adjust_wake$ToF[i] <- thousand_ft_gate / vref_adjust_wake$Vapp_lead[i] +
@@ -268,7 +243,7 @@ for (i in 1:nrow(vref_adjust_wake)) {
 
   vref_adjust_wake$Vapp_adj[i] <- adjust_Vapp(vref_adjust_wake$Steady_Procedural_Speed_Lead[i], vref_adjust_wake$m2[i], thousand_ft_gate, vref_adjust_wake$ToF_adj[i], vref_adjust_wake$Vapp_lead[i])
 
-  vref_adjust_wake$Adjusted_Vref[i] <- vref_adjust_wake$Vapp_adj[i] - calc_landing_adjustment(vref_adjust_wake$Landing_Stabilisation_Speed_Type_Lead[i], 5)
+  vref_adjust_wake$Adjusted_Vref[i] <- vref_adjust_wake$Vapp_adj[i] - calc_landing_adjustment(vref_adjust_wake$Landing_Stabilisation_Speed_Type_Lead[i], reference_wind)
 
 }
 
@@ -300,7 +275,7 @@ vref_adjust_DBS$Adjusted_Vref <- rep(NA, nrow(vref_adjust_DBS))
 
 for (i in 1:nrow(vref_adjust_DBS)) {
 
-  vref_adjust_DBS$Vapp_lead[i] <- vref_adjust_DBS$Min_Safe_Landing_Speed_Lead[i] + calc_landing_adjustment(vref_adjust_DBS$Landing_Stabilisation_Speed_Type_Lead[i], 5)
+  vref_adjust_DBS$Vapp_lead[i] <- vref_adjust_DBS$Min_Safe_Landing_Speed_Lead[i] + calc_landing_adjustment(vref_adjust_DBS$Landing_Stabilisation_Speed_Type_Lead[i], reference_wind)
   vref_adjust_DBS$m2[i] <- (vref_adjust_DBS$Steady_Procedural_Speed_Lead[i] - vref_adjust_DBS$Vapp_lead[i] + vref_adjust_DBS$Final_Deceleration_Lead[i] * thousand_ft_gate) / vref_adjust_DBS$Final_Deceleration_Lead[i]
 
   vref_adjust_DBS$ToF[i] <- thousand_ft_gate / vref_adjust_DBS$Vapp_lead[i] +
@@ -312,7 +287,7 @@ for (i in 1:nrow(vref_adjust_DBS)) {
 
   vref_adjust_DBS$Vapp_adj[i] <- adjust_Vapp(vref_adjust_DBS$Steady_Procedural_Speed_Lead[i], vref_adjust_DBS$m2[i], thousand_ft_gate, vref_adjust_DBS$ToF_adj[i], vref_adjust_DBS$Vapp_lead[i])
 
-  vref_adjust_DBS$Adjusted_Vref[i] <- vref_adjust_DBS$Vapp_adj[i] - calc_landing_adjustment(vref_adjust_DBS$Landing_Stabilisation_Speed_Type_Lead[i], 5)
+  vref_adjust_DBS$Adjusted_Vref[i] <- vref_adjust_DBS$Vapp_adj[i] - calc_landing_adjustment(vref_adjust_DBS$Landing_Stabilisation_Speed_Type_Lead[i], reference_wind)
 
 }
 

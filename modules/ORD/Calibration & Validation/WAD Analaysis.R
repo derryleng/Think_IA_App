@@ -198,15 +198,6 @@ rolling_join <- function(df1, df2, by_join1, by_join2, by_roll, roll_val){
 database_name <- "NavCan_TBS_V3"
 
 # Get Database Connection (RODBC)
-Get_RODBC_Database_Connection <- function(IP, Database){
-  User <- getPass(msg = "Username: ", noblank = FALSE, forcemask = FALSE)
-  Pass <- getPass(msg = "Password: ", noblank = FALSE, forcemask = TRUE)
-  con <- RODBC::odbcDriverConnect(connection=paste0("Driver={SQL Server};
-                                  Server={",IP,"};Database={", Database, "};
-                                  Uid={",User,"};Pwd={",Pass,"};"))
-  return(con)
-}
-
 con <- Get_RODBC_Database_Connection(IP = "192.168.1.23", Database = database_name)
 
 
@@ -240,6 +231,7 @@ Min_Legacy_Separation <- 3
 Apply_Observed_IAS_Filter <- T
 Apply_Predicted_IAS_Filter <- T
 Apply_Separation_Accuracy_Filter <- F
+Apply_Leader_Establish_Filter <- T
 
 # Speed Filters
 Min_Observed_Leader_IAS <- 80
@@ -269,35 +261,6 @@ Legacy_Wake_Dist <- sqlQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence", strin
 # Load the AC to Wake Mappings
 Legacy_ACtoWake <- sqlQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy", stringsAsFactors = F) %>% unique()
 
-# Load the Radar Data for Follower WE adjustment if necessary
-# if (Adjust_Follower_WEs){
-#   Radar_Query <- "SELECT
-#   RTPD.Flight_Plan_ID,
-#   Track_Time,
-#   Range_To_Threshold,
-#   ILS_Locus_RTT,
-#   Range_To_ILS,
-#   Path_Leg_Type,
-#   Wind_Effect_IAS,
-#   Mode_S_IAS
-#   FROM vw_Radar_Track_Point_Derived RTPD
-#   LEFT JOIN tbl_Flight_Plan FP
-#   ON RTPD.Flight_Plan_ID = FP.Flight_Plan_ID
-#   LEFT JOIN tbl_Flight_Plan_Derived FPD
-#   ON RTPD.Flight_Plan_ID = FPD.Flight_Plan_ID
-#   LEFT JOIN tbl_Runway R1
-#   ON R1.Runway_Name = RTPD.Mode_S_Wind_Localiser_Capture
-#   LEFT JOIN tbl_Runway R2
-#   ON R2.Runway_Name = FP.Landing_Runway
-#   WHERE FP.Landing_Runway = RTPD.Mode_S_Wind_Localiser_Capture
-#   OR FPD.Landing_Runway = RTPD.Mode_S_Wind_Localiser_Capture
-#   OR R1.Runway_Group = R2.Runway_Group
-#   OR RTPD.Mode_S_Wind_Localiser_Capture IS NULL
-#   ORDER BY Flight_Plan_ID, Track_Time"
-# 
-#   # Get Radar Data
-#   Radar <- sqlQuery(con, Radar_Query, stringsAsFactors = F)
-# }
 
 # ----------------------------------------------------------------------- #
 # Extra Fields
@@ -316,7 +279,7 @@ if (Cap_ORD_Compression){
 
 WAD_Data <- WAD_Data %>%
   mutate(WAD_Separation_Distance = WAD_Separation_Distance + Old_ORD_Compression)
-         
+
 # Join on Legacy Aircraft Type to Wake to get Legacy Wake Categories
 WAD_Data <- left_join(WAD_Data, Legacy_ACtoWake, by = c("Leader_Aircraft_Type" = "Aircraft_Type")) %>% rename(Leader_Legacy_Wake_Cat = Wake)
 WAD_Data <- left_join(WAD_Data, Legacy_ACtoWake, by = c("Follower_Aircraft_Type" = "Aircraft_Type")) %>% rename(Follower_Legacy_Wake_Cat = Wake)
@@ -363,10 +326,7 @@ if (Cap_WAD_Compression){
 
 ## Radar <- RadarOrig
 if (Use_Proxy_Wind){
-  # Radar <- sqlQuery(con, GetORDAnalysisRadarQuery(), stringsAsFactors = F)
-  # Radar <- RecalculateRadarValuesORD(Radar, RTTPathLegs, WEPathLegs, MaxILSRange)
-  # RadarOrig <- Radar
-  # 
+
   if (Use_Proxy_Wind_More){
     if (FilterLeadRadar){RadarLead <- filter(Radar, RTTPRoxyFlag == 0)} else {RadarLead <- Radar}
     # Recalculate the Observed Leader Wind Effect and Speed - Based on Predicted Compression Commencement Distance (CCT, 10NM).
@@ -377,7 +337,7 @@ if (Use_Proxy_Wind){
     WAD_Data <- ORDRealignFlags(WAD_Data, "Leader")
     WADSummary <- QuickProxyTablePlot(WAD_Data, "WAD", "Summary", "Leader")
   }
-  
+
   # Recalculate the Observed Follower Wind Effect and Speed - Based on Predicted Follower Distances and the CCT.
   WAD_Data <- GenerateProxyWindEffect(WAD_Data, Radar, Algo = "WAD", LorFIn = "Follower", LorFOut = "Follower", MaxInsideBuffer, FAF_Distance_Val, Remove_Old_Observations)
   if (Use_Proxy_Wind & Use_Proxy_Wind_Leader){
@@ -509,6 +469,21 @@ if (Apply_Separation_Accuracy_Filter){
   Min_Values = append(Min_Values, NA)
 }
 
+# Remove Pairs where the leader doesn't establish until after xNM
+if (Apply_Leader_Establish_Filter){
+  Original_Count <- nrow(WAD_Data)
+  WAD_Data <- WAD_Data %>%
+    filter(Leader_CC_RTT <= Min_Leader_CC_RTT)
+  New_Count <- nrow(WAD_Data)
+  Removed_Count <- Original_Count - New_Count
+  Filters <- append(Filters, "Late Established Leaders")
+  New_Values <- append(New_Values, New_Count)
+  Removed_Values <- append(Removed_Values, Removed_Count)
+  message(paste0("Removed ", Removed_Count, " Late Established Leaders Observations out of ", Original_Count,  ", with ", New_Count, " remaining." ))
+  Max_Values = append(Max_Values, NA)
+  Min_Values = append(Min_Values, Min_Leader_CC_RTT)
+}
+
 # Create Filter Table
 Filter_Table <- data.frame(
   Filter = Filters,
@@ -622,3 +597,298 @@ p1 <- ggplot() + geom_histogram(data=WAD_Data, mapping=aes(x = Forecast_Mean_Lea
 p2 <- ggplot() + geom_histogram(data=WAD_Data, mapping=aes(x = Forecast_Mean_Follower_Wind_Effect_Error, y = ..density..)) + labs(title = "Follower WE Error")
 p3 <- ggplot() + geom_histogram(data=WAD_Data, mapping=aes(x = WAD_Compression_Error, y = ..density..)) + labs(title = "Compression Error")
 grid.arrange(p1, p2, p3)
+
+
+
+################################
+# MC plots
+
+print(WAD_Error_Histogram(WAD_Data, Metrics) + xlab("WAD Compression Error (NM)"))
+
+ggplot()+
+geom_histogram(data = WAD_Data,
+               mapping = aes(x = WAD_Compression_Error, y = ..density..),
+               binwidth = 0.05)
+
+WAD_Data <- mutate(WAD_Data, Flags = paste0(Follower_Standard_Flag, "-", Follower_Extended_Flag))
+
+
+
+ggplot()+
+  geom_histogram(data = WAD_Data,
+                 mapping = aes(x = Forecast_Mean_Follower_Wind_Effect_Error, y = ..density..),
+                 binwidth = 1)
+
+ggplot()+
+  geom_histogram(data = WAD_Data,
+                 mapping = aes(x = Forecast_Mean_Follower_Wind_Effect_Error, y = ..density..),
+                 binwidth = 1)+
+  facet_wrap(~Flags)
+
+WAD_Data %>% group_by(Flags) %>% summarise(N = n(), Mean_Error = mean(Forecast_Mean_Follower_Wind_Effect_Error, na.rm = T), Median_Error = median(Forecast_Mean_Follower_Wind_Effect_Error, na.rm = T))
+
+fwrite(WAD_Data, file.path(out_dir, "WAD_Data.csv"))
+
+plot_ord_profile_we(161163)
+
+ord_data <- WAD_Data
+
+plot_ord_profile_ll <- function(lp_id){
+
+  #lp_id <- 118746
+  #include_gspd <- T
+
+  # Get the ORD data line
+
+  ord_line <- filter(ord_data, Landing_Pair_ID == lp_id)
+
+  title_text <- paste0("Leader IAS Speed Profile for ", ord_line$Leader_Callsign, " ",ord_line$Leader_Aircraft_Type)
+  subtitle_text <- paste0("ORD Error = ", ord_line$ORD_Compression_Error_Rounded, "NM ", "Leader IAS Error = ", sprintf("%.0f", ord_line$ORD_Leader_IAS_Error), "kt")
+
+  p1 <- tryCatch(plot_single_aircraft(ord_line$Leader_Flight_Plan_ID, ord_line$Landing_Pair_ID, F , title_text, subtitle_text),
+                 error = function(e) {
+                   plot.new()
+                   text(.5,.5, paste("No data for", lp_id), cex=1, col=rgb(.2,.2,.2,.7))
+                 })
+
+  title_text <- paste0("Leader GSPD Speed Profile for ", ord_line$Leader_Callsign, " ",ord_line$Leader_Aircraft_Type)
+  subtitle_text <- paste0("Lead Wind Effect Error = ", sprintf("%.0f", ord_line$Forecast_Mean_Leader_Wind_Effect_Error), "kt Follower Wind Error = ", sprintf("%.0f", ord_line$Forecast_Mean_Follower_Wind_Effect_Error), "kt")
+
+  p2 <- tryCatch(plot_single_aircraft(ord_line$Leader_Flight_Plan_ID, ord_line$Landing_Pair_ID, T , title_text, subtitle_text),
+                 error = function(e) {
+                   plot.new()
+                   text(.5,.5, paste("No data for", lp_id), cex=1, col=rgb(.2,.2,.2,.7))
+                 })
+
+  grid.arrange(p1, p2, nrow = 1)
+
+}
+
+plot_ord_profile_we <- function(lp_id){
+
+  lp_id <- 161163
+  #include_gspd <- T
+
+  # Get the ORD data line
+
+  ord_line <- filter(ord_data, Landing_Pair_ID == lp_id)
+
+  title_text <- paste0("Leader WE Profile for ", ord_line$Leader_Callsign, " ",ord_line$Leader_Aircraft_Type)
+  subtitle_text <- paste0("ORD Error = ", ord_line$ORD_Compression_Error_Rounded, "NM ", "Leader WE Error = ", sprintf("%.0f", ord_line$Forecast_Mean_Leader_Wind_Effect_Error), "kt")
+
+  p1 <- tryCatch(plot_single_wind_effect(ord_line$Leader_Flight_Plan_ID, ord_line$Landing_Pair_ID, "L", ord_line$Leader_FAF_RTT, ord_line$Leader_CC_RTT, title_text, subtitle_text),
+                 error = function(e) {
+                   plot.new()
+                   text(.5,.5, paste("No data for", lp_id), cex=1, col=rgb(.2,.2,.2,.7))
+                 })
+
+  title_text <- paste0("Follower WE Profile for ", ord_line$Follower_Callsign, " ",ord_line$Follower_Aircraft_Type)
+  subtitle_text <- paste0("Follower Wind Effect Error = ", sprintf("%.0f", ord_line$Forecast_Mean_Follower_Wind_Effect_Error))
+
+  p2 <- tryCatch(plot_single_wind_effect(ord_line$Follower_Flight_Plan_ID, ord_line$Landing_Pair_ID, "F", ord_line$Follower_Forecast_End_Distance, ord_line$Follower_Forecast_Start_Distance, title_text, subtitle_text),
+                 error = function(e) {
+                   plot.new()
+                   text(.5,.5, paste("No data for", lp_id), cex=1, col=rgb(.2,.2,.2,.7))
+                 })
+
+  grid.arrange(p1, p2, nrow = 1)
+
+}
+
+
+plot_ord_profile_lf <- function(lp_id, include_gspd){
+
+  #lp_id <- 855810
+  #include_gspd <- T
+
+  # Get the ORD data line
+
+  ord_line <- filter(ord_data, Landing_Pair_ID == lp_id)
+
+  title_text <- paste0("Leader IAS Speed Profile for ", ord_line$Leader_Callsign, " ",ord_line$Leader_Aircraft_Type)
+  subtitle_text <- paste0("IAS Error = ", sprintf("%.0f", ord_line$ORD_Leader_IAS_Error), " Wind Error = ", sprintf("%.0f", ord_line$Forecast_Mean_Leader_Wind_Effect_Error))
+
+  p1 <- tryCatch(plot_ord_aircraft(ord_line$Leader_Flight_Plan_ID, ord_line$Landing_Pair_ID, "L", include_gspd, title_text, subtitle_text),
+                 error = function(e) {
+                   plot.new()
+                   text(.5,.5, paste("No data for", lp_id), cex=1, col=rgb(.2,.2,.2,.7))
+                 })
+
+  title_text <- paste0("Follower IAS Speed Profile for ", ord_line$Follower_Callsign, " ",ord_line$Follower_Aircraft_Type)
+  subtitle_text <- paste0("IAS Error = ", sprintf("%.0f", ord_line$ORD_Follower_IAS_Error), " Wind Error = ", sprintf("%.0f", ord_line$Forecast_Mean_Follower_Wind_Effect_Error))
+
+  p2 <- tryCatch(plot_ord_aircraft(ord_line$Follower_Flight_Plan_ID, ord_line$Landing_Pair_ID, "F", include_gspd, title_text, subtitle_text),
+                 error = function(e) {
+                   plot.new()
+                   text(.5,.5, paste("No data for", lp_id), cex=1, col=rgb(.2,.2,.2,.7))
+                 })
+
+  grid.arrange(p1, p2, nrow = 1)
+
+}
+
+plot_ord_aircraft <- function(fp_id, lp_id, l_or_f, include_gspd, title_text, subtitle_text){
+
+  #fp_id <- 247329
+  #lp_id <- 855810
+  #include_gspd <- F
+  #l_or_f <- "L"
+
+  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+
+  # Get the ORD Profile for leader and follower
+
+  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", l_or_f, "'"))
+
+  ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
+                        End_IAS = End_IAS * 3600 / 1852,
+                        Start_GS = Start_GS * 3600 / 1852,
+                        End_GS = End_GS * 3600 / 1852,
+                        Start_Dist = Start_Dist / 1852,
+                        End_Dist = End_Dist / 1852)
+
+
+  if (include_gspd == T){
+    p1 <- ggplot()+
+      geom_point(data = leader_track, mapping = aes(x = Range_To_Threshold, y = Mode_S_IAS, color = "IAS"))+
+      geom_point(data = leader_track, mapping = aes(x = Range_To_Threshold, y = Mode_S_GSPD, color = "GSPD"))+
+      geom_line(data = ord_profile, mapping = aes(x = End_Dist, y = End_IAS, color = "ORD IAS"))+
+      geom_line(data = ord_profile, mapping = aes(x = End_Dist, y = End_GS, color = "ORD GSPD"))+
+
+      xlim(0, 10)+
+      ylim(100, 200)+
+      labs(title = title_text, subtitle = subtitle_text, x = "Range To Threshold (NM)", y = "Speed (kt)")+
+      scale_color_manual(name = "Legend",
+                         breaks = c("IAS", "GSPD", "ORD IAS", "ORD GSPD"),
+                         values = c("IAS" = "black", "GSPD" = "blue", "ORD IAS" = "grey", "ORD GSPD" = "light blue"))+
+      theme_bw()+
+      theme(legend.position = "bottom")
+
+  } else {
+    p1 <- ggplot()+
+      geom_point(data = leader_track, mapping = aes(x = Range_To_Threshold, y = Mode_S_IAS, color = "IAS"))+
+      geom_line(data = ord_profile, mapping = aes(x = End_Dist, y = End_IAS, color = "ORD IAS"))+
+      xlim(0, 10)+
+      ylim(100, 200)+
+      labs(title = title_text, subtitle = subtitle_text, x = "Range To Threshold (NM)", y = "Speed (kt)")+
+      scale_color_manual(name = "Legend",
+                         breaks = c("IAS", "ORD IAS"),
+                         values = c("IAS" = "black", "ORD IAS" = "grey"))+
+      theme_bw()+
+      theme(legend.position = "bottom")
+  }
+
+  return(p1)
+
+}
+
+
+plot_single_aircraft <- function(fp_id, lp_id, gspd, title_text, subtitle_text){
+
+  #fp_id <- 31169
+  #lp_id <- 118746
+  #lp_id <- 855810
+  #gspd <- F
+  #l_or_f <- "L"
+
+  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+
+  # Get the ORD Profile for leader and follower
+
+  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = 'L'"))
+
+  ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
+                        End_IAS = End_IAS * 3600 / 1852,
+                        Start_GS = Start_GS * 3600 / 1852,
+                        End_GS = End_GS * 3600 / 1852,
+                        Start_Dist = Start_Dist / 1852,
+                        End_Dist = End_Dist / 1852)
+
+
+  if (gspd == T){
+    p1 <- ggplot()+
+      geom_point(data = leader_track, mapping = aes(x = Range_To_Threshold, y = Mode_S_GSPD, color = "GSPD"))+
+      geom_line(data = ord_profile, mapping = aes(x = End_Dist, y = End_GS, color = "ORD GSPD"))+
+      xlim(0, 10)+
+      ylim(100, 200)+
+      labs(title = title_text, subtitle = subtitle_text, x = "Range To Threshold (NM)", y = "Speed (kt)")+
+      scale_color_manual(name = "Legend",
+                         breaks = c("GSPD", "ORD GSPD"),
+                         values = c("GSPD" = "blue", "ORD GSPD" = "light blue"))+
+      theme_bw()+
+      theme(legend.position = "bottom")
+
+  } else {
+    p1 <- ggplot()+
+      geom_point(data = leader_track, mapping = aes(x = Range_To_Threshold, y = Mode_S_IAS, color = "IAS"))+
+      geom_line(data = ord_profile, mapping = aes(x = End_Dist, y = End_IAS, color = "ORD IAS"))+
+      xlim(0, 10)+
+      ylim(100, 200)+
+      labs(title = title_text, subtitle = subtitle_text, x = "Range To Threshold (NM)", y = "Speed (kt)")+
+      scale_color_manual(name = "Legend",
+                         breaks = c("IAS", "ORD IAS"),
+                         values = c("IAS" = "black", "ORD IAS" = "grey"))+
+      theme_bw()+
+      theme(legend.position = "bottom")
+  }
+
+  return(p1)
+
+}
+
+
+plot_single_wind_effect <- function(fp_id, lp_id, role, min, max, title_text, subtitle_text){
+
+  #fp_id <- 28298
+  #lp_id <- 161163
+  #role <- "F"
+  #title_text = "test"
+  #subtitle_text = "test"
+
+  #min <- 13.11
+  #max <- 9.67
+
+  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+
+  leader_track <- filter(leader_track, Path_Leg_Type %in% Allowed_Path_Legs)
+
+  min_y = 10 * floor(min(c(leader_track$Wind_Effect_IAS,ord_profile$End_WE),  na.rm = T) / 10)
+  max_y = 10 * floor(max(c(leader_track$Wind_Effect_IAS,ord_profile$End_WE),  na.rm = T) / 10) + 10
+
+  min_x <- 0
+  max_x <- ceiling(max(c(leader_track$ILS_Locus_RTT, max), na.rm = T))
+
+  # Get the ORD Profile for leader and follower
+
+  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", role, "'"))
+
+  ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
+                        End_IAS = End_IAS * 3600 / 1852,
+                        Start_GS = Start_GS * 3600 / 1852,
+                        End_GS = End_GS * 3600 / 1852,
+                        Start_Dist = Start_Dist / 1852,
+                        End_Dist = End_Dist / 1852,
+                        Start_WE = Start_GS - Start_IAS,
+                        End_WE = End_GS - End_IAS)
+
+  p1 <- ggplot()+
+    geom_point(data = leader_track, mapping = aes(x = ILS_Locus_RTT, y = Wind_Effect_IAS, color = Path_Leg_Type))+
+    #geom_point(data = leader_track, mapping = aes(x = ILS_Locus_RTT, y = Wind_Effect_IAS, color = "Wind Effect"))+
+
+    geom_line(data = ord_profile, mapping = aes(x = End_Dist, y = End_WE, color = "ORD WE"))+
+    xlim(c(min_x, max_x))+
+    ylim(c(min_y, max_y))+
+    labs(title = title_text, subtitle = subtitle_text, x = "Range To Threshold (NM)", y = "Wind Effect (kt)")+
+    scale_color_manual(name = "Legend",
+                       breaks = c("ILS_Leg", "Landing_Leg", "Intercept_Leg", "Extended_Intercept", "ORD WE"),
+                       values = c("ILS_Leg" = "firebrick2", "Landing_Leg" = "firebrick2", "Intercept_Leg" = "deepskyblue4", "Extended_Intercept" = "deepskyblue4", "ORD WE" = "grey"))+
+    geom_vline(xintercept = min, color = "grey")+
+    geom_vline(xintercept = max, color = "grey")+
+    theme_bw()+
+    theme(legend.position = "bottom")
+
+
+
+  return(p1)
+
+}
