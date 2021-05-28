@@ -118,9 +118,9 @@ if (!dir.exists(plots_data)) dir.create(plots_data)
 #Get database connection
 con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
 
+# Setting a number of plot (if list of large errors is too large)
 
-
-
+max_plot <- 20
 
 # Config Parameters
 
@@ -149,8 +149,6 @@ Allowed_Path_Legs <- c("ILS_Leg", "Landing_Leg", "Intercept_Leg", "Extended_Inte
 # Load the main ORD data set
 
 ord_data <- fread(file.path(ref_data, "Validation Data Post SepN Accuracy.csv"))
-
-prof_data <- fread(file.path(prof_data, "Approach_Speed_Profiles.csv"))
 
 #ord_data <- left_join(ord_data, prof_data, by = c("Leader_Flight_Plan_ID" = "Follower_Flight_Plan_ID"))
 
@@ -444,8 +442,9 @@ for (i in 1:nrow(ord_large_errors)){
 }
 
 
-#for (i in 1:nrow(ord_large_errors)){
-  for (i in 1:20){
+# Plot large errors up to a point
+
+  for (i in 1:max_plot){
 
   #i <- 1
   le_line <- ord_large_errors[i, ]

@@ -33,7 +33,7 @@ use_same_input_version <- T
 if (use_same_input_version == T) {
   input_version <- version
 } else if (use_same_input_version == F) {
-  input_version <- "2021-05-04 V1.0 (AH)"   #Manually define this if you want different input output version numbers
+  input_version <- "2021-05-13 V1.0 (AH)"   #Manually define this if you want different input output version numbers
 }
 
 #Set server  with IP then tied to this
@@ -147,6 +147,10 @@ speed_filter_perc <- 50
 speed_filter_limit_low <- 50
 speed_filter_limit_high <- 200
 
+# Set RTT filter, if range is too small then the flight will be skipped
+min_RTT <- 1
+max_RTT <- 4
+
 # Start day number ------------------------------------------------------ #
 # Set to 1 to run script for all days
 start_day_num <- 1
@@ -212,11 +216,7 @@ d_filter <- F
 d_min <- 0
 d_max <- 50
 
-use_vref_for_decel <- T
-min_vref <- 10
-max_vref <- 10
-
-
+# Initialising output tables and set parameters
 type_adaptation_input_table <- data.table(
   Aircraft_Type = "ALL",
   Compression_Commencement_Threshold = 10,
@@ -291,7 +291,6 @@ additional_aircraft_to_output <- c("A388", "A339")
 
 thousand_ft_gate <- 5321.9/1852
 reference_wind <- 5
-max_decel <- 50
 
 # Use Wake Separation Weighted Average for TBS Table Output
 use_weighted_average <- T
@@ -405,6 +404,16 @@ report_performance_actypes <- c(
 # MC 26/02
 # Flag on whether to calculate the separation adjustment
 separation_adjustment <- F
+
+# Aircraft ICAO Replace
+Replacement_Type <- "SW4"
+Replacement_Cat <- "M"
+
+# Adjust the ORD Follower IAS for use in Observed Compression Calcs
+ord_follower_ias_adjustment <- -2
+
+# Setting the FAF IAS Filter
+FAF_IAS_Filter <- 150
 
 # Adjustments for Separation Accuracy ----------------------------------- #
 # MC Add 16/9.  Separation Adjustment Parameters for modelled accuracy

@@ -36,6 +36,18 @@ Asterix_Filename_To_Date <- function(Log_Filename) {
   }
 }
 
+substrRight <- function(x, n){
+  substr(x, nchar(x)-n+1, nchar(x))
+}
+
+Fusion_Filename_To_Time <- function(Log_Filename) {
+  #Fusion filename to log start time, for fusion data spanning 2 days to ensure the correct track date is set upon loading
+  LogStartTime <- substrRight(Log_Filename, 9)
+  LogStartTime <- substr(LogStartTime, 1, 5)
+
+  return(LogStartTime)
+}
+
 runway_Opposite_End <- function(rwy) {
   # Example
   # Input: c("36", "07", "21R", "R18L", "R27C", "R32R")
@@ -1223,6 +1235,3 @@ Get_2D_Scalar_Product <- function(amp1, ang1, amp2, ang2){
 }
 
 # ----------------------------------------------- #
-
-
-
