@@ -74,6 +74,7 @@ Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
 # Source Function Files
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 source(file.path(Algo_Func_Dir, "ORD Functions (DB).R"), local = T) # ORD Functions 
+source(file.path(Algo_Func_Dir, "TBSC Functions (PWS).R"), local = T)
 #source(file.path(Algo_Func_Dir, "GWCS Functions (DB).R"), local = T) # GWCS Functions for Wind Forecasting
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 source(file.path(DB_Module_Dir, "All Pair Reference Data.R"), local = T) # All Pair Reference Data Functions
@@ -103,6 +104,16 @@ LP_Primary_Key <- Get_LP_Primary_Key("Validation")
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 ADAP_Config <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
 WAD_Enabled <- as.logical(ADAP_Config$Include_Tailwinds_Aloft)
+# Get Seg Size
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+Seg_Size <- GWCS_Adaptation$DME_Seg_Size
+# ORD/TBS Calcs
+ORDBuffers <- F # Not yet set up
+TBSCBuffers <- F # Not yet set up
+TTB_Type <- "Original" # ORD Works
+Constraints <- c("Wake", "Non_Wake", "ROT") # Need to Add Runway Dependency Compatibility
+Forecast_Compression_Type <- 1 # 1: Traditional Forecast Compression, 2: Use of Forecast Distance, Speed/WE
+Observed_Compression_Type <- 1 # Same as above.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -120,11 +131,12 @@ INP_Surface_Wind <- Load_Surface_Wind_Data(con, PROC_Period, PROC_Criteria)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 INT_Landing_Pairs <- Generate_All_Pair_Reference_Data(con, LP_Primary_Key, INP_Landing_Pair, INP_Radar, INP_Flight_Plan, INP_Surface_Wind)
 INT_Landing_Pairs <- Generate_ORD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Surface_Wind)
-INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs)
+INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers)
 INT_Full_GWCS_Forecast <- Generate_Full_ORD_GWCS_Forecast(con, LP_Primary_Key, INP_Segments, INT_Landing_Pairs, Time_Key = "Prediction_Time")
 INT_IAS_Profile <- Generate_ORD_IAS_Profile(con, LP_Primary_Key, INT_Aircraft_Profile, INT_Landing_Pairs, INT_Full_GWCS_Forecast)
-INT_GSPD_Profile <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, INT_IAS_Profile, INT_Full_GWCS_Forecast)
-INT_Landing_Pairs <- Generate_ORD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile)
+INT_GSPD_Profile <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, INT_IAS_Profile, INT_Full_GWCS_Forecast, Seg_Size)
+INT_Landing_Pairs <- Generate_ORD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile, INT_Full_GWCS_Forecast, INP_Radar,
+                                             Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type)
 INT_Landing_Pairs <- Generate_IA_Performance_Model_Setup(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INT_Full_GWCS_Forecast)
 
 #if (WAD_Enabled){

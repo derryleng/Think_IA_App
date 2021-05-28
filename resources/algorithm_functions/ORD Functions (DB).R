@@ -207,6 +207,8 @@ Get_ORD_Prediction_Time <- function(Data, Radar, Path_Legs){
   return(Data)
 }
 
+
+
 # Time At Fixed DME. 
 Get_Time_At_Fixed_DME <- function(Data, Radar, DME, LorF, OrderBy){
   
@@ -547,10 +549,10 @@ Get_Average_Forecast_Wind_Effect <- function(Data, Segment_Forecast, Prefix, ID_
   Segment_Forecast <- left_join(Segment_Forecast, Distances, by = setNames(ID_Var, ID_Var))
   Segment_Forecast <- left_join(Segment_Forecast, Speeds, by = setNames(ID_Var, ID_Var))
   
-  # Filter for Segments within Distance bounds somehow (Needs additions - need to incorporate seg size)
+  # Filter for Segments within Distance bounds somehow (Needs additions - need to incorporate seg size) ## EDIT: CHANGED TO USE FLOOR OF NM DISTANCE
   Segment_Forecast <- filter(Segment_Forecast, 
                              DME_Seg >= floor(!!sym(End_Dist_Var) + NM_to_m - Seg_Size) & 
-                               DME_Seg <= ceiling(!!sym(Start_Dist_Var) - NM_to_m + Seg_Size))
+                               DME_Seg <= (!!sym(Start_Dist_Var) - NM_to_m + Seg_Size))
   
   # Get the Segment Size Delta
   Segment_Forecast <- mutate(Segment_Forecast, 
@@ -818,7 +820,7 @@ Get_Forecast_Wind_Effect_At_DME <- function(Segments, Aircraft_Profile, ID_Var, 
   
 }
 
-Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
+Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
   
   # Change "Leader" to "Lead" For Variable Compatibility
   if(LorF == "Leader"){LorF <- "Lead"}
@@ -856,7 +858,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   
   # Select Appropriate Variables
   if (Operation == "IA"){
-    Ref_Data <- select(Ref_Data,
+    Ref_Data1 <- select(Ref_Data,
                        !!sym(Unique_Var),
                        "Compression_Commencement_Threshold",
                        "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
@@ -871,7 +873,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   }
   
   if (Operation == "IA PWS" & Level != "Operator"){
-    Ref_Data <- select(Ref_Data,
+    Ref_Data1 <- select(Ref_Data,
                        !!sym(Unique_Var),
                        "Compression_Commencement_Threshold",
                        "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
@@ -888,7 +890,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   }
   
   if (Operation == "IA PWS" & Level == "Operator"){
-    Ref_Data <- select(Ref_Data,
+    Ref_Data1 <- select(Ref_Data,
                        !!sym(Unique_Var),
                        !!sym(Unique_Var2),
                        "Compression_Commencement_Threshold",
@@ -906,7 +908,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   }
   
   
-  return(Ref_Data)
+  return(Ref_Data1)
 
 }
 
@@ -2600,14 +2602,14 @@ Get_LP_Primary_Key <- function(Database_Type){
 
 # Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles 
 # With Joined values for Compression Start and End.
-Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var){
+Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var, Metric_Type){
   
   # ------------------------ #
   ### --- Setup
   # ------------------------ #
   
   # Hardcoded Compression Metric: 1 = Distance difference, 2 = Distance,Speed,WE
-  Metric_Type <- 1
+  #'Metric_Type <- 1
   
   # Variable Names
   Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
@@ -2667,12 +2669,12 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   Landing_Pair <- left_join(Landing_Pair, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
   
   # TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
-  Landing_Pair <- mutate(Landing_Pair,
-                      Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
-                      !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
-                      !!sym(Foll_Spd_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var)),
-                      !!sym(Foll_WE_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var))) %>%
-    select(-Temp_Flag)
+  # Landing_Pair <- mutate(Landing_Pair,
+  #                     Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
+  #                     !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
+  #                     !!sym(Foll_Spd_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var)),
+  #                     !!sym(Foll_WE_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var))) %>%
+  #   select(-Temp_Flag)
   
   # Calculate Compression
   Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix)
