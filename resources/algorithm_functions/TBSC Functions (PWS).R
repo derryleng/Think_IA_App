@@ -90,6 +90,11 @@ Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Typ
 # Currently only supports TBS Wake/ROT
 Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers){
   
+  # LPR <- Landing_Pair
+  # Out_Prefix <- "Test"
+  # ID_Var <- "Landing_Pair_ID"
+  # Time_Var <- Get_Reference_Variable_Name("Wake", "Time")
+  
   Dist_Var <- paste0(Out_Prefix, "_Distance")
   WE_Var <- paste0(Out_Prefix, "_Wind_Effect")
   if (TTB_Type != "Original"){Speed_Var <- paste0(Out_Prefix, "_IAS")}
@@ -105,7 +110,7 @@ Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out
   if (TTB_Type == "T2F"){TTB_Results <- Calculate_Perfect_TBS_Distance_TTB_T2F(LPR, Full_Wind_Forecast = Other_Data, ID_Var, Dist_Var, Speed_Var, WE_Var)}
   
   LPR <- LPR %>%
-    select(-TTB_Reference_Time, -Sep_Dist_Buffer) 
+    select(-TTB_Reference_Time, -Sep_Dist_Buffer, -Time_Buffer) 
   
   if (exists("TTB_Results")){LPR <- LPR %>% left_join(TTB_Results, by = setNames(ID_Var, ID_Var))}
   
@@ -121,14 +126,14 @@ Calculate_Perfect_TBS_Distance_Original <- function(LPR, Segment_Forecast, Out_P
   Alt_Speed_Var <- paste0(Out_Prefix, "_IAS")
   
   LPR <- LPR %>%
-    mutate(TBS_Dist_No_WE := (!!sym(Time_Var) * (!!sym(Speed_Var))) + Delivery_Distance)
+    mutate(TBS_Dist_No_WE := (!!sym(Time_Var) * !!sym(Speed_Var)) + Delivery_Point)
   
   LPR <- Get_Average_Forecast_Wind_Effect(LPR, Segment_Forecast,
                                                    Prefix = "TBSC",
                                                    ID_Var = ID_Var,
                                                    Start_Dist_Var = "TBS_Dist_No_WE",
                                                    End_Dist_Var = "Delivery_Point",
-                                                   Speed_Var = Speed_Var,
+                                                   Speed_Var,
                                                    Seg_Size)
   
   LPR <- LPR %>%
@@ -314,8 +319,7 @@ Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constr
     # Apply Minimums here.
     if (Constraint_Delivery == Evaluated_Delivery){
       if (Service_Level == "TBS"){
-        LPR <- Calculate_Perfect_TBS_Distance(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers) %>%
-          select(-Time_Buffer)
+        LPR <- Calculate_Perfect_TBS_Distance(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers) 
     } else {
       LPR <- Generate_Constraint_DBS_Distance(con, LPR, Out_Prefix, Constraint_Type)
     }
@@ -329,11 +333,7 @@ Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constr
         mutate(!!sym(paste0(Out_Prefix, "_Distance")) := !!sym(Thresh_Var) + Forecast_ORD_Compression)
     }
     
-    # Apply the max value.
-    # LPR <- Get_Max_Valid_Value_2Var(LPR, 
-    #                                 paste0(Out_Prefix, "_Distance"),
-    #                                 paste0(Out_Prefix, "_Distance"),
-    #                                 "Minimum_Constraint_Distance")
+
     
     Max_Vars <- c(paste0(Out_Prefix, "_Distance"), "Minimum_Constraint_Distance")
     LPR <- LPR %>%

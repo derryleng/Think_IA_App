@@ -115,9 +115,6 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair, ORD
   # ----------------------------------------------- #
   # 
   # ----------------------------------------------- #
-  Landing_Pair <- LPR
-  LPID_Var <- LP_Primary_Key
-  ORD_Profile_Selection <- "Aircraft_Type"
   
   Aircraft_Profile_Leader <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, "Leader", ORD_Profile_Selection,
                                                     ORD_Operator_Leader, ORD_Aircraft_Leader, ORD_Wake_Leader, ORD_DBS_Leader, ORD_Runway)
@@ -337,4 +334,5 @@ Populate_ORD_Aircraft_Profile <- function(con, ORD_Aircraft_Profile){
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
+# test <- filter(ZCOMP_ORD_Aircraft_Profile, is.na(Landing_Pair_Date))
+# test1 <- filter(INT_Landing_Pairs, Landing_Pair_ID %in% test$Landing_Pair_ID)

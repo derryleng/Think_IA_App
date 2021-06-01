@@ -65,6 +65,13 @@
 
 Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type){
   
+  # Landing_Pair <- INT_Landing_Pairs
+  # TBSCBuffers <- F
+  # GWCS_Forecast <- INT_Full_GWCS_Forecast
+  # Constraints <- c("Wake", "ROT", "Non_Wake")
+  # TTB_Type <- "Original"
+  # ORD_GS_Profile <- INT_GSPD_Profile
+  # 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
   message("Generating ORD Predicted Parameter Data...")
@@ -81,8 +88,8 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
   
   # Initialise Empty Values
   Dist_Values <- c()
-  Time_Buffers <- Generate_TBSC_Time_Buffers(con, test, LP_Primary_Key, Active = TBSCBuffers)  # UNTESTED WITH BUFFER ADAPTATION
-  TBSC_Profiles <- Generate_TBSC_Profiles(con, LPR, GWCS_Forecast, LP_Primary_Key, TTB_Type)  # UNTESTED WITH T2F
+  Time_Buffers <- Generate_TBSC_Time_Buffers(con, Landing_Pair, LP_Primary_Key, Active = TBSCBuffers)  # UNTESTED WITH BUFFER ADAPTATION
+  TBSC_Profiles <- Generate_TBSC_Profiles(con, Landing_Pair, GWCS_Forecast, LP_Primary_Key, TTB_Type)  # UNTESTED WITH T2F
   
   ## Generate the Distance for all Constraints at Threshold
   for (Constraint in Constraints){
@@ -545,6 +552,10 @@ Generate_ORD_Calculation <- function(){
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
+# test <- filter(ZCOMP_ORD_Prediction, FLAG_Forecast_ORD_Compression == 1 & is.na(Forecast_ORD_Compression))
+# test1 <- filter(INT_Landing_Pairs, Landing_Pair_ID %in% test$Landing_Pair_ID)
+# test2 <- filter(INT_Full_GWCS_Forecast, ID %in% test$Landing_Pair_ID)
+# test <- filter(INT_Landing_Pairs, !is.na(Reference_Recat_Wake_Separation_Distance))
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # POPULATE: ORD Calculation

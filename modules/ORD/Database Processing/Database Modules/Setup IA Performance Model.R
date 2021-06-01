@@ -132,7 +132,7 @@ Generate_IA_Performance_Model_Setup <- function(con, LP_Primary_Key, Landing_Pai
   # ----------------------------------------------- #
   
   # TEMP: Amend Forecast ORD Compression to only consider those with Observed Compression
-  Landing_Pair <- mutate(Landing_Pair, Forecast_ORD_Compression = ifelse(is.na(Observed_ORD_Compression), NA, Forecast_ORD_Compression))
+  #Landing_Pair <- mutate(Landing_Pair, Forecast_ORD_Compression = ifelse(is.na(Observed_ORD_Compression), NA, Forecast_ORD_Compression))
   
   # Get the TBS Distances Without Wind Effect (Keep to RECAT Operations for Now)
   Landing_Pair <- mutate(Landing_Pair,

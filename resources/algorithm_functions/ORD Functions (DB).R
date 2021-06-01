@@ -2668,13 +2668,13 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   ## Join with Landing Pair Data
   Landing_Pair <- left_join(Landing_Pair, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
   
-  # TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
-  # Landing_Pair <- mutate(Landing_Pair,
-  #                     Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
-  #                     !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
-  #                     !!sym(Foll_Spd_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var)),
-  #                     !!sym(Foll_WE_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var))) %>%
-  #   select(-Temp_Flag)
+  #TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
+  Landing_Pair <- mutate(Landing_Pair,
+                      Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
+                      !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
+                      !!sym(Foll_Spd_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var)),
+                      !!sym(Foll_WE_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var))) %>%
+    select(-Temp_Flag)
   
   # Calculate Compression
   Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix)
