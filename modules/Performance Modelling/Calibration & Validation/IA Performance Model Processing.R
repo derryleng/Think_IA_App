@@ -123,9 +123,9 @@ for (i in 1:nrow(Recat_Wake_Time)){
 
    for (j in 1:length(Separation_Time)){
      Plot <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, Separation_Time[j], "Recat", LeaderWTC, FollowerWTC)
-     #png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " ", Separation_Time[j], ".png")))
+     png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " ", Separation_Time[j], ".png")))
      print(Plot)
-     #dev.off()
+     dev.off()
    }
    
    ## TEMP Comparisons 
@@ -134,16 +134,16 @@ for (i in 1:nrow(Recat_Wake_Time)){
    Plot1 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
    Plot2 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_DBS", "Recat", LeaderWTC, FollowerWTC)
    Plot3 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_TBS_US05", "Recat", LeaderWTC, FollowerWTC)
-   Plot4 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_0DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
+   #Plot4 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_0DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
    
-   # png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v DBS 1DME.png")))
-   # grid.arrange(Plot1, Plot2)
-   # dev.off()
-   # 
-   # png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v US TBS 1DME.png")))
-   # grid.arrange(Plot1, Plot3)
-   # dev.off()
-   # 
+   png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v DBS 1DME.png")))
+   grid.arrange(Plot1, Plot2)
+   dev.off()
+
+   png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v US TBS 1DME.png")))
+   grid.arrange(Plot1, Plot3)
+   dev.off()
+
    # png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, "  TBS 1DME v 0DME.png")))
    # grid.arrange(Plot1, Plot4)
    # dev.off()
@@ -212,7 +212,7 @@ fwrite(Performance_Model_WaPT, file.path(Out_Dir, "Performance_Model_WaPT.csv"))
 #     "Observed_AGI_Surface_Wind_SPD",
 #     "Observed_AGI_Surface_Wind_HDG",
 #     "Observed_1DME_Separation_Distance",
-#     "Observed_1DME_Separation_Distance",
+#     "Observed_4DME_Separation_Distance",
 #     "Observed_1DME_Separation_Time",
 #     "Observed_4DME_Separation_Time",
 #     "Observed_Follower_TBS_Wind_Effect",
