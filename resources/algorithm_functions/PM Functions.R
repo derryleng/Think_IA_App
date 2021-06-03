@@ -215,7 +215,7 @@ PlotAgainstReferencePM <- function(Data, Reference, RefDists, PlotVar, RecatorLe
 PlotTimeSeparationAgainstReference <- function(PM, RefTimes, RefDists, TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC){
   
   Plot <- PlotAgainstReferencePM(PM, RefTimes, RefDists, PlotVar = TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit = "Time", Colour = "magenta")
-  Plot <- Plot + xlim(40, 200)
+  Plot <- Plot + xlim(60, 240)
   
   return(Plot)
   
