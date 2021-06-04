@@ -6,7 +6,7 @@
 
 rm(list = ls())
 
-library(RODBC)
+# library(RODBC)
 library(MASS)
 library(BMS)
 library(zoo)
@@ -102,7 +102,7 @@ ref_data <- file.path(inputs_dir, "Reference Data")
 # out_data <- Base_Dir
 ord_dir <- Base_Dir
 
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
 # ----------------------------------------------------------------------- #
 # 1. Approach Speed Profiling ---------------------------------------------

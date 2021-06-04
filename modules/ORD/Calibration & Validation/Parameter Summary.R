@@ -128,7 +128,7 @@ Wake_Pair_Counts <- fread(file.path(ref_data, Wake_Pair_Counts_input))
 
 # Simple go around filtering, flights with a very long track time
 
-potential_anomalies <- sqlQuery(con, "SELECT DISTINCT Flight_Plan_ID
+potential_anomalies <- dbGetQuery(con, "SELECT DISTINCT Flight_Plan_ID
                                 FROM tbl_Mode_S_Wind_Seg
                                 WHERE Max_Track_Time -Min_Track_Time > 200") %>% as.data.table
 
@@ -154,7 +154,7 @@ if (grepl("^LVNL_.*$", database)) {
   		Leader_Recat_Wake_Cat
   	FROM tbl_All_Pair_Reference_Data
   ) AS t2 ON t1.Landing_Pair_ID = t2.Landing_Pair_ID
-  " %>% sqlQuery(con, .) %>% as.data.table()
+  " %>% dbGetQuery(con, .) %>% as.data.table()
 
   modeldata <- merge(modeldata, leader_RECAT_joins, by = "Follower_Flight_Plan_ID", all.x = T)
 
@@ -1320,7 +1320,7 @@ if (use_weighted_average) {
 
   ifelse(use_Vref_Adjust == T, wake_adaptation <- wake_adaptation, wake_adaptation <- wake_adaptation_old)
 
-  wake_dbs_lookup <- sqlQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
+  wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
   setnames(wake_dbs_lookup, "Reference_Wake_Separation_Distance", "DBS_Distance")
 
   #Taking historical formatting
@@ -1372,8 +1372,8 @@ if (use_weighted_average) {
 } else {
 
   # Wake and ROT spacing distance from database
-  rot_spacing_dist <- sqlQuery(con, "EXEC usp_GI_Get_Reference_ROT_Spacing_Dist_Data") %>% as.data.table()
-  wake_dbs_lookup <- sqlQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
+  rot_spacing_dist <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_ROT_Spacing_Dist_Data") %>% as.data.table()
+  wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
   spacings_joined <- merge(rot_spacing_dist, wake_dbs_lookup, by = c("Leader_WTC", "Follower_WTC"), all.x = T)
   spacings_joined_2 <- spacings_joined[!is.na(Reference_ROT_Spacing_Distance) & !is.na(Reference_Wake_Separation_Distance)][order(Runway, Leader_WTC, Follower_WTC)]
 

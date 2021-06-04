@@ -28,7 +28,7 @@
 
 rm(list = ls())
 
-library(RODBC)
+# library(RODBC)
 library(ggplot2)
 library(lattice)
 library(RColorBrewer)
@@ -116,14 +116,14 @@ out_data <- Base_Dir
 #Set the database name for SQL connection
 database <- "NavCan_TBS_V3"
 
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
 # ----------------------------------------------------------------------- #
 # Load Data      --------------------------------------------------------
 # ----------------------------------------------------------------------- #
 
-wind_seg <- sqlQuery(con, "SELECT * FROM vw_Mode_S_Wind_Seg")
-wind_adaptation <- sqlQuery(con, "SELECT * FROM vw_Mode_S_Wind_Adaptation")
+wind_seg <- dbGetQuery(con, "SELECT * FROM vw_Mode_S_Wind_Seg")
+wind_adaptation <- dbGetQuery(con, "SELECT * FROM vw_Mode_S_Wind_Adaptation")
 
 # ----------------------------------------------------------------------- #
 # Analysis      --------------------------------------------------------
