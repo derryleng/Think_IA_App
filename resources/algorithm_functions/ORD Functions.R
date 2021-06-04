@@ -371,9 +371,6 @@ GenerateProxyWindEffect <- function(Data, Radar, Algo, LorFIn, LorFOut, MaxInsid
 
 GetForecastDistances <- function(Data, Algo, LorFOut, Delivery_Point){
   
-  ### NOTE: CCT SHOULD BE IN WAD VIEW AND NOT HARDCODED HERE.
-  CCT <- 10
-  
   ## Not generalised for now - just in case method changes. Assumes LorFOut is Follower.
   if (Algo == "ORD" & LorFOut == "Follower"){
     Data <- Data %>%

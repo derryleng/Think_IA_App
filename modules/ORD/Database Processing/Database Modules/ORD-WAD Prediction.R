@@ -58,38 +58,79 @@
 # GENERATE: ORD Prediction
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
-
+# con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile){
+Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type){
 
-  LPID_Var <- LP_Primary_Key
-
+  # Landing_Pair <- INT_Landing_Pairs
+  # TBSCBuffers <- F
+  # GWCS_Forecast <- INT_Full_GWCS_Forecast
+  # Constraints <- c("Wake", "ROT", "Non_Wake")
+  # TTB_Type <- "Original"
+  # ORD_GS_Profile <- INT_GSPD_Profile
+  #
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
   message("Generating ORD Predicted Parameter Data...")
 
   # Order ORD GS Profile
-  ORD_GS_Profile <- arrange(ORD_GS_Profile, !!sym(LPID_Var), desc(This_Pair_Role), Section_Number)
+  ORD_GS_Profile <- arrange(ORD_GS_Profile, !!sym(LP_Primary_Key), desc(This_Pair_Role), Section_Number)
 
-    # First Calculate Compression for ORD
-    Landing_Pair <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, Landing_Pair, LP_Primary_Key,
+  ## TEMP: Copy Local_Stabilisation_Distance to FAF_Distance (What even is which?)
+  Landing_Pair <- mutate(Landing_Pair, FAF_Distance = Local_Stabilisation_Distance)
+
+  ## Get the RNAV/Non-Wake Distances
+  Landing_Pair <- Landing_Pair %>% Get_RNAV_Flag() %>% Get_Non_Wake_Spacing()
+  Landing_Pair <- Get_TBS_Service_Level(con, Landing_Pair, LP_Primary_Key)
+
+  # Initialise Empty Values
+  Dist_Values <- c()
+  Time_Buffers <- Generate_TBSC_Time_Buffers(con, Landing_Pair, LP_Primary_Key, Active = TBSCBuffers)  # UNTESTED WITH BUFFER ADAPTATION
+  TBSC_Profiles <- Generate_TBSC_Profiles(con, Landing_Pair, GWCS_Forecast, LP_Primary_Key, TTB_Type)  # UNTESTED WITH T2F
+
+  ## Generate the Distance for all Constraints at Threshold
+  for (Constraint in Constraints){
+    Landing_Pair <- Generate_Constraint_Spacing_All(con, LPR = Landing_Pair, TBSC_Profile = TBSC_Profiles,
+                                            TTB_Type, Constraint_Type = Constraint,
+                                            Constraint_Delivery = "THRESHOLD", Evaluated_Delivery = "THRESHOLD",
+                                            ID_Var = LP_Primary_Key,
+                                            Time_Var = Get_Reference_Variable_Name(Constraint, "Time"), Speed_Var = Get_Reference_Variable_Name(Constraint, "IAS"),
+                                            Seg_Size, Time_Buffers)
+    if (paste0(Get_Constraint_Prefix(Constraint, "THRESHOLD", "TBS"), "_Distance") %in% names(Landing_Pair)){
+      Dist_Values <- append(Dist_Values, paste0(Get_Constraint_Prefix(Constraint, "THRESHOLD", "TBS"), "_Distance"))
+    }
+  }
+
+  ## Get the Maximum Distance Threshold Constraint
+  Landing_Pair <- Landing_Pair %>%
+    mutate(Threshold_All_Separation_Distance = pmax(!!!syms(Dist_Values), na.rm=T)) %>%
+    mutate(ORD_Separation_Distance = Threshold_All_Separation_Distance)
+
+  # First Calculate Compression for ORD
+  Landing_Pair <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, Landing_Pair, LP_Primary_Key,
                                                 Prefix = "ORD",
                                                 Comp_End_Var = "Delivery_Distance",
                                                 Comp_Start_Var = "Local_Stabilisation_Distance",
-                                                Sep_Dist_Var = "ORD_Separation_Distance")
+                                                Sep_Dist_Var = "ORD_Separation_Distance",
+                                              Forecast_Compression_Type)
 
-    # Calculate Error Variables
-    Landing_Pair <- Get_Prediction_Error_Variables(Landing_Pair, "ORD")
+  # Recalculate Observed Compression Metrics if necessary
+  if (Observed_Compression_Type != 1){
+    Landing_Pair <- Generate_Observed_Compression(Landing_Pair, Radar, Metric = Observed_Compression_Type)
+  }
 
-    # Calculate Surface Wind Error
-    Landing_Pair <- mutate(Landing_Pair, Forecast_AGI_Surface_Headwind_Error = Observed_AGI_Surface_Headwind - Forecast_AGI_Surface_Headwind)
+  # Calculate Error Variables
+  Landing_Pair <- Get_Prediction_Error_Variables(Landing_Pair, "ORD")
 
-    # How long did it take?
-    Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-    message(paste0("Generated ORD Predicted Parameter Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  # Calculate Surface Wind Error
+  Landing_Pair <- mutate(Landing_Pair, Forecast_AGI_Surface_Headwind_Error = Observed_AGI_Surface_Headwind - Forecast_AGI_Surface_Headwind)
+
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Generated ORD Predicted Parameter Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
 
   return(Landing_Pair)
 
@@ -511,6 +552,10 @@ Generate_ORD_Calculation <- function(){
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
+# test <- filter(ZCOMP_ORD_Prediction, FLAG_Forecast_ORD_Compression == 1 & is.na(Forecast_ORD_Compression))
+# test1 <- filter(INT_Landing_Pairs, Landing_Pair_ID %in% test$Landing_Pair_ID)
+# test2 <- filter(INT_Full_GWCS_Forecast, ID %in% test$Landing_Pair_ID)
+# test <- filter(INT_Landing_Pairs, !is.na(Reference_Recat_Wake_Separation_Distance))
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # POPULATE: ORD Calculation

@@ -322,13 +322,9 @@ Populate_ORD_IAS_Profile <- function(con, ORD_IAS_Profile){
 # the Forecast Wind Effect to Start/End IAS.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
-Generate_ORD_GSPD_Profile <- function(con, LP_Primary_Key, IAS_Profile, ORD_Segment_Forecast){
-
+Generate_ORD_GSPD_Profile <- function(con, LP_Primary_Key, IAS_Profile, ORD_Segment_Forecast, Seg_Size){
+  
   LPID_Var <- LP_Primary_Key
-
-  # Get Seg Size
-  GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
-  Seg_Size <- GWCS_Adaptation$DME_Seg_Size
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))

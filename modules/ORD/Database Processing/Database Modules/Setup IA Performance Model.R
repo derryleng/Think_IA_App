@@ -132,7 +132,7 @@ Generate_IA_Performance_Model_Setup <- function(con, LP_Primary_Key, Landing_Pai
   # ----------------------------------------------- #
 
   # TEMP: Amend Forecast ORD Compression to only consider those with Observed Compression
-  Landing_Pair <- mutate(Landing_Pair, Forecast_ORD_Compression = ifelse(is.na(Observed_ORD_Compression), NA, Forecast_ORD_Compression))
+  #Landing_Pair <- mutate(Landing_Pair, Forecast_ORD_Compression = ifelse(is.na(Observed_ORD_Compression), NA, Forecast_ORD_Compression))
 
   # Get the TBS Distances Without Wind Effect (Keep to RECAT Operations for Now)
   Landing_Pair <- mutate(Landing_Pair,
@@ -406,6 +406,7 @@ Summary_IA_Performance_Model_Setup <- function(LP_Primary_Key, ZCOMP_Performance
   # Summary Table
   ZSTAT_Performance_Model <- group_by(ZCOMP_Performance_Model, Landing_Pair_Date) %>% summarise(
     CNT_Reference_Recat_Wake_Separation_Distance = sum(FLAG_Reference_Recat_Wake_Separation_Distance, na.rm = T),
+    CNT_Reference_Recat_Wake_Separation_Time = sum(FLAG_Reference_Recat_Wake_Separation_Time, na.rm = T),
     CNT_Recat_eTBS_0DME_Wake_Separation_Distance = sum(FLAG_Recat_eTBS_0DME_Wake_Separation_Distance, na.rm = T),
     CNT_Recat_eTBS_0DME_ROT_Spacing_Distance = sum(FLAG_Recat_eTBS_0DME_ROT_Spacing_Distance, na.rm = T),
     CNT_Recat_eTBS_0DME_All_Separation_Distance = sum(FLAG_Recat_eTBS_0DME_All_Separation_Distance, na.rm = T),

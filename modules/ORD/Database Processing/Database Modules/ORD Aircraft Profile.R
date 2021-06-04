@@ -51,7 +51,7 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
+Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair, ORDBuffers){
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
@@ -82,6 +82,7 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
 
     # Create List of IDs To Keep for Prediction
     #Landing_Pair <- filter(Landing_Pair, ORD_Prediction_Flag == 0)
+    Landing_Pair <- filter(Landing_Pair, Observation_Flag == 0)
 
     # If WAD Enabled, Get the WAD Prediction Filter Flags
     if(WAD_Enabled){
@@ -102,12 +103,12 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
 
   ORD_Operator_Leader <- NA
   ORD_Operator_Follower <- NA
-  ORD_Aircraft_Leader <- Select_ORD_LF_Adaptation(ORD_Aircraft, "Aircraft", "Leader")
-  ORD_Aircraft_Follower <- Select_ORD_LF_Adaptation(ORD_Aircraft, "Aircraft", "Follower")
-  ORD_Wake_Leader <- Select_ORD_LF_Adaptation(ORD_Wake, "Wake", "Leader")
-  ORD_Wake_Follower <- Select_ORD_LF_Adaptation(ORD_Wake, "Wake", "Follower")
-  ORD_DBS_Leader <- Select_ORD_LF_Adaptation(ORD_DBS, "DBS", "Leader")
-  ORD_DBS_Follower <- Select_ORD_LF_Adaptation(ORD_DBS, "DBS", "Follower")
+  ORD_Aircraft_Leader <- Select_ORD_LF_Adaptation(ORD_Aircraft, "Aircraft", "Leader", ORDBuffers)
+  ORD_Aircraft_Follower <- Select_ORD_LF_Adaptation(ORD_Aircraft, "Aircraft", "Follower", ORDBuffers)
+  ORD_Wake_Leader <- Select_ORD_LF_Adaptation(ORD_Wake, "Wake", "Leader", ORDBuffers)
+  ORD_Wake_Follower <- Select_ORD_LF_Adaptation(ORD_Wake, "Wake", "Follower", ORDBuffers)
+  ORD_DBS_Leader <- Select_ORD_LF_Adaptation(ORD_DBS, "DBS", "Leader", ORDBuffers)
+  ORD_DBS_Follower <- Select_ORD_LF_Adaptation(ORD_DBS, "DBS", "Follower", ORDBuffers)
 
   # ----------------------------------------------- #
   # Build Aircraft Profile
@@ -119,6 +120,8 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
                                                     ORD_Operator_Leader, ORD_Aircraft_Leader, ORD_Wake_Leader, ORD_DBS_Leader, ORD_Runway)
 
   Aircraft_Profile_Leader <- Calculate_Landing_Stabilisation_Speed(Aircraft_Profile_Leader, LPID_Var)
+  if (ORDBuffers){Aircraft_Profile_Leader <- Apply_ORD_Buffers_Leader(Aircraft_Profile_Leader)}
+
   Aircraft_Profile_Leader <- Calculate_Start_Initial_Decel_Distance(Aircraft_Profile_Leader)
   Aircraft_Profile_Leader <- Calculate_Final_Decel_Distance(Aircraft_Profile_Leader)
 
@@ -126,6 +129,8 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
                                                     ORD_Operator_Follower, ORD_Aircraft_Follower, ORD_Wake_Follower, ORD_DBS_Follower, ORD_Runway)
 
   Aircraft_Profile_Follower <- Calculate_Landing_Stabilisation_Speed(Aircraft_Profile_Follower, LPID_Var)
+  if (ORDBuffers){Aircraft_Profile_Follower <- Apply_ORD_Buffers_Follower(Aircraft_Profile_Follower)}
+
   Aircraft_Profile_Follower <- Calculate_Start_Initial_Decel_Distance(Aircraft_Profile_Follower)
   Aircraft_Profile_Follower <- Calculate_Final_Decel_Distance(Aircraft_Profile_Follower)
 
@@ -144,7 +149,7 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair){
 
   # How long did it take?
   Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Generated ORD Aircraft Profile Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  message(paste0("Generated Aircraft Profile Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
 
   return(Aircraft_Profile)
 
@@ -327,3 +332,5 @@ Populate_ORD_Aircraft_Profile <- function(con, ORD_Aircraft_Profile){
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
+# test <- filter(ZCOMP_ORD_Aircraft_Profile, is.na(Landing_Pair_Date))
+# test1 <- filter(INT_Landing_Pairs, Landing_Pair_ID %in% test$Landing_Pair_ID)

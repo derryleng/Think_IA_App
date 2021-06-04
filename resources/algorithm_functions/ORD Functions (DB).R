@@ -547,10 +547,10 @@ Get_Average_Forecast_Wind_Effect <- function(Data, Segment_Forecast, Prefix, ID_
   Segment_Forecast <- left_join(Segment_Forecast, Distances, by = setNames(ID_Var, ID_Var))
   Segment_Forecast <- left_join(Segment_Forecast, Speeds, by = setNames(ID_Var, ID_Var))
 
-  # Filter for Segments within Distance bounds somehow (Needs additions - need to incorporate seg size)
+  # Filter for Segments within Distance bounds somehow (Needs additions - need to incorporate seg size) ## EDIT: CHANGED TO USE FLOOR OF NM DISTANCE
   Segment_Forecast <- filter(Segment_Forecast,
                              DME_Seg >= floor(!!sym(End_Dist_Var) + NM_to_m - Seg_Size) &
-                               DME_Seg <= ceiling(!!sym(Start_Dist_Var) - NM_to_m + Seg_Size))
+                               DME_Seg <= (!!sym(Start_Dist_Var) - NM_to_m + Seg_Size))
 
   # Get the Segment Size Delta
   Segment_Forecast <- mutate(Segment_Forecast,
@@ -818,7 +818,15 @@ Get_Forecast_Wind_Effect_At_DME <- function(Segments, Aircraft_Profile, ID_Var, 
 
 }
 
-Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
+Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
+
+  #Ref_Data <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation")
+  #Level <- "Aircraft"
+  #LorF <- "Follower"
+  #ORDBuffers <- T
+
+  # TEMP: Harcoded Operation Choice. Update ASAP
+  Operation <- "IA"
 
   # Change "Leader" to "Lead" For Variable Compatibility
   if(LorF == "Leader"){LorF <- "Lead"}
@@ -828,7 +836,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   if(Level == "Wake"){Unique_Var <- "Wake_Cat"}
   if(Level == "Aircraft"){Unique_Var <- "Aircraft_Type"}
   if(Level == "Operator"){Unique_Var <- "Aircraft_Type"  ## Added for PWS
-                          Unique_Var2 <- "Operator"}
+  Unique_Var2 <- "Operator"}
 
   # Get Other Variable Names
   LSS_Type_Var <- paste0("Landing_Stabilisation_Speed_Type_", LorF)
@@ -851,62 +859,90 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF){
   if (Level == "Aircraft" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_follower"}
   # -------------------------------------------------------------------------------------------------- #
 
-  # TEMP: Harcoded Operation Choice. Update ASAP
-  Operation <- "IA"
+  # Set by default inclusion of CCT and End Final Decel Distance to False
+  Use_CCT <- F
+  Use_EFDD <- F
 
-  # Select Appropriate Variables
-  if (Operation == "IA"){
-    Ref_Data <- select(Ref_Data,
-                       !!sym(Unique_Var),
-                       "Compression_Commencement_Threshold",
-                       "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
-                       "VRef" := !!sym(VRef_Var),
-                       "Apply_Gusting" := !!sym(Gusting_Var),
-                       "Local_Stabilisation_Distance" := !!sym(LSD_Var),
-                       "Steady_Procedural_Speed" := !!sym(SPS_Var),
-                       "Final_Deceleration" := !!sym(Fin_Decel_Var),
-                       "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
-                       "Initial_Procedural_Speed" := !!sym(IPS_Var),
-                       "Initial_Deceleration" := !!sym(Init_Decel_Var))
+  # If operation ios IA PWS include both these parameters (subject to change)
+  if (Operation == "IA PWS"){
+    Use_CCT <- T
+    Use_EFDD <- T
   }
 
-  if (Operation == "IA PWS" & Level != "Operator"){
-    Ref_Data <- select(Ref_Data,
-                       !!sym(Unique_Var),
-                       "Compression_Commencement_Threshold",
-                       "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
-                       "VRef" := !!sym(VRef_Var),
-                       "Apply_Gusting" := !!sym(Gusting_Var),
-                       "Local_Stabilisation_Distance" := !!sym(LSD_Var),
-                       "End_Final_Deceleration_Distance" := !!sym(End_Fin_Decel_Var),
-                       "Steady_Procedural_Speed" := !!sym(SPS_Var),
-                       "Final_Deceleration" := !!sym(Fin_Decel_Var),
-                       "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
-                       "Initial_Procedural_Speed" := !!sym(IPS_Var),
-                       "Initial_Deceleration" := !!sym(Init_Decel_Var))
+  # Find the Unique Variable names for the Aircraft Profile and names from Adaptation
+  if (Level == "DBS"){Unique_Vars <- c("DBS_Distance")}
+  if (Level %in% c("Wake", "Adv_Wake")){Unique_Vars <- c("Wake_Cat")}
+  if (Level == "Aircraft"){Unique_Vars <- c("Aircraft_Type")}
+  if (Level == "Operator"){Unique_Vars <- c("Aircraft_Type", "Operator")}
 
+  # Initialise a list of input (2) and Output (1) variable names
+  All_Vars_1 <- Unique_Vars
+  All_Vars_2 <- Unique_Vars
+
+  # If Using CCT, add this to list of input and output variable names
+  if (Use_CCT){
+    All_Vars_1 <- append(All_Vars_1, "Compression_Commencement_Threshold")
+    All_Vars_2 <- append(All_Vars_2, "Compression_Commencement_Threshold")
   }
 
-  if (Operation == "IA PWS" & Level == "Operator"){
-    Ref_Data <- select(Ref_Data,
-                       !!sym(Unique_Var),
-                       !!sym(Unique_Var2),
-                       "Compression_Commencement_Threshold",
-                       "Landing_Stabilisation_Speed_Type" := !!sym(LSS_Type_Var),
-                       "VRef" := !!sym(VRef_Var),
-                       "Apply_Gusting" := !!sym(Gusting_Var),
-                       "Local_Stabilisation_Distance" := !!sym(LSD_Var),
-                       "End_Final_Deceleration_Distance" := !!sym(End_Fin_Decel_Var),
-                       "Steady_Procedural_Speed" := !!sym(SPS_Var),
-                       "Final_Deceleration" := !!sym(Fin_Decel_Var),
-                       "End_Initial_Deceleration_Distance" := !!sym(End_Init_Decel_Var),
-                       "Initial_Procedural_Speed" := !!sym(IPS_Var),
-                       "Initial_Deceleration" := !!sym(Init_Decel_Var))
+  # Initialise the first set of variables present in all cases (Input - 2, Output - 1)
+  Inter_Vars_1 <- c("Landing_Stabilisation_Speed_Type", "VRef", "Apply_Gusting", "Local_Stabilisation_Distance")
+  Inter_Vars_2 <- c(LSS_Type_Var, VRef_Var, Gusting_Var, LSD_Var)
 
+  # Add these variable names to the total selections
+  All_Vars_1 <- append(All_Vars_1, Inter_Vars_1)
+  All_Vars_2 <- append(All_Vars_2, Inter_Vars_2)
+
+  # If using End Final Deceleration Distance, add it to the list
+  if (Use_EFDD){
+    All_Vars_1 <- append(All_Vars_1, "End_Final_Deceleration_Distance")
+    All_Vars_2 <- append(All_Vars_2, End_Init_Decel_Var)
   }
 
+  # Initialise the final set of variables present in all cases
+  Inter_Vars_1 <- c("Steady_Procedural_Speed", "Final_Deceleration", "End_Initial_Deceleration_Distance", "Initial_Procedural_Speed", "Initial_Deceleration")
+  Inter_Vars_2 <- c(SPS_Var, Fin_Decel_Var, End_Init_Decel_Var, IPS_Var, Init_Decel_Var)
 
-  return(Ref_Data)
+  # Build the final variable lists
+  All_Vars_1 <- append(All_Vars_1, Inter_Vars_1)
+  All_Vars_2 <- append(All_Vars_2, Inter_Vars_2)
+
+  # Lay out the Parameter names to add buffers to (Originals), the Output buffer names (1) and the Input buffer names (2)
+  Buffer_Originals <- c("VRef", "Steady_Procedural_Speed", "Initial_Procedural_Speed")
+  Buffer_Vars_1 <- c("VRef_Buffer", "SPS_Buffer", "IPS_Buffer")
+  Buffer_Vars_2 <- c(paste0("Min_Safe_Landing_Speed_", LorF, "_Buffer"), paste0("Steady_Procedural_Speed_", LorF, "_Buffer"), paste0("Initial_Procedural_Speed_", LorF, "_Buffer"))
+
+  # If The input buffer parameter exists, add the input and corresponding outp[ut parameter to final selection
+  if (ORDBuffers){
+    for (i in 1:length(Buffer_Vars_2)){
+      if (Buffer_Vars_2[i] %in% names(Ref_Data)){
+        All_Vars_1 <- append(All_Vars_1, Buffer_Vars_1[i])
+        All_Vars_2 <- append(All_Vars_2, Buffer_Vars_2[i])
+      }
+    }
+  }
+
+  # Initialise a string to evaluate the select statement
+  Language_String <- paste0("Ref_Data_New <- select(Ref_Data")
+
+  # Build the string by selecting the output vars as the input vars
+  for (j in 1: length(All_Vars_1)){
+    Language_String <- paste0(Language_String, ", ", All_Vars_1[j], " = ", All_Vars_2[j])
+    if (j == length(All_Vars_1)){Language_String <- paste0(Language_String, ")")}
+  }
+
+  # evaluate this string as "language" -> executes the string as code
+  eval(str2lang(Language_String))
+
+  # If any buffer variables exist, add them to their "original" and dispose of the buffer parameter
+  for (k in 1:length(Buffer_Originals)){
+    if (Buffer_Vars_1[k] %in% names(Ref_Data_New)){
+      Ref_Data_New <- mutate(Ref_Data_New, !!sym(Buffer_Originals[k]) := !!sym(Buffer_Originals[k]) + !!sym(Buffer_Vars_1[k])) %>%
+        select(-!!sym(Buffer_Vars_1[k]))
+    }
+  }
+
+  return(Ref_Data_New)
 
 }
 
@@ -2600,14 +2636,14 @@ Get_LP_Primary_Key <- function(Database_Type){
 
 # Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles
 # With Joined values for Compression Start and End.
-Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var){
+Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var, Metric_Type){
 
   # ------------------------ #
   ### --- Setup
   # ------------------------ #
 
   # Hardcoded Compression Metric: 1 = Distance difference, 2 = Distance,Speed,WE
-  Metric_Type <- 1
+  #'Metric_Type <- 1
 
   # Variable Names
   Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
@@ -2666,7 +2702,7 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   ## Join with Landing Pair Data
   Landing_Pair <- left_join(Landing_Pair, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
 
-  # TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
+  #TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
   Landing_Pair <- mutate(Landing_Pair,
                       Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
                       !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
