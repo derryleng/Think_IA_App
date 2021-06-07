@@ -17,10 +17,10 @@
 
 # Version History ------------------------------------------------------- #
 #
-# v1.0 Original version 
+# v1.0 Original version
 # v1.1 Updated to allow for changing comparison airport more easily (removed
 #       airport code hardcoding in all plot labels and data lookup)
-# 
+#
 #------------------------------------------------------------------------ #
 
 # Defined in wrapper script
@@ -40,7 +40,7 @@ Shared_Aircraft_Types <- intersect(Ref_Adaptation$Aircraft_Type, New_Adaptation$
 # out_dir <- file.path(Project_Directory, adaptation_folder)
 out_dir <- file.path(ord_dir, adaptation_folder)
 
-wake_cats <- sqlQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake")
+wake_cats <- dbGetQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake")
 
 New_Adaptation <- inner_join(New_Adaptation, wake_cats, by = c("Aircraft_Type"))
 
@@ -58,7 +58,7 @@ ggplot(
     scale_fill_brewer(palette = "Set1") +
 #  scale_y_continuous(expand=c(0,0), breaks = seq(0, y_upper, 10), limits = c(0, y_upper)) +
   #  scale_y_continuous(expand=c(0,0), breaks = seq(0, y_upper, 10), limits = c(0, y_upper)) +
-  
+
     labs(
     x = "Aircraft Type",
     y = "Min Safe Landing Speed Lead (kts)"
@@ -143,7 +143,7 @@ g2 <- ggplot(data = Aircraft_Type_Comparison, aes_string(x = Airport_Code, y = C
   geom_point() +
   geom_text_repel(aes(label = Aircraft_Type), vjust = 1.4) +
   geom_abline() +
-  coord_cartesian(xlim=c(g2_lim_min, g2_lim_max), ylim=c(g2_lim_min, g2_lim_max)) + 
+  coord_cartesian(xlim=c(g2_lim_min, g2_lim_max), ylim=c(g2_lim_min, g2_lim_max)) +
   xlim(g2_lim_min, g2_lim_max) +
   ylim(g2_lim_min, g2_lim_max) +
   labs(title = NULL, x = paste0(Airport_Code, " Vref (kts)"), y = paste0(Comparison_Airport_Code, " Vref (kts)")) +
@@ -162,4 +162,3 @@ png(file.path(out_dir, paste0("Vref Comparison Full ", Airport_Code, " vs ", Com
 #print(g2)
 g2
 dev.off()
-

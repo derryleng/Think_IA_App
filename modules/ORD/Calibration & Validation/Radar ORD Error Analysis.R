@@ -18,7 +18,7 @@ library(dplyr)
 library(officer)
 library(ggplot2)
 library(gridExtra)
-library(RODBC)
+# library(RODBC)
 library(lubridate)
 library(ggforce)
 library(getPass)
@@ -103,7 +103,7 @@ plots_data <- file.path(out_data, "Plots")
 Create_Directory(plots_data)
 
 
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
 
 
@@ -328,8 +328,8 @@ ON LP.Landing_Pair_ID = GS.Landing_Pair_ID
 WHERE LP.Landing_Pair_Type != 'Not_In_Trail'"
 
 # Load Data
-Radar <- sqlQuery(con, Radar_Query, stringsAsFactors = F)
-GS_Profile <- sqlQuery(con, GS_Query, stringsAsFactors = F)
+Radar <- dbGetQuery(con, Radar_Query, stringsAsFactors = F)
+GS_Profile <- dbGetQuery(con, GS_Query, stringsAsFactors = F)
 
 Radar_o <- Radar
 GS_o <- GS_Profile
@@ -360,9 +360,9 @@ Type_Query <- "SELECT Flight_Plan_ID, Aircraft_Type FROM tbl_Flight_Plan WHERE F
 
 Type_Query <- sprintf(Type_Query, FPID_String)
 
-Aircraft_Types <- sqlQuery(con, Type_Query)
+Aircraft_Types <- dbGetQuery(con, Type_Query)
 
-Wake_Categories <- sqlQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake")
+Wake_Categories <- dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake")
 
 Aircraft_Types <- left_join(Aircraft_Types, Wake_Categories, by = "Aircraft_Type")
 

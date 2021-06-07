@@ -12,7 +12,7 @@
 rm(list = ls())
 
 library(data.table)
-library(RODBC)
+# library(RODBC)
 library(dplyr)
 library(ggplot2)
 library(smooth)
@@ -142,7 +142,7 @@ Create_Directory(out_dir)
 use_database <- T
 # The database connection
 if (use_database == T) {
-  con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+  con <- Get_DBI_Connection(IP = ip, Database = database)
 }
 # Reference file direcory
 if (use_database == F) {
@@ -223,7 +223,7 @@ calculate_glideslope_altitude("R05", 10)
 tryCatch(
   if (use_database == T) {
     if (exists("con")) {
-      data1 <- sqlQuery(con, sprintf("SELECT * FROM vw_Flying_Time_Analysis"))
+      data1 <- dbGetQuery(con, sprintf("SELECT * FROM vw_Flying_Time_Analysis"))
     }
   } else {
     data1 <- fread(file.path("C:\\Users\\Michael Cowham\\Dropbox (Think Research)\\NATS Projects\\NATS LVNL Schiphol\\Phase 2\\4. TBS Calculations\\Inputs", "vw_Flying_Time_Analysis.csv"))
@@ -234,8 +234,8 @@ tryCatch(
 
 # Load the reference data
 
-rw <- sqlQuery(con, "SELECT Runway_Name, Runway_Group FROM tbl_Runway") %>% rename(Landing_Runway = Runway_Name)
-rwy_adaptation <- sqlQuery(con, "SELECT * FROM tbl_Runway")
+rw <- dbGetQuery(con, "SELECT Runway_Name, Runway_Group FROM tbl_Runway") %>% rename(Landing_Runway = Runway_Name)
+rwy_adaptation <- dbGetQuery(con, "SELECT * FROM tbl_Runway")
 
 # ----------------------------------------------------------------------- #
 # 2. Graph Functions-----------------------------------------------------

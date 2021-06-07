@@ -14,7 +14,7 @@
 #                |                                                        #
 # ----------------------------------------------------------------------- #
 
-library(RODBC)
+# library(RODBC)
 library(tidyverse)
 library(data.table)
 library(ggplot2)
@@ -198,7 +198,7 @@ rolling_join <- function(df1, df2, by_join1, by_join2, by_roll, roll_val){
 database_name <- "NavCan_TBS_V3"
 
 # Get Database Connection (RODBC)
-con <- Get_RODBC_Database_Connection(IP = "192.168.1.23", Database = database_name)
+con <- Get_DBI_Connection(IP = "192.168.1.23", Database = database_name)
 
 
 # ----------------------------------------------------------------------- #
@@ -250,16 +250,16 @@ Max_WAD_Follower_IAS <- 300
 # ----------------------------------------------------------------------- #
 
 # Load the WAD Validation View
-WAD_VV <- sqlQuery(con, sprintf("SELECT * FROM vw_WAD_Validation_View"), stringsAsFactors = F)
+WAD_VV <- dbGetQuery(con, sprintf("SELECT * FROM vw_WAD_Validation_View"), stringsAsFactors = F)
 
 # Load the Recat/Legacy Wake Categories
-Recat_Wake_Dist <- sqlQuery(con, "SELECT * FROM tbl_Reference_Recat_Separation_Dist", stringsAsFactors = F) %>%
+Recat_Wake_Dist <- dbGetQuery(con, "SELECT * FROM tbl_Reference_Recat_Separation_Dist", stringsAsFactors = F) %>%
   mutate(Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852)
-Legacy_Wake_Dist <- sqlQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence", stringsAsFactors = F) %>%
+Legacy_Wake_Dist <- dbGetQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence", stringsAsFactors = F) %>%
   mutate(WT_Separation_Distance = WT_Separation_Distance / 1852)
 
 # Load the AC to Wake Mappings
-Legacy_ACtoWake <- sqlQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy", stringsAsFactors = F) %>% unique()
+Legacy_ACtoWake <- dbGetQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy", stringsAsFactors = F) %>% unique()
 
 
 # ----------------------------------------------------------------------- #
@@ -734,11 +734,11 @@ plot_ord_aircraft <- function(fp_id, lp_id, l_or_f, include_gspd, title_text, su
   #include_gspd <- F
   #l_or_f <- "L"
 
-  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+  leader_track <- dbGetQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
 
   # Get the ORD Profile for leader and follower
 
-  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", l_or_f, "'"))
+  ord_profile <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", l_or_f, "'"))
 
   ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
                         End_IAS = End_IAS * 3600 / 1852,
@@ -791,11 +791,11 @@ plot_single_aircraft <- function(fp_id, lp_id, gspd, title_text, subtitle_text){
   #gspd <- F
   #l_or_f <- "L"
 
-  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+  leader_track <- dbGetQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
 
   # Get the ORD Profile for leader and follower
 
-  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = 'L'"))
+  ord_profile <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = 'L'"))
 
   ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
                         End_IAS = End_IAS * 3600 / 1852,
@@ -848,7 +848,7 @@ plot_single_wind_effect <- function(fp_id, lp_id, role, min, max, title_text, su
   #min <- 13.11
   #max <- 9.67
 
-  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+  leader_track <- dbGetQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
 
   leader_track <- filter(leader_track, Path_Leg_Type %in% Allowed_Path_Legs)
 
@@ -860,7 +860,7 @@ plot_single_wind_effect <- function(fp_id, lp_id, role, min, max, title_text, su
 
   # Get the ORD Profile for leader and follower
 
-  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", role, "'"))
+  ord_profile <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", role, "'"))
 
   ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
                         End_IAS = End_IAS * 3600 / 1852,

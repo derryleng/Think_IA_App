@@ -1015,9 +1015,23 @@ Get_RODBC_Database_Connection <- function(IP, Database){
   return(con)
 }
 
+# Get Database Connection (DBI, odbc)
+Get_DBI_Connection <- function(IP, Database){
+  User <- getPass(msg = "Username: ", noblank = FALSE, forcemask = FALSE)
+  Pass <- getPass(msg = "Password: ", noblank = FALSE, forcemask = TRUE)
+
+  dbi_con <- dbConnect(odbc::odbc(),
+                       .connection_string = paste0("Driver={SQL Server};
+                                                    Server={",IP,"};
+                                                    Database={", Database, "};
+                                                    Uid={",User,"};
+                                                    Pwd={",Pass,"};"))
+  return(dbi_con)
+}
+
 # Function to Load in Adaptation. Currently use RODBC. If we change package then all adaptation loads occur here.
 Load_Adaptation_Table <- function(con, Table_Name){
-  Table <- sqlQuery(con, paste0("SELECT * FROM ", Table_Name), stringsAsFactors = F)
+  Table <- dbGetQuery(con, paste0("SELECT * FROM ", Table_Name), stringsAsFactors = F)
   return(Table)
 }
 
@@ -1060,7 +1074,7 @@ Load_CSV_Data <- function(con, Name, Query, Version_In_Name, Airfield_Dir, Local
     File <- fread(Dir_Current)
     return(File)}
   else if (!Local_Only & Working_Version == File_Version){
-    File <- sqlQuery(con, Query, stringsAsFactors = F)
+    File <- dbGetQuery(con, Query, stringsAsFactors = F)
     if(class(File) == "data.frame"){ fwrite(File, Dir_Current) }
     return(File)
   }

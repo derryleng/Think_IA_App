@@ -113,7 +113,7 @@ if (!dir.exists(out_data)) dir.create(out_data)
 # MC Change 07/10 - changed from is.na to exists
 
 if (!exists("validation_view_source") | is.na(validation_view_source)) {
-  data1 <- sqlQuery(con, sprintf("SELECT * FROM vw_ORD_Validation_View")) %>% as.data.table()
+  data1 <- dbGetQuery(con, sprintf("SELECT * FROM vw_ORD_Validation_View")) %>% as.data.table()
   fwrite(data1, file.path(out_data, "ORD_Validation_View.csv"))
 } else {
   data1 <- fread(validation_view_source)
@@ -127,7 +127,7 @@ if (Airport_Code == "CYYZ") {
 # MC Change 07/10 - changed from is.na to exists
 
 if (!exists("performance_model_source") | is.na(performance_model_source)) {
-  pdata1 <- sqlQuery(con, sprintf("SELECT * FROM vw_eTBS_Performance_Model")) %>% as.data.table()
+  pdata1 <- dbGetQuery(con, sprintf("SELECT * FROM vw_eTBS_Performance_Model")) %>% as.data.table()
   fwrite(pdata1, file.path(out_data, "eTBS_Performance_View.csv"))
 } else {
   pdata1 <- fread(performance_model_source)
@@ -137,12 +137,12 @@ if (!exists("performance_model_source") | is.na(performance_model_source)) {
 
 # MC Edit 23/9: Replace the ICAO wake table look up with a query on the database
 # aircraft_wake_icao4 <- fread(file.path(ref_data, ref_aircraft_wake_icao4))
-aircraft_wake_icao4 <- sqlQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy") %>% rename(ICAO_WTC = Wake) %>% mutate(Aircraft_Type = as.character(Aircraft_Type), ICAO_WTC = as.character(ICAO_WTC)) %>% as.data.table()
-ref_wake_icao4 <- sqlQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence") %>% rename (Leader_ICAO_WTC = Leader_WVI, Follower_ICAO_WTC = Follower_WVI, Reference_Wake_Separation_Distance = WT_Separation_Distance) %>% mutate (Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852) %>% as.data.table()
+aircraft_wake_icao4 <- dbGetQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy") %>% rename(ICAO_WTC = Wake) %>% mutate(Aircraft_Type = as.character(Aircraft_Type), ICAO_WTC = as.character(ICAO_WTC)) %>% as.data.table()
+ref_wake_icao4 <- dbGetQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence") %>% rename (Leader_ICAO_WTC = Leader_WVI, Follower_ICAO_WTC = Follower_WVI, Reference_Wake_Separation_Distance = WT_Separation_Distance) %>% mutate (Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852) %>% as.data.table()
 #ref_wake_icao4 <- fread(file.path(ref_data, ref_ref_wake_icao4))
 # End Edit
 
-ref_wake <- sqlQuery(con, sprintf("
+ref_wake <- dbGetQuery(con, sprintf("
   SELECT
   	Leader_WTC,
   	Follower_WTC,
@@ -256,7 +256,7 @@ if (Use_Proxy_Wind){
   MaxILSRange <- 4
   FAF_Distance_Val <- 4.5
   MaxInsideBuffer <- 2
-  Radar <- sqlQuery(con, GetORDAnalysisRadarQuery(), stringsAsFactors = F)
+  Radar <- dbGetQuery(con, GetORDAnalysisRadarQuery(), stringsAsFactors = F)
   RadarOrig <- Radar
   Radar <- RecalculateRadarValuesORD(Radar, RTTPathLegs, WEPathLegs, MaxILSRange)
   data1 <- GenerateProxyWindEffect(data1, Radar, Algo = "ORD", LorFIn = "Follower", LorFOut = "Follower", MaxInsideBuffer, FAF_Distance_Val, Remove_Old_Observations)
@@ -522,7 +522,7 @@ if (Use_FAF_IAS_Filter){
   WHERE Row_ID = 1 and Mode_S_IAS IS NOT NULL
   ORDER BY Flight_Plan_ID"
 
-  if(file.exists(IAS_FAF_Path)){ias_faf <- fread(IAS_FAF_Path)} else {ias_faf <- sqlQuery(con, IAS_Query, stringsAsFactors = F)
+  if(file.exists(IAS_FAF_Path)){ias_faf <- fread(IAS_FAF_Path)} else {ias_faf <- dbGetQuery(con, IAS_Query, stringsAsFactors = F)
   fwrite(ias_faf, IAS_FAF_Path)}
 
   temp1 <- nrow(data1)

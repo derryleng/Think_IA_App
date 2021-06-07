@@ -57,7 +57,7 @@ if (!dir.exists(out_profiles)) dir.create(out_profiles)
 # ----------------------------------------------------------------------- #
 
 # Get dates and flight plan IDs
-flight_id <- sqlQuery(con, "
+flight_id <- dbGetQuery(con, "
   SET DATEFORMAT dmy
   SELECT DISTINCT
     FP_Date,
@@ -84,11 +84,11 @@ if (wake_type == "REF_DATA") {
 
 } else if (wake_type == "DATABASE") {
 
-  wake_aircraft_table <- sqlQuery(con, sprintf("
+  wake_aircraft_table <- dbGetQuery(con, sprintf("
     SELECT * FROM tbl_Aircraft_Type_To_Wake
   ")) %>% as.data.table()
 
-  wake_adaptation <- sqlQuery(con, sprintf("
+  wake_adaptation <- dbGetQuery(con, sprintf("
     EXEC usp_GI_Get_ORD_Wake_Adaptation_Data
   ")) %>% as.data.table()
 
@@ -119,7 +119,7 @@ for (day in unique(flight_id$FP_Date) %>% .[start_day_num:length(.)]) {
   day_flight_id <- flight_id[FP_Date == day]$Follower_Flight_Plan_ID
 
   # Get tracks for day
-  day_tracks <- sqlQuery(con, sprintf("
+  day_tracks <- dbGetQuery(con, sprintf("
     SELECT * FROM vw_ORD_Calibration_View WHERE FP_Date = '%s'
   ", as.character(day))) %>% as.data.table()
 

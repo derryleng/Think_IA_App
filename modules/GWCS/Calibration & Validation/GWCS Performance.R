@@ -50,7 +50,7 @@
 
 rm(list = ls())
 
-library(RODBC)
+# library(RODBC)
 library(ggplot2)
 library(lattice)
 #library(plyr)
@@ -143,7 +143,7 @@ out_data <- Base_Dir
 #Set the database name for SQL connection
 database <- "NavCan_TBS_V3"
 
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
 
 # MC Add 06/04.  Flag to control the application of speed buffers.  Important to ensure this
@@ -185,8 +185,8 @@ for (sepdist in c(3, 3.5, 4:8)){
         rm(gwcs_dist)
 }
 
-rawsegs <- as.data.table(sqlQuery(con, "SELECT Mode_S_Wind_Seg_ID, FP_Date, Min_Track_Time, Max_Track_Time, Callsign FROM vw_Mode_S_Wind_Seg"))
-rawsegs_FPID <-  unique(as.data.table(sqlQuery(con, "SELECT [Flight_Plan_ID], [Mode_S_Wind_Seg_ID] FROM tbl_Mode_S_Wind_Seg")))
+rawsegs <- as.data.table(dbGetQuery(con, "SELECT Mode_S_Wind_Seg_ID, FP_Date, Min_Track_Time, Max_Track_Time, Callsign FROM vw_Mode_S_Wind_Seg"))
+rawsegs_FPID <-  unique(as.data.table(dbGetQuery(con, "SELECT [Flight_Plan_ID], [Mode_S_Wind_Seg_ID] FROM tbl_Mode_S_Wind_Seg")))
 rawsegs <- merge(rawsegs,rawsegs_FPID, by = "Mode_S_Wind_Seg_ID" )
 
 rawsegs$FP_Date <- as.character(rawsegs$FP_Date)
@@ -202,7 +202,7 @@ rm(rawsegs, rawsegs_FPID)
 fwrite(flights_greater_200, file.path(out_plot, "flights_greater_200.csv"))
 
 # Read in the anemometer data
-anem <- as.data.table(sqlQuery(con, "SELECT
+anem <- as.data.table(dbGetQuery(con, "SELECT
   FP.Flight_Plan_ID,
 	FP.FP_Date,
 	FP.FP_Time,
@@ -218,12 +218,12 @@ anem <- as.data.table(sqlQuery(con, "SELECT
 
 
 # Load TBS Reference times
-RefTimes <- as.data.table(sqlQuery(con, "SELECT Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852
+RefTimes <- as.data.table(dbGetQuery(con, "SELECT Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852
                                          ,Reference_Wake_Separation_Time
                                          FROM tbl_Reference_TBS_Table_Time"))
 
 # Get landing runway info
-runway_list <- sqlQuery(con, sprintf("SELECT Runway_Name FROM tbl_Runway"))
+runway_list <- dbGetQuery(con, sprintf("SELECT Runway_Name FROM tbl_Runway"))
 
 # Data of flights to remove due to anomaly - segment data picked up twice for both runways (due to go-around)
 # flights_greater_200 <- fread(paste0("C:\\Users\\",user,"\\Dropbox (Think Research)\\NATS Projects\\NATS NavCanada TBS\\Data Analysis\\Outputs\\GWCS\\Outlier Investigation\\22.03.2021\\flights_greater_200.csv"))
@@ -231,7 +231,7 @@ runway_list <- sqlQuery(con, sprintf("SELECT Runway_Name FROM tbl_Runway"))
 
 # Read in the runway groups
 
-RunGroups <- as.data.table(sqlQuery(con, "SELECT Runway_Name, Runway_Group FROM tbl_Runway", stringsAsFactors = F))
+RunGroups <- as.data.table(dbGetQuery(con, "SELECT Runway_Name, Runway_Group FROM tbl_Runway", stringsAsFactors = F))
 
 speed_buffer <- data.frame(seps, speed_buffer)
 names(speed_buffer) <- c("Sep_Dist", "Speed_Buffer")
@@ -874,7 +874,7 @@ plot_time_buffer <- 100
 
 
 # Load the segment data and merge with the runway group
-rawsegs <- sqlQuery(con, "SELECT * FROM vw_Mode_S_Wind_Seg vsw INNER JOIN (SELECT Flight_Plan_ID, Mode_S_Wind_Seg_ID FROM tbl_Mode_S_Wind_Seg) msw ON vsw.Mode_S_Wind_Seg_ID = msw.Mode_S_Wind_Seg_ID", stringsAsFactors = F)
+rawsegs <- dbGetQuery(con, "SELECT * FROM vw_Mode_S_Wind_Seg vsw INNER JOIN (SELECT Flight_Plan_ID, Mode_S_Wind_Seg_ID FROM tbl_Mode_S_Wind_Seg) msw ON vsw.Mode_S_Wind_Seg_ID = msw.Mode_S_Wind_Seg_ID", stringsAsFactors = F)
 rawsegs$FP_Date <- as.Date(rawsegs$FP_Date, format ="%d/%m/%Y")
 #rawsegs$FP_Date <- as.character(rawsegs$FP_Date)
 #rawsegs$FP_Date <- factor(rawsegs$FP_Date, levels = unique(gwcs_data_anem$FP_Date))
@@ -1053,3 +1053,5 @@ plot_gwcs_errors <- function(plotdata, n){
 }
 
 plot_gwcs_errors(plotdata_speed, 10)
+
+plot_gwcs_errors(plotdata_dist, 10)

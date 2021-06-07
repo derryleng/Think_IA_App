@@ -23,8 +23,6 @@
 
 rm(list = ls())
 
-library(tidyverse)
-library(data.table)
 library(gridExtra)
 library(getPass)
 
@@ -116,7 +114,7 @@ prof_data <- file.path(ord_dir, "Speed Profiles", input_version)
 out_data <- file.path(ord_dir, "Post Validation Adjustment", version)
 if (!dir.exists(out_data)) dir.create(out_data)
 
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
 ord_data <- fread(file.path(ref_data, "Validation Data Post SepN Accuracy.csv"))
 

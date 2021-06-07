@@ -1,6 +1,6 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 #
-# Think IA Validation/Verification Tool 
+# Think IA Validation/Verification Tool
 #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # Run ORD (Validation)
@@ -11,19 +11,19 @@
 # Version: v0A (Alpha)
 #
 # Authors: George Clark
-# 
-# Description: A hub that runs all the necessary scripts for ORD. Assumes Landing Pair generation is moved to pre-processing.
-#              
 #
-# Use Guide Section: 
+# Description: A hub that runs all the necessary scripts for ORD. Assumes Landing Pair generation is moved to pre-processing.
+#
+#
+# Use Guide Section:
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
 # Version History
-# ------------------------------------------------------------------------------------------------------------------------------------------ # 
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 #
-# v0A: First Integration within the Think IA App Git Environment. 
-#     
+# v0A: First Integration within the Think IA App Git Environment.
+#
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
@@ -73,7 +73,7 @@ Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Source Function Files
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-source(file.path(Algo_Func_Dir, "ORD Functions (DB).R"), local = T) # ORD Functions 
+source(file.path(Algo_Func_Dir, "ORD Functions (DB).R"), local = T) # ORD Functions
 source(file.path(Algo_Func_Dir, "TBSC Functions (PWS).R"), local = T)
 #source(file.path(Algo_Func_Dir, "GWCS Functions (DB).R"), local = T) # GWCS Functions for Wind Forecasting
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -95,7 +95,7 @@ IP <- "192.168.1.23"
 PROC_Period <- "Month"
 PROC_Criteria <- "08/2020"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-con <- Get_RODBC_Database_Connection(IP, Database)
+con <- Get_DBI_Connection(IP, Database)
 LP_Primary_Key <- Get_LP_Primary_Key("Validation")
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
@@ -167,7 +167,7 @@ OUTP_IA_Performance_Model_Setup <- Construct_IA_Performance_Model_Setup(LP_Prima
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 if (Testing){
-  
+
   ZCOMP_All_Pair_Reference_Data <- Compare_All_Pair_Reference_Data(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs)
   ZCOMP_ORD_Observation <- Compare_ORD_Observation(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs)
   ZCOMP_ORD_Aircraft_Profile <- Compare_ORD_Aircraft_Profile(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Aircraft_Profile)
@@ -175,7 +175,7 @@ if (Testing){
   ZCOMP_ORD_GSPD_Profile <- Compare_ORD_GSPD_Profile(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_GSPD_Profile)
   ZCOMP_ORD_Prediction <- Compare_ORD_Prediction(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs)
   ZCOMP_IA_Performance_Model_Setup <- Compare_IA_Performance_Model_Setup(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs)
-  
+
   ZSTAT_All_Pair_Reference_Data <- Summary_All_Pair_Reference_Data(LP_Primary_Key, ZCOMP_All_Pair_Reference_Data) ##
   ZSTAT_ORD_Observation <- Summary_ORD_Observation(LP_Primary_Key, ZCOMP_ORD_Observation) ##
   ZSTAT_ORD_Aircraft_Profile <- Summary_ORD_Aircraft_Profile(LP_Primary_Key, ZCOMP_ORD_Aircraft_Profile) ##
@@ -183,11 +183,11 @@ if (Testing){
   ZSTAT_ORD_GSPD_Profile <- Summary_ORD_GSPD_Profile(LP_Primary_Key, ZCOMP_ORD_GSPD_Profile) ##
   ZSTAT_ORD_Prediction <- Summary_ORD_Prediction(LP_Primary_Key, ZCOMP_ORD_Prediction) ##
   ZSTAT_IA_Performance_Model_Setup <- Summary_IA_Performance_Model_Setup(LP_Primary_Key, ZCOMP_IA_Performance_Model_Setup) ##
-  
+
   #if (WAD_Enabled){
   #  ZCOMP_WAD_Observation <- Compare_WAD_Observation(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs) ##
   #  ZCOMP_WAD_Prediction <- Compare_WAD_Prediction(con, LP_Primary_Key, PROC_Period, PROC_Criteria, INT_Landing_Pairs) ##
-  #  
+  #
   #  ZSTAT_WAD_Observation <- Summary_WAD_Observation(LP_Primary_Key, ZCOMP_WAD_Observation) ##
   #  ZSTAT_WAD_Prediction <- Summary_WAD_PRediction(LP_Primary_Key, ZCOMP_WAD_Prediction) ##
   #}
@@ -207,14 +207,12 @@ if (!Testing){
   Clear_ORD_IAS_Profile(con, PROC_Period, PROC_Criteria)
   Clear_ORD_GSPD_Profile(con, PROC_Period, PROC_Criteria)
   Clear_ORD_Prediction(con, PROC_Period, PROC_Criteria)
-  
+
   if (WAD_Enabled){
     Clear_WAD_Observation(con, PROC_Period, PROC_Criteria)
     Clear_WAD_Prediction(con, PROC_Period, PROC_Criteria)
   }
-  
-  
-  
+
   # Populating
   Populate_All_Pair_Reference_Data(con, OUTP_All_Pair_Reference_Data)
   Populate_ORD_Observation(con, OUTP_ORD_Observation)
@@ -222,7 +220,7 @@ if (!Testing){
   Populate_ORD_IAS_Profile(con, OUTP_ORD_IAS_Profile)
   Populate_ORD_GSPD_Profile(con, OUTP_ORD_GSPD_Profile)
   Populate_ORD_Prediction(con, OUTP_ORD_Prediction)
-  
+
   if (WAD_Enabled){
     Populate_WAD_Observation(con, OUTP_WAD_Observation)
     Populate_WAD_Prediction(con, OUTP_WAD_Prediction)
@@ -239,4 +237,3 @@ message(paste0("Completed ORD Validation Process for ", PROC_Period, " of ", PRO
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-
