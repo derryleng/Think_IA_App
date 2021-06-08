@@ -666,7 +666,7 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
     # Callsign = ifelse(!is.na(x$`I062/380/ID/ID`), x$`I062/380/ID/ID`, " "),
     # Callsign = gsub(" ", "", ifelse(nchar(x$`I062/390/CSN/CSN`) < nchar(x$`I062/380/ID/ID`), x$`I062/380/ID/ID`, x$`I062/390/CSN/CSN`)),
     Callsign = x$`I062/380/ID/ID`,
-    SSR_Code = as.numeric(x$`I062/060/Mode3A`),
+    SSR_Code = as.character(as.numeric(x$`I062/060/Mode3A`)),
     X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I062/100/X`},
     Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
@@ -699,8 +699,8 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
   if (nrow(out) > 0) {
 
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    out2 <- generateFPID_fusion(out, dbi_con)
-    out2$SSR_Code <- as.character(out2$SSR_Code)
+    out2 <- generateFPID_fusion_join(out, dbi_con, Date_String)
+    # out2$SSR_Code <- as.character(out2$SSR_Code)
     message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
 
     # # FOR TROUBLESHOOTING ONLY
