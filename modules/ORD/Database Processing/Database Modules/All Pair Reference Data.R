@@ -142,7 +142,7 @@ Clear_Landing_Pair <- function(con, PROC_Period, PROC_Criteria){
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, Radar, Flight_Plan, Surface_Wind){
+Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, Radar, Flight_Plan, Surface_Wind, Adaptation_Levels, Level_Switches_Wake, Level_Switches_ROT){
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
@@ -173,9 +173,14 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   AC_To_Wake_Reduced <- select(AC_To_Wake, Aircraft_Type, Wake) %>% unique()
   AC_To_Wake_Legacy_Reduced <- select(AC_To_Wake_Legacy, Aircraft_Type, Wake) %>% unique()
 
-  # Get Reference Parameters for Leader and Follower Aircraft
+  # Get Reference Parameters for Leader and Follower Aircraft (NEED TO ADD 20Cat/14Cat)
   Landing_Pair <- Get_LF_Ref_Parameters(Landing_Pair, Flight_Plan, Runway, AC_To_Wake_Reduced, AC_To_Wake_Legacy_Reduced, "Leader")
   Landing_Pair <- Get_LF_Ref_Parameters(Landing_Pair, Flight_Plan, Runway, AC_To_Wake_Reduced, AC_To_Wake_Legacy_Reduced, "Follower")
+  
+  # Get the Leader and Follower Operators.
+  Landing_Pair <- Landing_Pair %>%
+    mutate(Leader_Operator = substr(Leader_Callsign, 1, 3),
+           Follower_Operator = substr(Follower_Callsign, 1, 3))
 
   # Get Reference SASAI Parameters by Runway (Runway Rules)
   #Landing_Pair <- Get_Runway_Rule_Parameters(Landing_Pair, Runway_Rule)
@@ -186,13 +191,20 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   # Get Reference SASAI Parameters by Runway Pair (Runway Pair Rules)
   #Landing_Pair <- Get_Runway_Pair_Rule_Parameters(Landing_Pair, Runway_Pair_Rule)
 
-  # - RECAT (IA PWS Update)
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  # - RECAT (IA PWS Update) ### NOTE: Does not distinguish between nit pairs - but does remove nit ROT contraints.
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Distance")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Time")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Speed")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Distance")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Time")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Speed")
+  
+  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
+  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
 
   # - Legacy
   Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
@@ -423,45 +435,7 @@ Construct_All_Pair_Reference_Data <- function(LP_Primary_Key, Landing_Pair){
 }
 
 
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
-# CLEAR: All Pair Reference Data
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
-
-
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-Clear_All_Pair_Reference_Data <- function(con, PROC_Period, PROC_Criteria){
-
-  # Build SQL Query
-  Query <- "DELETE FROM tbl_All_Pair_Reference_Data"
-
-  # Edit Query based on processing period/criteria
-  if (PROC_Period == "Day"){Query <- paste0(Query, " WHERE FP_Date = '", PROC_Criteria, "'")}
-  if (PROC_Period == "Month"){Query <- paste0(Query, " WHERE FP_Date LIKE '%", PROC_Criteria, "%'")}
-
-  # Execute Query
-  dbGetQuery(con, Query)
-
-}
-
-
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
-# POPULATE: All Pair Reference Data
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-Populate_All_Pair_Reference_Data <- function(con, TableToAdd){
-
-  # Add to Table
-
-
-}
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #

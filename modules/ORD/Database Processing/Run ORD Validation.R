@@ -92,8 +92,8 @@ Testing <- F
 Database <- "PWS_Prototyping"
 IP <- "192.168.1.23"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-PROC_Period <- "Month"
-PROC_Criteria <- "06/2019"
+PROC_Period <- c("Day", "Month", "All")[3]
+PROC_Criteria <- c("01/06/2019", "06/2019", NA)[3]
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 con <- Get_DBI_Connection(IP, Database)
 LP_Primary_Key <- Get_LP_Primary_Key("Validation")
@@ -110,10 +110,10 @@ GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
 Seg_Size <- GWCS_Adaptation$DME_Seg_Size
 
 # PWS "Level" Options (Currently only ORD Operator used!)
-Full_Level_Precedence <- c("Operator", "Aircraft", "Wake20", "Wake14", "Wake", "TBS Table")
-ORD_Levels <- c(F, T, F, F, T, T)
-TBS_Wake_Levels <- c(F, F, F, F, T, T)
-TBS_ROT_Levels <- c(F, F, F, F, T, T)
+Full_Level_Precedence <- c("Operator", "Aircraft", "Wake20", "Wake14", "Wake")
+ORD_Levels <- c(F, T, F, F, T)
+TBS_Wake_Levels <- c(F, T, F, F, T)
+TBS_ROT_Levels <- c(T, F, F, F, T)
 
 # - PWS ORD Options
 ORDBuffers <- T # Use the ORD Buffers
@@ -121,7 +121,7 @@ Use_EFDD <- F # Use the adaptable End Final Deceleration Distance
 Use_Variable_Decel <- F # Use Deceleration that varies by wind
 
 # - PWS TBSC Options
-TBSCBuffers <- F 
+TBSCBuffers <- F # Needs fixing.
 TTB_Type <- "Original" # Type of TBSC Calculation: "Original"|"ORD"|"T2F" (T2F still in development)
 
 # - Other IA Options
@@ -151,7 +151,7 @@ INP_Landing_Pair <- Load_Landing_Pair_Data(con, PROC_Period, PROC_Criteria)
 # Processing
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
-INT_Landing_Pairs <- Generate_All_Pair_Reference_Data(con, LP_Primary_Key, INP_Landing_Pair, INP_Radar, INP_Flight_Plan, INP_Surface_Wind)
+INT_Landing_Pairs <- Generate_All_Pair_Reference_Data(con, LP_Primary_Key, INP_Landing_Pair, INP_Radar, INP_Flight_Plan, INP_Surface_Wind, Full_Level_Precedence, TBS_Wake_Levels, TBS_ROT_Levels)
 INT_Landing_Pairs <- Generate_ORD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Surface_Wind)
 INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers, Use_EFDD, ORD_Levels[1])
 INT_Full_GWCS_Forecast <- Generate_Full_ORD_GWCS_Forecast(con, LP_Primary_Key, INP_Segments, INT_Landing_Pairs, Time_Key = "Prediction_Time")

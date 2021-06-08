@@ -5,13 +5,12 @@ PopulateSQLTable <- function(con, SQLTable, Table){
   
   # Message to populate Table.
   message(paste0("Populating ", SQLTable, "..."))
-  
-  # Attempt at rounding columns.
   cols <- names(Table)
+  # Attempt at rounding columns.
   for (i in 1:length(cols)){
-    if (is.numeric(Table[,i])){
-      Table <- mutate(Table, !!sym(cols[i]) := round(!!sym(cols[i]), 5))
-    }
+    col <- cols[i]
+    Table <- Table %>%
+      mutate(!!sym(col) := ifelse(is.nan(!!sym(col)), NA, !!sym(col)))
   }
   
   # Append Table.
@@ -2947,6 +2946,145 @@ Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix){
 
   return(Landing_Pair)
 
+}
+
+
+
+
+Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type){
+  
+  # Create the Precedence Table
+  Precedence_Table <- data.frame(Scheme = Precedences, Switch = Values) %>%
+    mutate(ID = row_number()) %>% select(ID, everything())
+  
+  # Initialise Copy of LP for the "remmaining" unmatched data.
+  LPRem <- LP
+  Counter <- 0
+  
+  for (i in 1:nrow(Precedence_Table)){
+    
+    Param_Name <- Get_Reference_SASAI_Parameter_Name(Use, Param_Type)
+    Constr <- filter(Precedence_Table, ID == i)
+    Level = Constr$Scheme
+    Active = Constr$Switch
+    
+    if (Active){
+      Counter <- Counter + 1
+      message(paste0("Attempting to Join ", Use, " ", Level, " ", Param_Type, " Adaptation"))
+      
+      Adaptation <- Load_Adaptation_Table(con, Get_Reference_SASAI_Parameter_Table_Name(Use, Level, Param_Type))
+      Join_Names_Adaptation <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Ref")
+      Join_Names_LP <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Data")
+      Select_Names_Adaptation <- append(Join_Names_Adaptation, Param_Name)
+      Adaptation <- select(Adaptation, all_of(Select_Names_Adaptation))
+      
+      LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+      LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
+      LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
+      if (i != nrow(Precedence_Table)){LPRem <- LPRem %>% select(-!!sym(Param_Name))}
+      
+      if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
+      
+    }
+    
+    if (i == nrow(Precedence_Table)){LP <- rbind(LP, LPRem)}
+    
+  }
+  
+  Param_Name_Old <- Param_Name
+  if (Param_Type == "Speed"){Param_Type <- "IAS"}
+  if (Use == "ROT"){Use <- "ROT_Spacing"} else if (Use == "Wake"){Use <- "Wake_Separation"}
+  Param_Name <- paste0("Reference_Recat_", Use, "_", Param_Type)
+  LP <- rename(LP, !!sym(Param_Name) := !!sym(Param_Name_Old))
+  
+  LP <- arrange(LP, !!sym(LP_Primary_Key)) %>%
+    mutate(!!sym(Param_Name) := ifelse(Use == "ROT_Spacing" & Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Param_Name))) ## Remove ROT Constraints for not-in-trail runways.
+  
+  return(LP)
+  
+}
+
+Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type){
+  
+  String <- "tbl"
+  
+  if (Param_Type == "Speed"){
+    Prefix <- "Assumed"
+    Suffix <- "IAS"
+  }
+  
+  if (Param_Type == "Time"){
+    Prefix <- "Reference"
+    Suffix <- "Time"
+  }
+  
+  if (Param_Type == "Distance"){
+    Prefix <- "Reference"
+    Suffix <- "Dist"
+  }
+  
+  S2 <- ""
+  if (Level == "Operator"){S2 <- "AC_Operator_"}
+  if (Level == "Aircraft"){S2 <- "ACTP_"}
+  if (Level %in% c("14Cat", "20Cat")){S2 <- paste0(Level, "_")}
+  
+  if (Use == "Wake"){
+    if (Level == "Wake"){Middle <- "Recat_Separation"} else {Middle <- "Wake_Separation"}
+  }
+  
+  if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  
+  String <- paste0(String, "_", Prefix, "_", S2, Middle, "_", Suffix)
+  
+  return(String)
+  
+}
+
+Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
+  
+  if (Param_Type == "Speed"){
+    Prefix <- "Assumed"
+    Suffix <- "IAS"
+  }
+  
+  if (Param_Type == "Time"){
+    Prefix <- "Reference"
+    Suffix <- "Time"
+  }
+  
+  if (Param_Type == "Distance"){
+    Prefix <- "Reference"
+    Suffix <- "Distance"
+  }
+  
+  if (Use == "Wake"){Middle <- "Wake_Separation"}
+  if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  
+  String <- paste0(Prefix, "_", Middle, "_", Suffix)
+  return(String)
+  
+}
+
+Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData){
+  
+  Vars <- c()
+  
+  if (ReforData == "Ref"){
+    if (Use == "ROT"){Vars <- append(Vars, "Runway")}
+    if (Level %in% c("Wake", "14Cat", "20Cat")){Vars <- append(Vars, c("Leader_WTC", "Follower_WTC"))}
+    if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}
+    if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
+  } else if (ReforData == "Data"){
+    if (Use == "ROT"){Vars <- append(Vars, "Leader_Landing_Runway")} # Use Leader's: This won't be done for Not-In-Trail Pairs. (Separate procedure!)
+    if (Level == "Wake"){Vars <- append(Vars, c("Leader_Recat_Wake_Cat", "Follower_Recat_Wake_Cat"))}
+    if (Level == "20Cat"){Vars <- append(Vars, c("Leader_20Cat_Wake_Cat", "Follower_20Cat_Wake_Cat"))}
+    if (Level == "14Cat"){Vars <- append(Vars, c("Leader_14Cat_Wake_Cat", "Follower_14Cat_Wake_Cat"))}
+    if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}
+    if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
+  }
+  
+  return(Vars)
+  
 }
 
 
