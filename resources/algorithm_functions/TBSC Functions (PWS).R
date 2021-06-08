@@ -45,6 +45,7 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
     ORD_Wake <- Load_Adaptation_Table(con, "tbl_ORD_Wake_Adaptation") %>% select(Wake_Cat, Time_Buffer)
     ORD_DBS <- Load_Adaptation_Table(con, "tbl_ORD_DBS_Adaptation") %>% select(DBS_Distance, Time_Buffer)
     ORD_OP <- NA
+    LPR <- rename(LPR, Aircraft_Type = Follower_Aircraft_Type, Wake_Cat = Follower_Recat_Wake_Cat)
     
     LPR_DBS <- filter(LPR, TBS_Service_Level == "DBS")
     LPR_TBS <- filter(LPR, TBS_Service_Level == "TBS")
@@ -52,7 +53,7 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
     LPR_DBS <- Join_ORD_Adaptation(LPR, ORD_Profile_Selection = "TBS_Table", ORD_OP, ORD_Aircraft, ORD_Wake, ORD_DBS)
     LPR_TBS <- Join_ORD_Adaptation(LPR, ORD_Profile_Selection = Actual_Selection, ORD_OP, ORD_Aircraft, ORD_Wake, ORD_DBS)
 
-    Buffers <- rbind(LPR_TBS, LPR_TBS_Wake) %>% rbind(LPR_DBS) %>%
+    Buffers <- rbind(LPR_TBS, LPR_DBS) %>%
       select(!!sym(ID_Var), Time_Buffer)
     
   } else {
@@ -66,16 +67,17 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
   
 }
 
+
 # Function that generates the required extra data for calculating TBS Distances
 # This is dependent on the method of TBS Distance calculations
 # "Original" requires the full wind forecast as is used currently
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type){
+Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_ORD_Operator){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator)}
   if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(Full_Wind_Forecast)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
@@ -173,13 +175,13 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator){
   
   # ID_Var <- LP_Primary_Key
   # LPR <- INT_Landing_Pairs
   # Full_Wind_Forecast <- INT_Full_GWCS_Forecast
   # Build an Aircraft Profile without ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = F)
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = F, Use_EFDD, Use_ORD_Operator)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)

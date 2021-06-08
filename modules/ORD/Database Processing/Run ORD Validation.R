@@ -29,7 +29,7 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
+#library(float)
 # --------------------------------------------------------------------------- #
 ModuleFolder <- "ORD"
 ModuleSubfolder <- "Database Processing"
@@ -88,12 +88,12 @@ source(file.path(DB_Module_Dir, "Setup IA Performance Model.R"), local= T) # Set
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Configuration (## TODO: SETUP FOR SHINY)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-Testing <- T
-Database <- "NavCan_TBS_V3"
+Testing <- F
+Database <- "PWS_Prototyping"
 IP <- "192.168.1.23"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 PROC_Period <- "Month"
-PROC_Criteria <- "08/2020"
+PROC_Criteria <- "06/2019"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 con <- Get_DBI_Connection(IP, Database)
 LP_Primary_Key <- Get_LP_Primary_Key("Validation")
@@ -104,13 +104,27 @@ LP_Primary_Key <- Get_LP_Primary_Key("Validation")
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 ADAP_Config <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
 WAD_Enabled <- as.logical(ADAP_Config$Include_Tailwinds_Aloft)
+
 # Get Seg Size
 GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
 Seg_Size <- GWCS_Adaptation$DME_Seg_Size
-# ORD/TBS Calcs
-ORDBuffers <- F # Not yet set up
-TBSCBuffers <- F # Not yet set up
-TTB_Type <- "Original" # ORD Works
+
+# PWS "Level" Options (Currently only ORD Operator used!)
+Full_Level_Precedence <- c("Operator", "Aircraft", "Wake20", "Wake14", "Wake", "TBS Table")
+ORD_Levels <- c(F, T, F, F, T, T)
+TBS_Wake_Levels <- c(F, F, F, F, T, T)
+TBS_ROT_Levels <- c(F, F, F, F, T, T)
+
+# - PWS ORD Options
+ORDBuffers <- T # Use the ORD Buffers
+Use_EFDD <- F # Use the adaptable End Final Deceleration Distance
+Use_Variable_Decel <- F # Use Deceleration that varies by wind
+
+# - PWS TBSC Options
+TBSCBuffers <- F 
+TTB_Type <- "Original" # Type of TBSC Calculation: "Original"|"ORD"|"T2F" (T2F still in development)
+
+# - Other IA Options
 Constraints <- c("Wake", "Non_Wake", "ROT") # Need to Add Runway Dependency Compatibility
 Forecast_Compression_Type <- 1 # 1: Traditional Forecast Compression, 2: Use of Forecast Distance, Speed/WE
 Observed_Compression_Type <- 1 # Same as above.
@@ -121,33 +135,47 @@ Observed_Compression_Type <- 1 # Same as above.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 INP_Radar <- Load_Radar_Data_ORD_Validation(con, PROC_Period, PROC_Criteria)
 INP_Flight_Plan <- Load_Flight_Data_ORD_Validation(con, PROC_Period, PROC_Criteria)
-INP_Landing_Pair <- Load_Landing_Pair_Data(con, PROC_Period, PROC_Criteria)
 INP_Segments <- Load_Stage_2_Segment_Data(con, PROC_Period, PROC_Criteria)
 INP_Surface_Wind <- Load_Surface_Wind_Data(con, PROC_Period, PROC_Criteria)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
+## Clear Exisiting and create new Landing Pair to Get correct LPIDs.
+if (!Testing){
+  INP_Landing_Pair <- Generate_Landing_Pair(INP_Flight_Plan)
+  Clear_Landing_Pair(con, PROC_Period, PROC_Criteria)
+  PopulateSQLTable(con, "tbl_Landing_Pair", select(INP_Landing_Pair, -Landing_Pair_ID))
+}
+
+INP_Landing_Pair <- Load_Landing_Pair_Data(con, PROC_Period, PROC_Criteria)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Processing
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
+
 INT_Landing_Pairs <- Generate_All_Pair_Reference_Data(con, LP_Primary_Key, INP_Landing_Pair, INP_Radar, INP_Flight_Plan, INP_Surface_Wind)
 INT_Landing_Pairs <- Generate_ORD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Surface_Wind)
-INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers)
+INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers, Use_EFDD, ORD_Levels[1])
 INT_Full_GWCS_Forecast <- Generate_Full_ORD_GWCS_Forecast(con, LP_Primary_Key, INP_Segments, INT_Landing_Pairs, Time_Key = "Prediction_Time")
 INT_IAS_Profile <- Generate_ORD_IAS_Profile(con, LP_Primary_Key, INT_Aircraft_Profile, INT_Landing_Pairs, INT_Full_GWCS_Forecast)
 INT_GSPD_Profile <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, INT_IAS_Profile, INT_Full_GWCS_Forecast, Seg_Size)
 INT_Landing_Pairs <- Generate_ORD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile, INT_Full_GWCS_Forecast, INP_Radar,
-                                             Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type)
+                                             Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
+                                             Use_EFDD, ORD_Levels[1])
+INT_Landing_Pairs <- INT_Landing_Pairs %>% mutate(Performance_Flag = 1)
 INT_Landing_Pairs <- Generate_IA_Performance_Model_Setup(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INT_Full_GWCS_Forecast)
+
 
 #if (WAD_Enabled){
 #  INT_Landing_Pairs <- Generate_WAD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Flight_Plan)
 #  INT_Landing_Pairs <- Generate_WAD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile)
 #}
+
+rm(INP_Radar)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Construction
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
+
 OUTP_All_Pair_Reference_Data <- Construct_All_Pair_Reference_Data(LP_Primary_Key, INT_Landing_Pairs)
 OUTP_ORD_Observation <- Construct_ORD_Observation(LP_Primary_Key, INT_Landing_Pairs)
 OUTP_ORD_Aircraft_Profile <- Construct_ORD_Aircraft_Profile(LP_Primary_Key, INT_Aircraft_Profile)
@@ -155,11 +183,13 @@ OUTP_ORD_IAS_Profile <- Construct_ORD_IAS_Profile(LP_Primary_Key, INT_IAS_Profil
 OUTP_ORD_GSPD_Profile <- Construct_ORD_GSPD_Profile(LP_Primary_Key, INT_GSPD_Profile)
 OUTP_ORD_Prediction <- Construct_ORD_Prediction(LP_Primary_Key, INT_Landing_Pairs)
 OUTP_IA_Performance_Model_Setup <- Construct_IA_Performance_Model_Setup(LP_Primary_Key, INT_Landing_Pairs)
+rm(INT_GSPD_Profile)
 
 #if (WAD_Enabled){
 #  OUTP_WAD_Observation <- Construct_WAD_Observation(INT_Landing_Pairs, LP_Primary_Key)
 #  OUTP_WAD_Prediction <- Construct_WAD_Prediction(INT_Landing_Pairs, LP_Primary_Key)
 #}
+
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -200,31 +230,19 @@ if (Testing){
 
 if (!Testing){
 
-  # Clearing
-  Clear_All_Pair_Reference_Data(con, PROC_Period, PROC_Criteria)
-  Clear_ORD_Observation(con, PROC_Period, PROC_Criteria)
-  Clear_ORD_Aircraft_Profile(con, PROC_Period, PROC_Criteria)
-  Clear_ORD_IAS_Profile(con, PROC_Period, PROC_Criteria)
-  Clear_ORD_GSPD_Profile(con, PROC_Period, PROC_Criteria)
-  Clear_ORD_Prediction(con, PROC_Period, PROC_Criteria)
-
-  if (WAD_Enabled){
-    Clear_WAD_Observation(con, PROC_Period, PROC_Criteria)
-    Clear_WAD_Prediction(con, PROC_Period, PROC_Criteria)
-  }
-
   # Populating
-  Populate_All_Pair_Reference_Data(con, OUTP_All_Pair_Reference_Data)
-  Populate_ORD_Observation(con, OUTP_ORD_Observation)
-  Populate_ORD_Aircraft_Profile(con, OUTP_ORD_Aircraft_Profile)
-  Populate_ORD_IAS_Profile(con, OUTP_ORD_IAS_Profile)
-  Populate_ORD_GSPD_Profile(con, OUTP_ORD_GSPD_Profile)
-  Populate_ORD_Prediction(con, OUTP_ORD_Prediction)
-
-  if (WAD_Enabled){
-    Populate_WAD_Observation(con, OUTP_WAD_Observation)
-    Populate_WAD_Prediction(con, OUTP_WAD_Prediction)
-  }
+  PopulateSQLTable(con, "tbl_All_Pair_Reference_Data", OUTP_All_Pair_Reference_Data)
+  PopulateSQLTable(con, "tbl_ORD_Observation", OUTP_ORD_Observation)
+  PopulateSQLTable(con, "tbl_ORD_Aircraft_Profile", OUTP_ORD_Aircraft_Profile)
+  PopulateSQLTable(con, "tbl_ORD_Prediction", OUTP_ORD_Prediction)
+  PopulateSQLTable(con, "tbl_eTBS_Performance_Model", OUTP_IA_Performance_Model_Setup)
+  PopulateSQLTable(con, "tbl_ORD_IAS_Profile", OUTP_ORD_IAS_Profile)
+  PopulateSQLTable(con, "tbl_ORD_GS_Profile", OUTP_ORD_GSPD_Profile)
+  
+  # if (WAD_Enabled){
+  #   dbAppendTable(con, "tbl_WAD_Observation", OUTP_WAD_Observation)
+  #   dbAppendTable(con, "tbl_WAD_Prediction", OUTP_WAD_Prediction
+  # }
 
 }
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -237,3 +255,5 @@ message(paste0("Completed ORD Validation Process for ", PROC_Period, " of ", PRO
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
+
+

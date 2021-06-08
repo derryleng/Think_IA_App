@@ -1,6 +1,25 @@
 library(dplyr)
 library(data.table)
 
+PopulateSQLTable <- function(con, SQLTable, Table){
+  
+  # Message to populate Table.
+  message(paste0("Populating ", SQLTable, "..."))
+  
+  # Attempt at rounding columns.
+  cols <- names(Table)
+  for (i in 1:length(cols)){
+    if (is.numeric(Table[,i])){
+      Table <- mutate(Table, !!sym(cols[i]) := round(!!sym(cols[i]), 5))
+    }
+  }
+  
+  # Append Table.
+  dbAppendTable(con, SQLTable, Table)
+  
+}
+
+
 Get_Max_Valid_Value_2Var <- function(Data, New_Var, Var_1, Var_2){
   Data <- mutate(Data,
                  !!sym(New_Var) := ifelse(!!sym(Var_1) > !!sym(Var_2), !!sym(Var_1), !!sym(Var_2)),
@@ -818,7 +837,7 @@ Get_Forecast_Wind_Effect_At_DME <- function(Segments, Aircraft_Profile, ID_Var, 
 
 }
 
-Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
+Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD){
 
   #Ref_Data <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation")
   #Level <- "Aircraft"
@@ -826,7 +845,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
   #ORDBuffers <- T
 
   # TEMP: Harcoded Operation Choice. Update ASAP
-  Operation <- "IA"
+  Operation <- "IA PWS"
 
   # Change "Leader" to "Lead" For Variable Compatibility
   if(LorF == "Leader"){LorF <- "Lead"}
@@ -851,22 +870,20 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
   Init_Decel_Var <- paste0("Initial_Deceleration_", LorF)
 
   ## Temporary Fix for Discrepancy in Init_Decel_Var Names across Files ---------------------------- #
-  if (Level == "DBS" & LorF == "Lead"){Init_Decel_Var <- "Initial_Deceleration_Lead"}
-  if (Level == "DBS" & LorF == "Follower"){Init_Decel_Var <- "Initial_Deceleration_Follower"}
-  if (Level == "Wake" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
-  if (Level == "Wake" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_Follower"}
-  if (Level == "Aircraft" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
-  if (Level == "Aircraft" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_follower"}
+  # if (Level == "DBS" & LorF == "Lead"){Init_Decel_Var <- "Initial_Deceleration_Lead"}
+  # if (Level == "DBS" & LorF == "Follower"){Init_Decel_Var <- "Initial_Deceleration_Follower"}
+  # if (Level == "Wake" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
+  # if (Level == "Wake" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_Follower"}
+  # if (Level == "Aircraft" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
+  # if (Level == "Aircraft" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_follower"}
   # -------------------------------------------------------------------------------------------------- #
 
   # Set by default inclusion of CCT and End Final Decel Distance to False
   Use_CCT <- F
-  Use_EFDD <- F
 
   # If operation ios IA PWS include both these parameters (subject to change)
-  if (Operation == "IA PWS"){
+  if (Use_EFDD){
     Use_CCT <- T
-    Use_EFDD <- T
   }
 
   # Find the Unique Variable names for the Aircraft Profile and names from Adaptation
@@ -896,7 +913,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
   # If using End Final Deceleration Distance, add it to the list
   if (Use_EFDD){
     All_Vars_1 <- append(All_Vars_1, "End_Final_Deceleration_Distance")
-    All_Vars_2 <- append(All_Vars_2, End_Init_Decel_Var)
+    All_Vars_2 <- append(All_Vars_2, End_Fin_Decel_Var)
   }
 
   # Initialise the final set of variables present in all cases
@@ -946,7 +963,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers){
 
 }
 
-Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Runway){
+Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Runway, Use_EFDD, Use_ORD_Operator){
 
   # Get Variable Names
   ID_Var <- LPID_Var
@@ -960,11 +977,11 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
   if(LPID_Var == "ORD_Tool_Calculation_ID"){SW_Var <- paste0(LorF, "_", SW_Var)}
 
   # TEMP: Hardcoded Operation
-  Operation <- "IA"
+  Operation <- "IA PWS"
   Operation <- ifelse(Operation == "IA PWS" & ORD_Profile_Selection == "Operator", "IA PWS 2", Operation)
 
   # Select Relevant Variables
-  if (Operation %in% c("IA", "IA PWS")){
+  if (!Use_ORD_Operator){
     Aircraft_Profile <- select(Landing_Pair,
                                !!sym(ID_Var),
                                "Aircraft_Type" := !!sym(AC_Type_Var),
@@ -974,7 +991,7 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
                                "Landing_Runway" := !!sym(RW_Var))
   }
 
-  if (Operation == "IA PWS 2"){
+  if (Use_ORD_Operator){
     Aircraft_Profile <- select(Landing_Pair,
                                !!sym(ID_Var),
                                "Aircraft_Type" := !!sym(AC_Type_Var),
@@ -998,7 +1015,7 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
   Aircraft_Profile <- left_join(Aircraft_Profile, ORD_Runway_Reduced, by = c("Landing_Runway" = "Runway_Name"))
 
   # if doing IA (Not PWS), Set End_Final_Deceleration_Distance to Thousand_Ft_Gate
-  if (Operation == "IA"){Aircraft_Profile <- mutate(Aircraft_Profile, End_Final_Deceleration_Distance = Thousand_Ft_Gate)}
+  if (!Use_EFDD){Aircraft_Profile <- mutate(Aircraft_Profile, End_Final_Deceleration_Distance = Thousand_Ft_Gate)}
 
   # Update Gust Adjustment Value based on Apply Gusting: Set former to 0 if latter is 0
   Aircraft_Profile <- mutate(Aircraft_Profile, Gust_Adjustment = ifelse(Apply_Gusting == 1, Gust_Adjustment, 0))
@@ -2541,6 +2558,7 @@ Load_Flight_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
   # Original Flight Plan Query
   Flight_Plan_Query <- "SELECT
                          FP.Flight_Plan_ID,
+                         FP_Date,
                          FP_Time,
                          Aircraft_Type,
                          Callsign,

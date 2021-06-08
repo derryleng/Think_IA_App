@@ -63,7 +63,8 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type){
+Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
+                                    Use_EFDD, Use_ORD_Operator){
 
   # Landing_Pair <- INT_Landing_Pairs
   # TBSCBuffers <- F
@@ -89,7 +90,7 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
   # Initialise Empty Values
   Dist_Values <- c()
   Time_Buffers <- Generate_TBSC_Time_Buffers(con, Landing_Pair, LP_Primary_Key, Active = TBSCBuffers)  # UNTESTED WITH BUFFER ADAPTATION
-  TBSC_Profiles <- Generate_TBSC_Profiles(con, Landing_Pair, GWCS_Forecast, LP_Primary_Key, TTB_Type)  # UNTESTED WITH T2F
+  TBSC_Profiles <- Generate_TBSC_Profiles(con, Landing_Pair, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_ORD_Operator)  # UNTESTED WITH T2F
 
   ## Generate the Distance for all Constraints at Threshold
   for (Constraint in Constraints){

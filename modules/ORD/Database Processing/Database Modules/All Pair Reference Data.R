@@ -12,7 +12,7 @@
 #
 # Authors: George Clark
 #
-# Description: Functions for Populating tbl_All_Pair_Reference_Data.
+# Description: Functions for Populating tbl_All_Pair_Reference_Data and tbl_Landing_Pair
 #
 #
 # Use Guide Section:
@@ -29,6 +29,109 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# GENERATE: Landing_Pair
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+Generate_Landing_Pair <- function(FP){
+  
+  # Local Adaptation
+  Max_Time_Diff <- 1200 #20 Mins
+  
+  # Get Relevant Flight Plan Data
+  FP <- FP %>%
+    select(Flight_Plan_ID, FP_Date, Landing_Runway, Time_At_4DME) %>%
+    mutate(Runway_Index = substr(Landing_Runway, 2, 3))
+  
+  # Remove all Void Observations and arrange by Runway groupings and Time
+  FP <- filter(FP, !is.na(Landing_Runway) & !is.na(Time_At_4DME)) %>%
+    arrange(FP_Date, Runway_Index, Time_At_4DME)
+  
+  # Pass 1: Detect In-Trail and Not-In-Trail pairs.
+  FP1 <- FP %>% 
+    arrange(FP_Date, Runway_Index, Time_At_4DME) %>%
+    group_by(FP_Date, Runway_Index) %>% 
+    mutate(Previous_Flight_Plan_ID = lag(Flight_Plan_ID),
+           Previous_Landing_Runway = lag(Landing_Runway),
+           Previous_Time_At_4DME = lag(Time_At_4DME)) %>%
+    ungroup() %>%
+    mutate(Time_Difference = Time_At_4DME - Previous_Time_At_4DME,
+           Is_Valid_Pair = ifelse(Time_Difference < Max_Time_Diff & Time_Difference > 0, 1, 0)) %>%
+    filter(Is_Valid_Pair == 1) %>% 
+    mutate(Landing_Pair_Type = ifelse(Landing_Runway == Previous_Landing_Runway, "In_Trail", "Not_In_Trail")) %>%
+    mutate(FPID_Pair = paste0(Flight_Plan_ID, "-", Previous_Flight_Plan_ID))
+  
+  # Pass 2: Detect Non-Sequential In-Trail Pairs.
+  FP2 <- FP %>% 
+    arrange(FP_Date, Landing_Runway, Time_At_4DME) %>%
+    group_by(FP_Date, Landing_Runway) %>% 
+    mutate(Previous_Flight_Plan_ID = lag(Flight_Plan_ID),
+           Previous_Landing_Runway = lag(Landing_Runway),
+           Previous_Time_At_4DME = lag(Time_At_4DME)) %>%
+    ungroup() %>%
+    mutate(Time_Difference = Time_At_4DME - Previous_Time_At_4DME,
+           Is_Valid_Pair = ifelse(Time_Difference < Max_Time_Diff & Time_Difference > 0, 1, 0)) %>%
+    filter(Is_Valid_Pair == 1) %>% 
+    mutate(Landing_Pair_Type = "In_Trail_Non_Sequential") %>%
+    mutate(FPID_Pair = paste0(Flight_Plan_ID, "-", Previous_Flight_Plan_ID)) %>%
+    filter(FPID_Pair %!in% FP1$FPID_Pair)
+  
+  # Join Datasets together.
+  LP <- rbind(FP1, FP2) %>%
+    mutate(Landing_Pair_ID = NA) %>%
+    select(Landing_Pair_ID,
+           Landing_Pair_Date = FP_Date,
+           Leader_Flight_Plan_ID = Previous_Flight_Plan_ID,
+           Follower_Flight_Plan_ID = Flight_Plan_ID,
+           Landing_Pair_Type)
+  
+  
+  return(LP)
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# COMPARE/SUMMARISE: Landing_Pair
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# CLEAR: Landing_Pair
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+Clear_Landing_Pair <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Main Query.
+  Query <- "DELETE FROM tbl_Landing_Pair"
+  
+  # Delete single Day/Month if Period is "Day"/""Month" and non-NA criteria provided.
+  # Delete All if "All" Period selected or NA Criteria provided. (& Reset Primary Key)
+  if (PROC_Period == "Day" & !is.na(PROC_Criteria)){
+    Query <- paste0(Query, " WHERE Landing_Pair_Date = '", PROC_Criteria, "'")
+  } else if (PROC_Period == "Month" & !is.na(PROC_Criteria)){
+    Query <- paste0(Query, " WHERE Landing_Pair_Date LIKE '%", PROC_Criteria, "%'")
+  } else {
+    Query <- paste0(Query, "\nIF IDENT_CURRENT('tbl_Landing_Pair') >= 1
+  DBCC CHECKIDENT (tbl_Landing_Pair, RESEED, 0)")
+  }
+  
+  dbExecute(con, Query)
+  
+}
+
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # GENERATE: All Pair Reference Data
@@ -293,9 +396,11 @@ Construct_All_Pair_Reference_Data <- function(LP_Primary_Key, Landing_Pair){
                               !!sym(LP_Primary_Key),
                               FP_Date = Landing_Pair_Date,
                               Leader_Callsign,
+                              Leader_Aircraft_Type,
                               Leader_UK_Wake_Cat = Leader_Legacy_Wake_Cat,
                               Leader_Recat_Wake_Cat,
                               Follower_Callsign,
+                              Follower_Aircraft_Type,
                               Follower_UK_Wake_Cat = Follower_Legacy_Wake_Cat,
                               Follower_Recat_Wake_Cat,
                               UK6Cat_Separation_Distance = Reference_Legacy_Wake_Separation_Distance,
