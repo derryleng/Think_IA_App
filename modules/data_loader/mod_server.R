@@ -50,6 +50,8 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
       process_CAV_logs(LogFilePaths[i], dbi_con)
     } else if (input$logs_type == "FP New Format (NAVCAN)") {
       process_NavCan_FP_new_format(LogFilePaths[i], dbi_con)
+    } else if (input$logs_type == "Cat62 ARTAS (NODE)") {
+      process_ARTAS_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     }
     t2 <- Sys.time()
     message("[",Sys.time(),"] ", "Finished loading file: ", basename(LogFilePaths[i]), " (time elapsed: ", Time_String_From_Seconds(as.numeric(difftime(t2, t1, units = "secs"))), ")")

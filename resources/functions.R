@@ -979,12 +979,16 @@ GetScriptPath <- function(ScriptDirectory, Airfield, FileName){
 
 GetSaveDirectory <- function(Project, Algorithm, IorO){
 
-  if(missing(Project)){Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))}
+  if(missing(Project)){Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3, NODE Replacement = 4", noblank = FALSE, forcemask = FALSE))}
 
 #Add new project direcotries here later, PWS, NODE, etc
   if (Project == 1){
     Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
     # Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis")
+  }
+
+  if (Project == 4){
+    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS Node Replacement", "Data Analysis")
   }
 
   # Go into Algorithm Folder
