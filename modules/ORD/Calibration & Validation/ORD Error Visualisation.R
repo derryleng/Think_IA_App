@@ -12,7 +12,7 @@
 rm(list = ls())
 
 library(data.table)
-library(RODBC)
+# library(RODBC)
 library(dplyr)
 library(ggplot2)
 library(smooth)
@@ -116,11 +116,11 @@ if (!dir.exists(plots_data)) dir.create(plots_data)
 
 
 #Get database connection
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
+# Setting a number of plot (if list of large errors is too large)
 
-
-
+max_plot <- 20
 
 # Config Parameters
 
@@ -149,8 +149,6 @@ Allowed_Path_Legs <- c("ILS_Leg", "Landing_Leg", "Intercept_Leg", "Extended_Inte
 # Load the main ORD data set
 
 ord_data <- fread(file.path(ref_data, "Validation Data Post SepN Accuracy.csv"))
-
-prof_data <- fread(file.path(prof_data, "Approach_Speed_Profiles.csv"))
 
 #ord_data <- left_join(ord_data, prof_data, by = c("Leader_Flight_Plan_ID" = "Follower_Flight_Plan_ID"))
 
@@ -265,11 +263,11 @@ plot_ord_aircraft <- function(fp_id, lp_id, l_or_f, include_gspd, title_text, su
   #include_gspd <- F
   #l_or_f <- "L"
 
-  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+  leader_track <- dbGetQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
 
   # Get the ORD Profile for leader and follower
 
-  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", l_or_f, "'"))
+  ord_profile <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", l_or_f, "'"))
 
   ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
                         End_IAS = End_IAS * 3600 / 1852,
@@ -322,11 +320,11 @@ plot_single_aircraft <- function(fp_id, lp_id, gspd, title_text, subtitle_text){
   #gspd <- F
   #l_or_f <- "L"
 
-  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+  leader_track <- dbGetQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
 
   # Get the ORD Profile for leader and follower
 
-  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = 'L'"))
+  ord_profile <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = 'L'"))
 
   ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
                         End_IAS = End_IAS * 3600 / 1852,
@@ -382,7 +380,7 @@ plot_single_wind_effect <- function(fp_id, lp_id, role, min, max, title_text, su
 
 
 
-  leader_track <- sqlQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
+  leader_track <- dbGetQuery(con, paste0("SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID = ", fp_id))
 
   leader_track <- filter(leader_track, Path_Leg_Type %in% Allowed_Path_Legs)
 
@@ -391,7 +389,7 @@ plot_single_wind_effect <- function(fp_id, lp_id, role, min, max, title_text, su
 
   # Get the ORD Profile for leader and follower
 
-  ord_profile <- sqlQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", role, "'"))
+  ord_profile <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile WHERE Landing_Pair_ID = ", lp_id, " AND This_Pair_Role = '", role, "'"))
 
   ord_profile <- mutate(ord_profile, Start_IAS = Start_IAS * 3600 / 1852,
                         End_IAS = End_IAS * 3600 / 1852,
@@ -444,8 +442,9 @@ for (i in 1:nrow(ord_large_errors)){
 }
 
 
-#for (i in 1:nrow(ord_large_errors)){
-  for (i in 1:20){
+# Plot large errors up to a point
+
+  for (i in 1:max_plot){
 
   #i <- 1
   le_line <- ord_large_errors[i, ]

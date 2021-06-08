@@ -32,7 +32,7 @@ rm(list = ls())
 library(tidyverse)
 library(lubridate)
 library(data.table)
-library(RODBC)
+# library(RODBC)
 library(dplyr)
 library(ggplot2)
 library(stringr)
@@ -110,7 +110,7 @@ out_data <- Base_Dir
 #Set the database name for SQL connection
 database <- "NavCan_UTMA_Validation_DB2"
 
-con <- Get_RODBC_Database_Connection(IP = ip, Database = database)
+con <- Get_DBI_Connection(IP = ip, Database = database)
 
 # Set the Date Range
 
@@ -135,7 +135,7 @@ Separation_non_A380 <- 2
 # Data Loading -------------------------------------------------------#
 
 #aircraft_wake_icao4 <- fread(file.path(ref_data, "reference_wake_category_icao_new.csv"))
-aircraft_wake_icao4 <- unique(sqlQuery(con, sprintf("SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy")))
+aircraft_wake_icao4 <- unique(dbGetQuery(con, sprintf("SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy")))
 names(aircraft_wake_icao4)[2] <- "ICAO_WTC"
 
 # Old database does not have this table populated, using reference file instead.
@@ -143,7 +143,7 @@ names(aircraft_wake_icao4)[2] <- "ICAO_WTC"
 
 ref_wake_icao4 <- fread(file.path(ref_data, "reference_wake_separation_dist_icao.csv")) #%>% rename(ICAO_Wake_Separation_Distance =
 #                                                                                                     Reference_Wake_Separation_Distance)
-# ref_wake_icao4 <- sqlQuery(con, sprintf("SELECT * FROM tbl_DBS_Wake_Turbulence"))
+# ref_wake_icao4 <- dbGetQuery(con, sprintf("SELECT * FROM tbl_DBS_Wake_Turbulence"))
 # names(ref_wake_icao4) <- c("Leader_ICAO_WTC","Follower_ICAO_WTC","ICAO_Wake_Separation_Distance")
 
 ref_wake_icao4_orig <- ref_wake_icao4
@@ -151,23 +151,23 @@ ref_wake_icao4_orig <- ref_wake_icao4
 #ref_wake_recat
 
 #aircraft_wake_recat <- fread(file.path(ref_data, "reference_wake_category_recat_new.csv"))
-aircraft_wake_recat <- sqlQuery(con, sprintf("SELECT * FROM tbl_Aircraft_Type_To_Wake"))
+aircraft_wake_recat <- dbGetQuery(con, sprintf("SELECT * FROM tbl_Aircraft_Type_To_Wake"))
 names(aircraft_wake_recat)[2] <- "Recat_WTC"
 
 #fp_data <- fread(file.path(ref_data, "flight_plan_data.csv"))
 
-ref_wake_recat <- sqlQuery(con, sprintf("SELECT * FROM tbl_Reference_Recat_Separation_Dist"))  %>% as.data.table() %>%
+ref_wake_recat <- dbGetQuery(con, sprintf("SELECT * FROM tbl_Reference_Recat_Separation_Dist"))  %>% as.data.table() %>%
   mutate(Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance/1852) %>% rename(RECAT_Wake_Separation_Distance = Reference_Wake_Separation_Distance)
 
-lp_data <- sqlQuery(con, sprintf("SELECT Landing_Pair_ID,
+lp_data <- dbGetQuery(con, sprintf("SELECT Landing_Pair_ID,
                     Landing_Pair_Type,
                     Leader_Flight_Plan_ID,
                     Follower_Flight_Plan_ID
                     FROM tbl_Landing_Pair"))  %>% as.data.table()
 
-#pdata1 <- sqlQuery(con, sprintf("SELECT * FROM vw_eTBS_Performance_Model")) %>% as.data.table()
+#pdata1 <- dbGetQuery(con, sprintf("SELECT * FROM vw_eTBS_Performance_Model")) %>% as.data.table()
 
-sep_data <- sqlQuery(con, sprintf("SELECT
+sep_data <- dbGetQuery(con, sprintf("SELECT
                                      Landing_Pair_ID,
                                      Observed_0DME_Separation_Distance,
                                      Observed_1DME_Separation_Distance,
@@ -176,7 +176,7 @@ sep_data <- sqlQuery(con, sprintf("SELECT
 
 #pdata1_original <- pdata1
 
-fp_data <- sqlQuery(con, sprintf("SELECT
+fp_data <- dbGetQuery(con, sprintf("SELECT
 	                                  fpd.Flight_Plan_ID,
 	                                  fp.FP_Date,
 	                                  fp.FP_Time,
@@ -188,7 +188,7 @@ fp_data <- sqlQuery(con, sprintf("SELECT
                                   INNER JOIN tbl_Flight_Plan_Derived fpd
                                   ON fp.Flight_Plan_ID = fpd.Flight_Plan_ID")) %>% as.data.table()
 
-rw <- sqlQuery(con, sprintf("SELECT Runway_Name, Heading = ROUND(Heading * 180 / PI(),2,1), Runway_Group FROM tbl_Runway"))
+rw <- dbGetQuery(con, sprintf("SELECT Runway_Name, Heading = ROUND(Heading * 180 / PI(),2,1), Runway_Group FROM tbl_Runway"))
 
 #--------------------------------------------------------------------#
 # Parameters & Pre-processing

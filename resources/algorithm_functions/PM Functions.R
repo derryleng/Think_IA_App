@@ -26,6 +26,7 @@ Get_Wake_Cats <- function(Wake_Scheme){
 
 Get_PM_Groupings <- function(Grouping_Type){
   if (Grouping_Type == "Landing_Pair_ID"){return(c("Landing_Pair_ID"))}
+  if (Grouping_Type == "Observation_ID"){return(c("Observation_ID"))}
   if (Grouping_Type == "Flight_Plan_ID"){return(c("Leader_Flight_Plan_ID", "Follower_Flight_Plan_ID"))}
   if (Grouping_Type == "Callsign_Date_Time"){return("FP_Date", "Leader_Callsign", "Follower_Callsign", "Leader_Time_At_4DME", "Follower_Time_At_4DME")}
   return(c("Landing_Pair_ID")) # Default is Landing Pair ID
@@ -47,6 +48,10 @@ Calculate_PM_Time_To_Fly <- function(PM, Segs, LorF, Groupings, Seg_Size, All_Se
   Speed_Var <- paste0(LorF, "_Average_GSPD")
   Time_Var <- paste0(LorF, "_Flying_Time")
   
+  # 
+  Groupings_Original <- Groupings
+  Groupings <- append(Groupings, "Observation_ID")
+  
   # Get the Distance Variables
   Distances <- select(PM, all_of(Groupings), Start_Distance, End_Distance)
   
@@ -56,18 +61,21 @@ Calculate_PM_Time_To_Fly <- function(PM, Segs, LorF, Groupings, Seg_Size, All_Se
   # Get Variable Groupings for Arrange & Group By Statements
   Groupings1 <- append(Groupings, "ID")
   Groupings2 <- append(Groupings, "DME_Seg")
+  Groupings1_Original <- append(Groupings_Original, "ID")
+  Groupings2_Original <- append(Groupings_Original, "DME_Seg")
   
   # ASSUMES ARRANGED IN ORDER OF ID VARIABLES AND DME SEG ASCENDING!!
-  Segs <- Segs %>% group_by_at(vars(one_of(Groupings))) %>% mutate(ID = row_number()) %>% ungroup()
-  Segs1 <- Segs %>% mutate(ID = ID - 1) %>% select(all_of(Groupings1), DME_Seg_Next = DME_Seg)
-  Segs <- left_join(Segs, Segs1, by = setNames(Groupings1, Groupings1)) %>% mutate(DME_Diff = ifelse(!is.na(DME_Seg_Next), DME_Seg_Next - DME_Seg, Seg_Size)) %>%
+  Segs <- Segs %>% group_by_at(vars(one_of(Groupings_Original))) %>% mutate(ID = row_number()) %>% ungroup()
+  Segs1 <- Segs %>% mutate(ID = ID - 1) %>% select(all_of(Groupings1_Original), DME_Seg_Next = DME_Seg)
+  Segs <- left_join(Segs, Segs1, by = setNames(Groupings1_Original, Groupings1_Original)) %>% mutate(DME_Diff = ifelse(!is.na(DME_Seg_Next), DME_Seg_Next - DME_Seg, Seg_Size)) %>%
     mutate(DME_Seg_Next = ifelse(is.na(DME_Seg_Next), DME_Seg + Seg_Size, DME_Seg_Next))
   
   # Get the Time Taken to fly between successive segments
   Segs <- mutate(Segs, Flying_Time = (DME_Diff / !!sym(Speed_Var)) * 3600)
   
   # Join on Distances to Segments
-  Segs <- left_join(Segs, Distances, by = setNames(Groupings, Groupings))
+  #Segs <- left_join(Segs, Distances, by = setNames(Groupings_Original, Groupings_Original))
+  Segs <- left_join(Distances, Segs, by = setNames(Groupings_Original, Groupings_Original))
   
   # Filter for Segments between Start and End Distances
   Segs <- filter(Segs, DME_Seg < Start_Distance & DME_Seg >= floor(End_Distance))
@@ -187,10 +195,12 @@ PlotAgainstReferencePM <- function(Data, Reference, RefDists, PlotVar, RecatorLe
   
   # Filter Data for WTCs of interest
   Data <- filter(Data, !!sym(Leader_Var) == LeaderWTC & !!sym(Foll_Var) == FollowerWTC)
+  Ntot <- nrow(Data)
+  N <- nrow(filter(Data, !is.na(!!sym(PlotVar))))
 
   RefVar <- as.numeric(filter(Reference, Leader_WTC == LeaderWTC, Follower_WTC == FollowerWTC))
   RefDist <- as.numeric(filter(RefDists, Leader_WTC == LeaderWTC, Follower_WTC == FollowerWTC)$Reference_Wake_Separation_Distance)
-  String <- paste0(PlotTitle, " for pair ", LeaderWTC, "-", FollowerWTC, " (", RefDist, "NM)")
+  String <- paste0(PlotTitle, " for pair ", LeaderWTC, "-", FollowerWTC, " (", RefDist, "NM), (N = ", N, "/ Total ", Ntot, ")")
   
   # Initialise Histogram plot
   Plot <- ggplot(Data) + geom_histogram(mapping = aes(x = !!sym(PlotVar), y = ..density..), binwidth = 2, fill = Colour) + geom_vline(xintercept = RefVar) + 
@@ -205,7 +215,7 @@ PlotAgainstReferencePM <- function(Data, Reference, RefDists, PlotVar, RecatorLe
 PlotTimeSeparationAgainstReference <- function(PM, RefTimes, RefDists, TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC){
   
   Plot <- PlotAgainstReferencePM(PM, RefTimes, RefDists, PlotVar = TimeVar, RecatorLegacy, LeaderWTC, FollowerWTC, Unit = "Time", Colour = "magenta")
-  Plot <- Plot + xlim(40, 200)
+  Plot <- Plot + xlim(60, 240)
   
   return(Plot)
   
@@ -220,7 +230,21 @@ PlotFollowerIASAgainstReference <- function(Data, RefSpeeds, RefDists, SpeedVar,
   
 }
 
+GetModeSWindForecastFile <- function(Project, Version, SepDist){
+  
+  Dir <- GetSaveDirectory(Project, "GWCS", "Inputs")
+  Dir <- file.path(Dir, Version)
+  Dir <- file.path(Dir, paste0("vw_Mode_S_Wind_Forecast_", SepDist, "nm.csv"))
+  if (file.exists(Dir)){return(fread(Dir, na.strings = c("NA", "NULL")))} else {message("ERROR: GWCS FILE NOT FOUND!")}
+  
+}
 
+GetGWCSSepDistances <- function(Airfield){
+  
+  if (Airfield == "CYYZ"){return(c(3, 3.5, 4, 5, 6, 7, 8))}
+  if (Airfield == "EHAM"){return(c(3, 4, 5, 6, 7, 8))}
+  
+}
 
 
 

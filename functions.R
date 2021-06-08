@@ -296,7 +296,47 @@ generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
 
 }
 
+generateFPID_fusion_join <- function(tracks, dbi_con = dbi_con, Date_String) {
 
+  Next_Day <- format(dmy(Date_String) + days(1), "%d/%m/%Y")
+  Previous_Day <- format(dmy(Date_String) - days(1), "%d/%m/%Y")
+
+  #Gets flight plans within +/- 1 day of filename
+
+  fp <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan
+                                         WHERE FP_Date = '", Date_String, "' OR FP_Date = '", Next_Day, "' OR FP_Date = '", Previous_Day, "'")))
+
+  # Drop Flight_Plan_ID and Callsign Columns, these will be taken from the Flight_Plan table
+  tracks <- tracks %>% select(-c(Flight_Plan_ID, Callsign))
+  # tracks <- out %>% select(-c(Flight_Plan_ID, Callsign))
+
+  ##Matching FPIDs on SSR and within 1 day either side, then filters out based on 2 hour window
+
+  tracks <- left_join(tracks, select(fp, c(Flight_Plan_ID, FP_Date, SSR_Code, FP_Time, Callsign)), by = c("SSR_Code"))
+
+  tracks <- tracks %>% relocate(Flight_Plan_ID, .before = Track_Date) %>%
+    relocate(Callsign, .after = Track_Time)
+
+  tracks$Time_Plus <- ifelse(tracks$Track_Time + 7200 > 86400, (tracks$Track_Time + 7200) - 86400, tracks$Track_Time + 7200)
+  tracks$Time_Minus <- ifelse(tracks$Track_Time - 7200 < 0, 86400 - (tracks$Track_Time - 7200), tracks$Track_Time - 7200)
+
+  tracks_prev <- tracks %>% filter(format(dmy(Track_Date) - days(1), "%d/%m/%Y") == FP_Date) %>%
+    filter(Time_Minus < FP_Time & Time_Minus > Track_Time)
+
+  tracks_curr <- tracks %>% filter(Track_Date == FP_Date) %>%
+    filter(Track_Time - 7200 < FP_Time & Track_Time + 7200 > FP_Time)
+
+  tracks_next <- tracks %>% filter(format(dmy(Track_Date) + days(1), "%d/%m/%Y") == FP_Date) %>%
+    filter(Time_Plus > FP_Time & Time_Plus < Track_Time)
+
+  rm(tracks)
+
+  tracks <- rbind(tracks_prev, tracks_curr, tracks_next)
+  tracks <- tracks %>% select(-c("FP_Date", "FP_Time", "Time_Plus", "Time_Minus"))
+
+  return(tracks)
+
+}
 
 
 

@@ -128,7 +128,7 @@ Wake_Pair_Counts <- fread(file.path(ref_data, Wake_Pair_Counts_input))
 
 # Simple go around filtering, flights with a very long track time
 
-potential_anomalies <- sqlQuery(con, "SELECT DISTINCT Flight_Plan_ID
+potential_anomalies <- dbGetQuery(con, "SELECT DISTINCT Flight_Plan_ID
                                 FROM tbl_Mode_S_Wind_Seg
                                 WHERE Max_Track_Time -Min_Track_Time > 200") %>% as.data.table
 
@@ -154,7 +154,7 @@ if (grepl("^LVNL_.*$", database)) {
   		Leader_Recat_Wake_Cat
   	FROM tbl_All_Pair_Reference_Data
   ) AS t2 ON t1.Landing_Pair_ID = t2.Landing_Pair_ID
-  " %>% sqlQuery(con, .) %>% as.data.table()
+  " %>% dbGetQuery(con, .) %>% as.data.table()
 
   modeldata <- merge(modeldata, leader_RECAT_joins, by = "Follower_Flight_Plan_ID", all.x = T)
 
@@ -453,8 +453,6 @@ for (i in 1:length(actypes)) {
     pcile <- quantile(dat_density, 0.01)
   }
 
-  # Remove vref outliers
-  vref <- vref[!(vref %in% boxplot(vref, plot = F)$out)]
 
   png(filename = file.path(out_plot1, paste0(actypes[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
   hist(
@@ -497,35 +495,46 @@ for (i in 1:length(actypes)) {
 
   #Calculating an observed time of flight (12 DME to thresh) from median positions and speeds
 
-  time_leader_observed_alternate <- as.numeric((type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead - n2)/type_adaptation_input_table$Steady_Procedural_Speed_Lead +
-                                                 2*(n2 - n1)/(type_adaptation_input_table$Steady_Procedural_Speed_Lead + Vtgt_lead) +
-                                                 n1/Vtgt_lead)
-
-  time_follower_observed_alternate <- as.numeric((type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower - n2)/type_adaptation_input_table$Steady_Procedural_Speed_Follower +
-                                                   2*(n2 - n1)/(type_adaptation_input_table$Steady_Procedural_Speed_Follower + Vtgt_foll) +
-                                                   n1/Vtgt_foll)
 
 
-  time_per_ac_type$time_lead_observed_alternate[[i]] <- time_leader_observed_alternate
-  time_per_ac_type$time_foll_observed_alternate[[i]] <- time_follower_observed_alternate
+
+  time_per_ac_type$time_lead_observed_alternate[[i]] <- get_time_of_flight(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
+                                                                           n2, n1, type_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                                                           Vtgt_lead)
+
+  time_per_ac_type$time_foll_observed_alternate[[i]] <- get_time_of_flight(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
+                                                                           n2, n1, type_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                                                           Vtgt_foll)
 
   # Using a deceleration rate adjustment for aircraft stabilising before the 1000ft gate
 
+
+
   if (n1 >= thousand_ft_gate) {
 
-    m2_leader <- ((type_adaptation_input_table$Steady_Procedural_Speed_Lead*(time_leader_observed_alternate - thousand_ft_gate/Vtgt_lead) - type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead) *
-                    (type_adaptation_input_table$Steady_Procedural_Speed_Lead + Vtgt_lead) + 2*type_adaptation_input_table$Steady_Procedural_Speed_Lead*thousand_ft_gate) /
-      (type_adaptation_input_table$Steady_Procedural_Speed_Lead - Vtgt_lead)
 
-    m2_follower <- ((type_adaptation_input_table$Steady_Procedural_Speed_Follower*(time_follower_observed_alternate - thousand_ft_gate/Vtgt_foll) - type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower) *
-                      (type_adaptation_input_table$Steady_Procedural_Speed_Follower + Vtgt_foll) + 2*type_adaptation_input_table$Steady_Procedural_Speed_Follower*thousand_ft_gate) /
-      (type_adaptation_input_table$Steady_Procedural_Speed_Follower - Vtgt_foll)
+    time_per_ac_type$m2_lead[[i]] <- get_decel_dist(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
+                                                    time_per_ac_type$time_lead_observed_alternate[[i]],
+                                                    thousand_ft_gate,
+                                                    type_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                                    Vtgt_lead)
 
-    time_per_ac_type$m2_lead[[i]] <- m2_leader
-    time_per_ac_type$m2_foll[[i]] <- m2_follower
+    time_per_ac_type$m2_foll[[i]] <- get_decel_dist(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
+                                                    time_per_ac_type$time_foll_observed_alternate[[i]],
+                                                    thousand_ft_gate,
+                                                    type_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                                    Vtgt_foll)
 
-    time_per_ac_type$a_lead[[i]] <- (type_adaptation_input_table$Steady_Procedural_Speed_Lead - Vtgt_lead)/(m2_leader - thousand_ft_gate)
-    time_per_ac_type$a_foll[[i]] <- (type_adaptation_input_table$Steady_Procedural_Speed_Follower - Vtgt_foll)/(m2_follower - thousand_ft_gate)
+
+    time_per_ac_type$a_lead[[i]] <- get_decel(time_per_ac_type$m2_lead[[i]],
+                                              thousand_ft_gate,
+                                              type_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                              Vtgt_lead)
+
+    time_per_ac_type$a_foll[[i]] <- get_decel(time_per_ac_type$m2_foll[[i]],
+                                              thousand_ft_gate,
+                                              type_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                              Vtgt_foll)
   }
 
   # Using a Vtgt adjustment for aircraft stabilising after the 1000ft gate
@@ -533,11 +542,11 @@ for (i in 1:length(actypes)) {
   if (n1 < thousand_ft_gate) {
 
     time_per_ac_type$a_lead[[i]] <- d
-    time_per_ac_type$adjusted_Vtgt_lead[[i]] <- adjust_Vref(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead, thousand_ft_gate, n2, type_adaptation_input_table$Steady_Procedural_Speed_Lead, time_leader_observed_alternate, vref_lead)
+    time_per_ac_type$adjusted_Vtgt_lead[[i]] <- adjust_Vref(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead, thousand_ft_gate, n2, type_adaptation_input_table$Steady_Procedural_Speed_Lead, time_per_ac_type$time_lead_observed_alternate[[i]], vref_lead)
     vref_lead <- time_per_ac_type$adjusted_Vtgt_lead[[i]] - calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
 
     time_per_ac_type$a_foll[[i]] <- d
-    time_per_ac_type$adjusted_Vtgt_foll[[i]] <- adjust_Vref(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower, thousand_ft_gate, n2, type_adaptation_input_table$Steady_Procedural_Speed_Follower, time_follower_observed_alternate, vref_foll)
+    time_per_ac_type$adjusted_Vtgt_foll[[i]] <- adjust_Vref(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower, thousand_ft_gate, n2, type_adaptation_input_table$Steady_Procedural_Speed_Follower, time_per_ac_type$time_foll_observed_alternate[[i]], vref_foll)
     vref_foll <- time_per_ac_type$adjusted_Vtgt_foll[[i]] - calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
   }
 
@@ -906,9 +915,6 @@ for (i in 1:length(wake_cats)) {
     pcile <- quantile(dat_density, 0.01)
   }
 
-  # Remove vref outliers
-  vref <- vref[!(vref %in% boxplot(vref, plot = F)$out)]
-
   png(filename = file.path(out_plot3, paste0(wake_cats[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
   hist(
     dat2$vref,
@@ -948,42 +954,62 @@ for (i in 1:length(wake_cats)) {
 
   #Calculating a median time of flight per wake category
 
-  time_leader_observed_alternate <- as.numeric((wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead - n2)/wake_adaptation_input_table$Steady_Procedural_Speed_Lead +
-                                                 2*(n2 - n1)/(wake_adaptation_input_table$Steady_Procedural_Speed_Lead + Vtgt_lead) +
-                                                 n1/Vtgt_lead)
 
-  time_follower_observed_alternate <- as.numeric((wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower - n2)/wake_adaptation_input_table$Steady_Procedural_Speed_Follower +
-                                                   2*(n2 - n1)/(wake_adaptation_input_table$Steady_Procedural_Speed_Follower + Vtgt_foll) +
-                                                   n1/Vtgt_foll)
 
-  time_per_wake_cat$time_lead_observed_alternate[[i]] <- time_leader_observed_alternate
-  time_per_wake_cat$time_foll_observed_alternate[[i]] <- time_follower_observed_alternate
+  time_per_wake_cat$time_lead_observed_alternate[[i]] <- get_time_of_flight(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
+                                                                           n2, n1, wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                                                           Vtgt_lead)
+
+  time_per_wake_cat$time_foll_observed_alternate[[i]] <- get_time_of_flight(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
+                                                                           n2, n1, wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                                                           Vtgt_foll)
 
   if (n1 >= thousand_ft_gate) {
 
-    m2_leader <- ((wake_adaptation_input_table$Steady_Procedural_Speed_Lead*(time_leader_observed_alternate - thousand_ft_gate/Vtgt_lead) - wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead) *
-                    (wake_adaptation_input_table$Steady_Procedural_Speed_Lead + Vtgt_lead) + 2*wake_adaptation_input_table$Steady_Procedural_Speed_Lead*thousand_ft_gate) /
-      (wake_adaptation_input_table$Steady_Procedural_Speed_Lead - Vtgt_lead)
+    time_per_wake_cat$m2_lead[[i]] <- get_decel_dist(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
+                                                     time_per_wake_cat$time_lead_observed_alternate[[i]],
+                                                     thousand_ft_gate,
+                                                     wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                                     Vtgt_lead)
 
-    m2_follower <- ((wake_adaptation_input_table$Steady_Procedural_Speed_Follower*(time_follower_observed_alternate - thousand_ft_gate/Vtgt_foll) - wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower) *
-                      (wake_adaptation_input_table$Steady_Procedural_Speed_Follower + Vtgt_foll) + 2*wake_adaptation_input_table$Steady_Procedural_Speed_Follower*thousand_ft_gate) /
-      (wake_adaptation_input_table$Steady_Procedural_Speed_Follower - Vtgt_foll)
+    time_per_wake_cat$m2_foll[[i]] <- get_decel_dist(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
+                                                     time_per_wake_cat$time_foll_observed_alternate[[i]],
+                                                     thousand_ft_gate,
+                                                     wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                                     Vtgt_foll)
 
-    time_per_wake_cat$m2_lead[[i]] <- m2_leader
-    time_per_wake_cat$m2_foll[[i]] <- m2_follower
 
-    time_per_wake_cat$a_lead[[i]] <- (wake_adaptation_input_table$Steady_Procedural_Speed_Lead - Vtgt_lead)/(m2_leader - thousand_ft_gate)
-    time_per_wake_cat$a_foll[[i]] <- (wake_adaptation_input_table$Steady_Procedural_Speed_Follower - Vtgt_foll)/(m2_follower - thousand_ft_gate)
+    time_per_wake_cat$a_lead[[i]] <- get_decel(time_per_wake_cat$m2_lead[[i]],
+                                               thousand_ft_gate,
+                                               wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                               Vtgt_lead)
+
+    time_per_wake_cat$a_foll[[i]] <- get_decel(time_per_wake_cat$m2_foll[[i]],
+                                               thousand_ft_gate,
+                                               wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                               Vtgt_foll)
   }
 
   if (n1 < thousand_ft_gate) {
 
     time_per_wake_cat$a_lead[[i]] <- d
-    time_per_wake_cat$adjusted_Vtgt_lead[[i]] <- adjust_Vref(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead, thousand_ft_gate, n2, wake_adaptation_input_table$Steady_Procedural_Speed_Lead, time_leader_observed_alternate, vref_lead)
+    time_per_wake_cat$adjusted_Vtgt_lead[[i]] <- adjust_Vref(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
+                                                             thousand_ft_gate,
+                                                             n2,
+                                                             wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
+                                                             time_per_wake_cat$time_lead_observed_alternate[[i]],
+                                                             vref_lead)
+
     vref_lead <- time_per_wake_cat$adjusted_Vtgt_lead[[i]] - calc_landing_adjustment(0, reference_wind)
 
     time_per_wake_cat$a_foll[[i]] <- d
-    time_per_wake_cat$adjusted_Vtgt_foll[[i]] <- adjust_Vref(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower, thousand_ft_gate, n2, wake_adaptation_input_table$Steady_Procedural_Speed_Follower, time_follower_observed_alternate, vref_foll)
+    time_per_wake_cat$adjusted_Vtgt_foll[[i]] <- adjust_Vref(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
+                                                             thousand_ft_gate,
+                                                             n2,
+                                                             wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
+                                                             time_per_wake_cat$time_foll_observed_alternate[[i]],
+                                                             vref_foll)
+
     vref_foll <- time_per_wake_cat$adjusted_Vtgt_foll[[i]] - calc_landing_adjustment(0, reference_wind)
   }
 
@@ -1294,22 +1320,14 @@ if (use_weighted_average) {
 
   ifelse(use_Vref_Adjust == T, wake_adaptation <- wake_adaptation, wake_adaptation <- wake_adaptation_old)
 
-  wake_dbs_lookup <- sqlQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
+  wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
   setnames(wake_dbs_lookup, "Reference_Wake_Separation_Distance", "DBS_Distance")
-
-  wake_pairs_count <- sqlQuery(con, "
-  SELECT Leader_Wake, Follower_Wake, COUNT(Leader_Wake+'-'+Follower_Wake) AS Count FROM (
-  	SELECT Leader_Recat_Wake_Cat AS Leader_Wake, Follower_Recat_Wake_Cat AS Follower_Wake FROM tbl_All_Pair_Reference_Data
-  ) AS LMAO
-  GROUP BY Leader_Wake, Follower_Wake
-  ") %>% as.data.table()
 
   #Taking historical formatting
   wake_pairs <- wake_dbs_lookup
 
   #assigning the counts from GWCS script output
   wake_pairs$Count <- Wake_Pair_Counts$n
-  # wake_pairs$Count <- wake_pairs_count[match(paste(wake_pairs$Leader_WTC, wake_pairs$Follower_WTC), paste(Leader_Wake, Follower_Wake))]$Count %>% ifelse(is.na(.), 0, .)
 
   fwrite(wake_pairs, file.path(out_dir, paste0("DBS_Distance_Wake_Pairs_Count.csv")))
 
@@ -1354,8 +1372,8 @@ if (use_weighted_average) {
 } else {
 
   # Wake and ROT spacing distance from database
-  rot_spacing_dist <- sqlQuery(con, "EXEC usp_GI_Get_Reference_ROT_Spacing_Dist_Data") %>% as.data.table()
-  wake_dbs_lookup <- sqlQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
+  rot_spacing_dist <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_ROT_Spacing_Dist_Data") %>% as.data.table()
+  wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
   spacings_joined <- merge(rot_spacing_dist, wake_dbs_lookup, by = c("Leader_WTC", "Follower_WTC"), all.x = T)
   spacings_joined_2 <- spacings_joined[!is.na(Reference_ROT_Spacing_Distance) & !is.na(Reference_Wake_Separation_Distance)][order(Runway, Leader_WTC, Follower_WTC)]
 
@@ -1434,9 +1452,6 @@ if (use_weighted_average) {
       quantile(dat_density, 0.5))
     pcile <- quantile(dat_density, 0.01)
   }
-
-  # Remove vref outliers
-  vref <- vref[!(vref %in% boxplot(vref, plot = F)$out)]
 
   png(filename = file.path(out_dir, "Vref Distribution Overall.png"), width = 900, height = 600)
   hist(

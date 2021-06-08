@@ -371,9 +371,6 @@ GenerateProxyWindEffect <- function(Data, Radar, Algo, LorFIn, LorFOut, MaxInsid
 
 GetForecastDistances <- function(Data, Algo, LorFOut, Delivery_Point){
   
-  ### NOTE: CCT SHOULD BE IN WAD VIEW AND NOT HARDCODED HERE.
-  CCT <- 10
-  
   ## Not generalised for now - just in case method changes. Assumes LorFOut is Follower.
   if (Algo == "ORD" & LorFOut == "Follower"){
     Data <- Data %>%
@@ -527,4 +524,38 @@ QuickProxyTablePlot <- function(Data, Algo, ReturnWhat, LorFOut){
   if (ReturnWhat == "Plot"){return(Plot)} else {return(Table)}
   
 }
+
+
+get_time_of_flight <- function(end_initial_decel, n2, n1, steady_procedural_speed, Vtgt){
+  
+  t <- (end_initial_decel - n2)/steady_procedural_speed +
+    2*(n2 - n1)/(steady_procedural_speed + Vtgt) +
+    n1/Vtgt
+  
+  return(t)
+  
+}
+
+
+get_decel_dist <- function(end_initial_decel, t, thou, steady_procedural_speed, Vtgt){
+  
+  #thou = thousand_ft_gate
+  m2 <- ((steady_procedural_speed*(t - thou/Vtgt) - end_initial_decel) *
+           (steady_procedural_speed + Vtgt) + 
+           2 * steady_procedural_speed * thou) / 
+           (steady_procedural_speed - Vtgt)
+  
+  return(m2)
+  
+}
+
+
+get_decel <- function(m2, thou, steady_procedural_speed, Vtgt){
+  
+  d <- (steady_procedural_speed - Vtgt)/(m2 - thou)  
+  
+  return(d)
+  
+}
+
 
