@@ -129,6 +129,11 @@ Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORD_OP, ORD_AC, ORD_W
   return(LP)
 }
 
+
+
+
+
+
 # Function to Get Correct Compression Distances (LST/CCT) For ORD Observation. This
 # means ORD Aircraft Profile can be run in correct order for Prediction.
 Get_Compression_Distances <- function(LP, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, Distance){
@@ -152,6 +157,20 @@ Get_Compression_Distances <- function(LP, ORD_Operator, ORD_Aircraft, ORD_Wake, 
   if (Distance == "CCT"){LP <- select(LP, Landing_Pair_ID, Leader_Flight_Plan_ID, Compression_Commencement_Threshold)}
 
   return(LP)
+}
+
+
+
+Get_Compression_Distances <- function(LP, Precedences, ORD_Levels, ORD_Profile_Selection, Distance){
+  
+  if (Distance == "LST"){Dist_Var <- "Local_Stabilisation_Distance"}
+  if (Distance == "CCT"){Dist_Var <- "Compression_Commencement_Threshold"}
+  
+  LP <- Join_ORD_Adaptation(LP, ORD_Profile_Selection, ORDBuffers = F, Precedences, ORD_Levels, LorF = "Leader", Use_EFDD = F, LegacyorRecat = "Recat") %>%
+    select(Landing_Pair_ID, !!sym(Dist_Var))
+  
+  return(LP)
+  
 }
 
 
@@ -838,23 +857,8 @@ Get_Forecast_Wind_Effect_At_DME <- function(Segments, Aircraft_Profile, ID_Var, 
 
 Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD){
 
-  #Ref_Data <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation")
-  #Level <- "Aircraft"
-  #LorF <- "Follower"
-  #ORDBuffers <- T
-
-  # TEMP: Harcoded Operation Choice. Update ASAP
-  Operation <- "IA PWS"
-
   # Change "Leader" to "Lead" For Variable Compatibility
   if(LorF == "Leader"){LorF <- "Lead"}
-
-  # Define Variable Unique to Adaptation Level
-  if(Level == "DBS"){Unique_Var <- "DBS_Distance"}
-  if(Level == "Wake"){Unique_Var <- "Wake_Cat"}
-  if(Level == "Aircraft"){Unique_Var <- "Aircraft_Type"}
-  if(Level == "Operator"){Unique_Var <- "Aircraft_Type"  ## Added for PWS
-  Unique_Var2 <- "Operator"}
 
   # Get Other Variable Names
   LSS_Type_Var <- paste0("Landing_Stabilisation_Speed_Type_", LorF)
@@ -878,16 +882,11 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
   # -------------------------------------------------------------------------------------------------- #
 
   # Set by default inclusion of CCT and End Final Decel Distance to False
-  Use_CCT <- F
-
-  # If operation ios IA PWS include both these parameters (subject to change)
-  if (Use_EFDD){
-    Use_CCT <- T
-  }
+  Use_CCT <- T
 
   # Find the Unique Variable names for the Aircraft Profile and names from Adaptation
   if (Level == "DBS"){Unique_Vars <- c("DBS_Distance")}
-  if (Level %in% c("Wake", "Adv_Wake")){Unique_Vars <- c("Wake_Cat")}
+  if (Level %in% c("Wake", "14Cat", "20Cat")){Unique_Vars <- c("Wake_Cat")}
   if (Level == "Aircraft"){Unique_Vars <- c("Aircraft_Type")}
   if (Level == "Operator"){Unique_Vars <- c("Aircraft_Type", "Operator")}
 
@@ -926,7 +925,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
   # Lay out the Parameter names to add buffers to (Originals), the Output buffer names (1) and the Input buffer names (2)
   Buffer_Originals <- c("VRef", "Steady_Procedural_Speed", "Initial_Procedural_Speed")
   Buffer_Vars_1 <- c("VRef_Buffer", "SPS_Buffer", "IPS_Buffer")
-  Buffer_Vars_2 <- c(paste0("Min_Safe_Landing_Speed_", LorF, "_Buffer"), paste0("Steady_Procedural_Speed_", LorF, "_Buffer"), paste0("Initial_Procedural_Speed_", LorF, "_Buffer"))
+  Buffer_Vars_2 <- c(paste0("Min_Safe_Landing_Speed_Buffer", LorF), paste0("Steady_Procedural_Speed_Buffer", LorF), paste0("Initial_Procedural_Speed_Buffer", LorF))
 
   # If The input buffer parameter exists, add the input and corresponding outp[ut parameter to final selection
   if (ORDBuffers){
@@ -962,50 +961,155 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
 
 }
 
-Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Runway, Use_EFDD, Use_ORD_Operator){
+# Function to join the correct ORD adaptation
+Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat){
+  
+  # If ORD_Profile_Selection is TBS_Table, skip the Precedence checks and just join 
+  if (ORD_Profile_Selection == "TBS_Table" & LegacyorRecat == "Recat"){
+    Precedences = c("DBS")
+    ORD_Levels <- c(T)
+  }
+  
+  # Create the Precedence Table
+  Precedence_Table <- data.frame(Scheme = as.character(Precedences), Switch = ORD_Levels) %>%
+    mutate(ID = row_number()) %>% select(ID, everything())
+  
+  # Initialise Copy of LP for the "remmaining" unmatched data.
+  LPRem <- LP
+  
+  # Initialise a counter: counts how many tables have been matched.
+  Counter <- 0
+  
+  # Unlike SASAI, we are joining multiple parameters. These are all required to be non-NA thugh so we can check just one.
+  Param_Name <- "Steady_Procedural_Speed"
+  
+  # Loop across all level precedences.
+  for (i in 1:nrow(Precedence_Table)){
+
+    
+    # Get the parameter name, the "level" and its activity status.
+    Constr <- filter(Precedence_Table, ID == i)
+    Level = Constr$Scheme
+    Active = Constr$Switch
+    
+    # If this level is to be considered...
+    if (Active){
+      
+      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
+      message(paste0("Attempting to Join ORD type ", Level, " level Adaptation..."))
+      Table_Name <- Get_Reference_ORD_Parameter_Table_Name(Level, LegacyorRecat, ORD_Profile_Selection)
+      
+      # If the desired table exists in the database, load table and increment counter.
+      if (dbExistsTable(con, Table_Name)){
+        message(paste0("Joining ORD type ", Level, " level ", LegacyorRecat, " adaptation."))
+        Counter <- Counter + 1
+        Adaptation <- Load_Adaptation_Table(con, Table_Name)
+        
+        # Find/isolate the relevant columns from the data and the adaptation.
+        Join_Names_Adaptation <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Ref", LorF)
+        Join_Names_LP <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Data", LorF)
+        Adaptation <- Select_ORD_LF_Adaptation(Adaptation, Level, LorF, ORDBuffers, Use_EFDD)
+        Select_Names_Adaptation <- setdiff(names(Adaptation), Join_Names_Adaptation)
+        
+        # If Parameters already joined to non usccessful data, remove and rejoin based on new level.
+        if (Param_Name %in% names(LPRem)){
+          LPRem <- LPRem %>% select(-all_of(Select_Names_Adaptation))
+        }
+        
+        # Join on the adaptation and split into "successful" and "not successful" joins (non-NA and NA)
+        LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+        LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
+        LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
+        
+        # Bind the data together. If first valid table, data must be initalised.
+        if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
+        
+        # If Adaptation table doesn't exist: display message.
+      } else {message(paste0("Cannot join ORD type ", Level, " level ", LegacyorRecat, " adaptation. The table ", Table_Name, " does not exist."))}
+      
+      message("---------------------------------------")
+    }
+    
+    # If the final "level" has been checked and at least one table was valid, bind on the final "not successful" data.
+    if (i == nrow(Precedence_Table) & Counter != 0){LP <- rbind(LP, LPRem)}
+    
+  }
+  
+  # If no adaptation values were valid and/or no "level" switches were active, add required parameter(s) as NA.
+  if (Counter == 0){
+    message(paste0("No Valid ORD type ", LegacyorRecat, " adaptation available. Defaulting values to NA."))
+    message("---------------------------------------")
+  #   for (j in 1:length(Select_Names_Adaptation)){
+  #     LP <- LP %>% mutate(!!sym(Select_Names_Adaptation[j]) := NA)}
+  }
+   
+  return(LP)
+}
+
+
+Get_Reference_ORD_Parameter_Table_Name <- function(Level, LegacyorRecat, ORD_Profile_Selection){
+  
+  if (Level == "Operator"){Middle <- "AC_Operator"} else {Middle <- Level}
+  String <- paste0("tbl_ORD_", Middle, "_Adaptation")
+  if (ORD_Profile_Selection == "TBS_Table"){String <- "tbl_ORD_DBS_Adaptation"}
+  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
+  message(paste0("Returning Table name ", String))
+  
+  return(String)
+  
+}
+
+Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, LegacyorRecat, ReforData, LorF){
+  
+  if (ReforData == "Ref"){
+    if (ORD_Profile_Selection == "TBS_Table"){return(c("DBS_Distance"))}
+    else if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
+    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
+    else {return(c("Wake_Cat"))}
+  } else {
+    if (ORD_Profile_Selection == "TBS_Table"){return(c("DBS_All_Sep_Distance"))}
+    else if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
+    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
+    else {return(c("Wake_Cat"))}
+    # if (ORD_Profile_Selection == "TBS_Table"){return(c(paste0(LegacyorRecat, "_DBS_All_Sep_Distance")))}
+    # else if (Level == "Operator"){return(c(paste0(LorF, "_Aircraft_Type"), paste0(LorF, "_Operator")))}
+    # else if (Level == "Aircraft"){return(c(paste0(LorF, "_Aircraft_Type")))}
+    # else if (Level == "14Cat"){return(c(paste0(LorF, "_", LegacyorRecat, "_14Cat_Wake_Cat")))}
+    # else if (Level == "20Cat"){return(c(paste0(LorF, "_", LegacyorRecat, "_20Cat_Wake_Cat")))}
+    # else {return(c(paste0(LorF, "_", LegacyorRecat, "_Wake_Cat")))}
+  }
+  
+}
+
+Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, LegacyorRecat){
 
   # Get Variable Names
   ID_Var <- LPID_Var
   FPID <- paste0(LorF, "_Flight_Plan_ID") # Not Currently Used - Need to Add to Verification
   AC_Type_Var <- paste0(LorF, "_Aircraft_Type")
   Operator_Var <- paste0(LorF, "_Operator") ## Added for PWS
-  Wake_Var <- paste0(LorF, "_Recat_Wake_Cat")
+  Wake_Var <- paste0(LorF, "_", LegacyorRecat, "_Wake_Cat")
   RW_Var <- paste0(LorF, "_Landing_Runway")
   TPR_Var <- substr(LorF, 1, 1)
   SW_Var <- "Forecast_AGI_Surface_Headwind"
-  if(LPID_Var == "ORD_Tool_Calculation_ID"){SW_Var <- paste0(LorF, "_", SW_Var)}
-
-  # TEMP: Hardcoded Operation
-  Operation <- "IA PWS"
-  Operation <- ifelse(Operation == "IA PWS" & ORD_Profile_Selection == "Operator", "IA PWS 2", Operation)
-
-  # Select Relevant Variables
-  if (!Use_ORD_Operator){
-    Aircraft_Profile <- select(Landing_Pair,
-                               !!sym(ID_Var),
-                               "Aircraft_Type" := !!sym(AC_Type_Var),
-                               "Wake_Cat" := !!sym(Wake_Var),
-                               "DBS_All_Sep_Distance",
-                               "Surface_Headwind" := !!sym(SW_Var),
-                               "Landing_Runway" := !!sym(RW_Var))
-  }
-
-  if (Use_ORD_Operator){
-    Aircraft_Profile <- select(Landing_Pair,
-                               !!sym(ID_Var),
-                               "Aircraft_Type" := !!sym(AC_Type_Var),
-                               "Operator" := !!sym(Operator_Var),
-                               "Wake_Cat" := !!sym(Wake_Var),
-                               "DBS_All_Sep_Distance",
-                               "Surface_Headwind" := !!sym(SW_Var),
-                               "Landing_Runway" := !!sym(RW_Var))
-  }
+  if(LPID_Var != Get_LP_Primary_Key("Validation")){SW_Var <- paste0(LorF, "_", SW_Var)}
+  
+  # Base selection of Aircraft Profile variables before joining ORD Adaptation
+  Aircraft_Profile <- select(Landing_Pair,
+                             !!sym(ID_Var),
+                             "Aircraft_Type" := !!sym(AC_Type_Var),
+                             "Operator" := !!sym(Operator_Var),
+                             "Wake_Cat" := !!sym(Wake_Var),
+                             "DBS_All_Sep_Distance" := !!sym(paste0(LegacyorRecat, "_DBS_All_Sep_Distance")),
+                             "Surface_Headwind" := !!sym(SW_Var),
+                             "Landing_Runway" := !!sym(RW_Var))
 
   # Add "This_Pair_Role" Column
   Aircraft_Profile <- mutate(Aircraft_Profile, This_Pair_Role = TPR_Var)
 
   # Join on the ORD Adaptation using Join_ORD_Adaptation
-  Aircraft_Profile <- Join_ORD_Adaptation(Aircraft_Profile, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS)
+  #Aircraft_Profile <- Join_ORD_Adaptation(Aircraft_Profile, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS)
+  Aircraft_Profile <- Join_ORD_Adaptation(Aircraft_Profile, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat)
 
   # Get a Reduced ORD Runway Table
   ORD_Runway_Reduced <- select(ORD_Runway, Runway_Name, Thousand_Ft_Gate, Gust_Adjustment)
@@ -2398,24 +2502,24 @@ Get_Forecast_Compression <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix,
 
 }
 
-Get_Prediction_Error_Variables <- function(Landing_Pair, Prefix){
+Get_Prediction_Error_Variables <- function(Landing_Pair, Prefix, LegacyorRecat){
 
   # Define Variables
-  Pred_Comp_Var <- paste0("Forecast_", Prefix, "_Compression")
+  Pred_Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
   Obs_Comp_Var <- paste0("Observed_", Prefix, "_Compression")
-  Comp_Error_Var <- paste0(Prefix, "_Compression_Error")
-  Pred_Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
-  Pred_Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
-  Pred_Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
-  Pred_Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  Comp_Error_Var <- paste0(LegacyorRecat, "_", Prefix, "_Compression_Error")
+  Pred_Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
+  Pred_Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
+  Pred_Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
+  Pred_Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
   Obs_Lead_Spd_Var <- paste0("Observed_Leader_", Prefix, "_IAS")
   Obs_Foll_Spd_Var <- paste0("Observed_Follower_", Prefix, "_IAS")
   Obs_Lead_WE_Var <- paste0("Observed_Leader_", Prefix, "_Wind_Effect")
   Obs_Foll_WE_Var <- paste0("Observed_Follower_", Prefix, "_Wind_Effect")
-  Lead_Spd_Error_Var <- paste0("Forecast_Leader_", Prefix, "_IAS_Error")
-  Foll_Spd_Error_Var <- paste0("Forecast_Follower_", Prefix, "_IAS_Error")
-  Lead_WE_Error_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect_Error")
-  Foll_WE_Error_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect_Error")
+  Lead_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS_Error")
+  Foll_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS_Error")
+  Lead_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect_Error")
+  Foll_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect_Error")
 
   # Mutate Variables
   Landing_Pair <- mutate(Landing_Pair,
@@ -2653,7 +2757,7 @@ Get_LP_Primary_Key <- function(Database_Type){
 
 # Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles
 # With Joined values for Compression Start and End.
-Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var, Metric_Type){
+Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var, Metric_Type, LegacyorRecat){
 
   # ------------------------ #
   ### --- Setup
@@ -2671,6 +2775,16 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
   Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
   Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  
+  # New Variable Names
+  Foll_Flying_Time_Var_LR <- paste0(LegacyorRecat, "_", Foll_Flying_Time_Var)
+  Lead_Flying_Time_Var_LR <- paste0(LegacyorRecat, "_", Lead_Flying_Time_Var)
+  Foll_Flying_Dist_Var_LR <- paste0(LegacyorRecat, "_", Foll_Flying_Dist_Var)
+  Lead_Flying_Dist_Var_LR <- paste0(LegacyorRecat, "_", Lead_Flying_Dist_Var)
+  Lead_Spd_Var_LR <- paste0(LegacyorRecat, "_", Lead_Spd_Var)
+  Lead_WE_Var_LR <- paste0(LegacyorRecat, "_", Lead_WE_Var)
+  Foll_Spd_Var_LR <- paste0(LegacyorRecat, "_", Foll_Spd_Var)
+  Foll_WE_Var_LR <- paste0(LegacyorRecat, "_", Foll_WE_Var)
 
   # ------------------------ #
   ### --- Processing
@@ -2689,10 +2803,10 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   # Select relevant fields from Leader Stats
   Leader_Stats <- select(Leader_Stats,
                          !!sym(LPID_Var),
-                         !!sym(Lead_Flying_Dist_Var),
-                         !!sym(Lead_Flying_Time_Var),
-                         !!sym(Lead_Spd_Var),
-                         !!sym(Lead_WE_Var))
+                         !!sym(Lead_Flying_Dist_Var_LR) := !!sym(Lead_Flying_Dist_Var),
+                         !!sym(Lead_Flying_Time_Var_LR) := !!sym(Lead_Flying_Time_Var),
+                         !!sym(Lead_Spd_Var_LR) := !!sym(Lead_Spd_Var),
+                         !!sym(Lead_WE_Var_LR) := !!sym(Lead_WE_Var))
 
   # Join the relevant Leader Stats to Landing Pair
   Landing_Pair <- left_join(Landing_Pair, Leader_Stats, by = setNames(LPID_Var, LPID_Var))
@@ -2701,16 +2815,16 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
   Follower_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Follower(GS_Profile_Follower, Landing_Pair, LPID_Var,
                                                                        Delivery_Var = Comp_End_Var,
                                                                        Sep_Dist_Var,
-                                                                       Target_Time_Var = Lead_Flying_Time_Var,
+                                                                       Target_Time_Var = Lead_Flying_Time_Var_LR,
                                                                        Prefix)
 
   # Select the relevant fields from Follower stats.
   Follower_Stats <- select(Follower_Stats,
                            !!sym(LPID_Var),
-                           !!sym(Foll_Flying_Dist_Var),
-                           !!sym(Foll_Flying_Time_Var),
-                           !!sym(Foll_Spd_Var),
-                           !!sym(Foll_WE_Var))
+                           !!sym(Foll_Flying_Dist_Var_LR) := !!sym(Foll_Flying_Dist_Var),
+                           !!sym(Foll_Flying_Time_Var_LR) := !!sym(Foll_Flying_Time_Var),
+                           !!sym(Foll_Spd_Var_LR) := !!sym(Foll_Spd_Var),
+                           !!sym(Foll_WE_Var_LR) := !!sym(Foll_WE_Var))
 
   # ------------------------ #
   ### --- Results & Output
@@ -2721,14 +2835,14 @@ Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Pref
 
   #TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
   Landing_Pair <- mutate(Landing_Pair,
-                      Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var) - !!sym(Foll_Flying_Time_Var) > 0.0001, 1, 0),
-                      !!sym(Foll_Flying_Dist_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var)),
-                      !!sym(Foll_Spd_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var)),
-                      !!sym(Foll_WE_Var) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var))) %>%
+                      Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var_LR) - !!sym(Foll_Flying_Time_Var_LR) > 0.0001, 1, 0),
+                      !!sym(Foll_Flying_Dist_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var_LR)),
+                      !!sym(Foll_Spd_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var_LR)),
+                      !!sym(Foll_WE_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var_LR))) %>%
     select(-Temp_Flag)
 
   # Calculate Compression
-  Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix)
+  Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix, LegacyorRecat)
 
   # Return results
   return(Landing_Pair)
@@ -2923,18 +3037,18 @@ Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile_Follow
 }
 
 
-Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix){
+Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix, LegacyorRecat){
 
   # Get Output Variable name
-  Comp_Var <- paste0("Forecast_", Prefix, "_Compression")
+  Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
 
   # Get input variable names
-  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
-  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
-  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
-  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
-  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
-  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  Foll_Flying_Dist_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Flying_Distance")
+  Lead_Flying_Dist_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Flying_Distance")
+  Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
+  Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
 
   # Type 1: Simple Predicted Distance Difference
   if (Metric_Type == 1){Landing_Pair <- mutate(Landing_Pair, !!sym(Comp_Var) := !!sym(Foll_Flying_Dist_Var) - !!sym(Lead_Flying_Dist_Var))}
@@ -2949,9 +3063,7 @@ Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix){
 }
 
 
-
-
-Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type){
+Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type, TBSCBuffers, LegacyorRecat){
   
   # Create the Precedence Table
   Precedence_Table <- data.frame(Scheme = Precedences, Switch = Values) %>%
@@ -2959,52 +3071,88 @@ Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP
   
   # Initialise Copy of LP for the "remmaining" unmatched data.
   LPRem <- LP
+  
+  # Initialise a counter: counts how many tables have been matched.
   Counter <- 0
   
+  # Loop across all level precedences.
   for (i in 1:nrow(Precedence_Table)){
     
+    # Get the parameter name, the "level" and its activity status.
     Param_Name <- Get_Reference_SASAI_Parameter_Name(Use, Param_Type)
     Constr <- filter(Precedence_Table, ID == i)
     Level = Constr$Scheme
     Active = Constr$Switch
     
+    # If this level is to be considered...
     if (Active){
-      Counter <- Counter + 1
-      message(paste0("Attempting to Join ", Use, " ", Level, " ", Param_Type, " Adaptation"))
       
-      Adaptation <- Load_Adaptation_Table(con, Get_Reference_SASAI_Parameter_Table_Name(Use, Level, Param_Type))
-      Join_Names_Adaptation <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Ref")
-      Join_Names_LP <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Data")
-      Select_Names_Adaptation <- append(Join_Names_Adaptation, Param_Name)
-      Adaptation <- select(Adaptation, all_of(Select_Names_Adaptation))
+      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
+      message(paste0("Attempting to Join ", Use, " type ", Level, " level ", Param_Type, " Adaptation..."))
+      Table_Name <- Get_Reference_SASAI_Parameter_Table_Name(Use, Level, Param_Type, LegacyorRecat)
       
-      LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
-      LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
-      LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
-      if (i != nrow(Precedence_Table)){LPRem <- LPRem %>% select(-!!sym(Param_Name))}
+      # If the desired table exists in the database, load table and increment counter.
+      if (dbExistsTable(con, Table_Name)){
+        message(paste0("Joining ", Use, " type ", Level, " level ", Param_Type, " ", LegacyorRecat, " adaptation."))
+        Counter <- Counter + 1
+        Adaptation <- Load_Adaptation_Table(con, Table_Name)
+        
+        # If finding a time parameter, apply the time buffer if TBSCBuffers is active (Add the buffer to original value and select original)
+        if (TBSCBuffers & Param_Type == "Time" & "Buffer" %in% names(Adaptation)){Adaptation <- Adaptation %>% mutate(!!sym(Param_Name) := !!sym(Param_Name) + Buffer)}
+        
+        # Find/isolate the relevant columns from the data and the adaptation.
+        Join_Names_Adaptation <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Ref", LegacyorRecat)
+        Join_Names_LP <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Data", LegacyorRecat)
+        Select_Names_Adaptation <- append(Join_Names_Adaptation, Param_Name)
+        Adaptation <- select(Adaptation, all_of(Select_Names_Adaptation))
+        
+        # If the column already exists in the "not successful" data, remove it to avoid column join duplicates.
+        if (Param_Name %in% names(LPRem)){LPRem <- LPRem %>% select(-!!sym(Param_Name))}
+        
+        # Join on the adaptation and split into "successful" and "not successful" joins (non-NA and NA)
+        LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+        LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
+        LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
+        
+        # Bind the data together. If first valid table, data must be initalised.
+        if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
+        
+        # If Adaptation table doesn't exist: display message.
+      } else {message(paste0("Cannot join ", Use, " type ", Level, " level ", Param_Type, " ", LegacyorRecat, " adaptation. The table ", Table_Name, " does not exist."))}
       
-      if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
-      
+      message("---------------------------------------")
     }
     
-    if (i == nrow(Precedence_Table)){LP <- rbind(LP, LPRem)}
+    # If the final "level" has been checked and at least one table was valid, bind on the final "not successful" data.
+    if (i == nrow(Precedence_Table) & Counter != 0){LP <- rbind(LP, LPRem)}
     
   }
   
+  # If no adaptation values were valid and/or no "level" switches were active, add required parameter as NA.
+  if (Counter == 0){
+    message(paste0("No Valid ", Use, " type ", Param_Type, " ", LegacyorRecat, " adaptation available. Defaulting values to NA."))
+    message("---------------------------------------")
+    LP <- LP %>% mutate(!!sym(Param_Name) := NA)}
+  
+  # Rename the parameter in accordance with the tool requirements. Indicates Recat or Legacy.
   Param_Name_Old <- Param_Name
   if (Param_Type == "Speed"){Param_Type <- "IAS"}
   if (Use == "ROT"){Use <- "ROT_Spacing"} else if (Use == "Wake"){Use <- "Wake_Separation"}
-  Param_Name <- paste0("Reference_Recat_", Use, "_", Param_Type)
+  Param_Name <- paste0("Reference_", LegacyorRecat, "_", Use, "_", Param_Type)
   LP <- rename(LP, !!sym(Param_Name) := !!sym(Param_Name_Old))
   
+  # Temp fix: If finding ROT value where leader/follower have different runways, set value to NA. ## NOTE: Will need to incorporate Runway Pair Rule!
   LP <- arrange(LP, !!sym(LP_Primary_Key)) %>%
     mutate(!!sym(Param_Name) := ifelse(Use == "ROT_Spacing" & Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Param_Name))) ## Remove ROT Constraints for not-in-trail runways.
+  
+  # Not started: If Runways different - only keep wake separation parameters if a runway pair and Wake Dependent.
+  
   
   return(LP)
   
 }
 
-Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type){
+Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, LegacyorRecat){
   
   String <- "tbl"
   
@@ -3029,10 +3177,12 @@ Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type){
   if (Level %in% c("14Cat", "20Cat")){S2 <- paste0(Level, "_")}
   
   if (Use == "Wake"){
-    if (Level == "Wake"){Middle <- "Recat_Separation"} else {Middle <- "Wake_Separation"}
+    if (Level == "Wake" & LegacyorRecat == "Recat"){Middle <- "Recat_Separation"} else {Middle <- "Wake_Separation"}
   }
   
   if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  
+  if (LegacyorRecat == "Legacy"){Suffix <- paste0(Suffix, "_Legacy")}
   
   String <- paste0(String, "_", Prefix, "_", S2, Middle, "_", Suffix)
   
@@ -3065,7 +3215,7 @@ Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
   
 }
 
-Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData){
+Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData, LegacyorRecat){
   
   Vars <- c()
   
@@ -3076,7 +3226,7 @@ Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData){
     if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
   } else if (ReforData == "Data"){
     if (Use == "ROT"){Vars <- append(Vars, "Leader_Landing_Runway")} # Use Leader's: This won't be done for Not-In-Trail Pairs. (Separate procedure!)
-    if (Level == "Wake"){Vars <- append(Vars, c("Leader_Recat_Wake_Cat", "Follower_Recat_Wake_Cat"))}
+    if (Level == "Wake"){Vars <- append(Vars, c(paste0("Leader_", LegacyorRecat, "_Wake_Cat"), paste0("Follower_", LegacyorRecat, "_Wake_Cat")))}
     if (Level == "20Cat"){Vars <- append(Vars, c("Leader_20Cat_Wake_Cat", "Follower_20Cat_Wake_Cat"))}
     if (Level == "14Cat"){Vars <- append(Vars, c("Leader_14Cat_Wake_Cat", "Follower_14Cat_Wake_Cat"))}
     if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}

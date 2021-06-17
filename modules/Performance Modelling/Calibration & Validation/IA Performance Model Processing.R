@@ -107,11 +107,14 @@ for (i in 1:nrow(Scenarios)){
 Plot_Dir <- file.path(Out_Dir, "Plots")
 Create_Directory(Plot_Dir)
 
+# Get Low wind
+Performance_Model_WaPT <- Performance_Model
 
+Plot_Low_Wind_Only <- T
+if (Plot_Low_Wind_Only){Performance_Model <- filter(Performance_Model, Low_Wind_Flag == 1)}
 
-
-
-
+# Filter out Boosted Pairs for Comparison
+Unbolstered_PM <- filter(Performance_Model, Bolster_Flag_Main == 0)
 
 ## Loop across all Wake Distances
 for (i in 1:nrow(Recat_Wake_Time)){
@@ -134,7 +137,7 @@ for (i in 1:nrow(Recat_Wake_Time)){
    Plot1 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
    Plot2 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_DBS", "Recat", LeaderWTC, FollowerWTC)
    Plot3 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_TBS_US05", "Recat", LeaderWTC, FollowerWTC)
-   Plot4 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_0DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
+   #Plot4 <- PlotTimeSeparationAgainstReference(Performance_Model, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_0DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
    
    png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v DBS 1DME.png")))
    grid.arrange(Plot1, Plot2)
@@ -143,6 +146,14 @@ for (i in 1:nrow(Recat_Wake_Time)){
    png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS v US TBS 1DME.png")))
    grid.arrange(Plot1, Plot3)
    dev.off()
+   
+   # Boosted v Unboosted
+   Plot4 <- PlotTimeSeparationAgainstReference(Unbolstered_PM, Recat_Wake_Time, Recat_Wake_Dist, "Perfect_1DME_Wake_Separation_Time_TBS", "Recat", LeaderWTC, FollowerWTC)
+   png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, " TBS Boosted v Non 1DME.png")))
+   grid.arrange(Plot4, Plot1)
+   dev.off()
+   
+   
 # 
 #    png(file.path(Path, paste0(LeaderWTC, "-", FollowerWTC, "  TBS 1DME v 0DME.png")))
 #    grid.arrange(Plot1, Plot4)
@@ -188,7 +199,7 @@ WaPT_Columns <- append(WaPT_Columns, More_WaPT_Columns)
 WaPT_Columns <- append(WaPT_Columns, unique(Separation_Distance)) %>%
   append(unique(Separation_Time))
 
-Performance_Model_WaPT <- select(Performance_Model, all_of(WaPT_Columns))
+Performance_Model_WaPT <- select(Performance_Model_WaPT, all_of(WaPT_Columns))
 fwrite(Performance_Model_WaPT, file.path(Out_Dir, "Performance_Model_WaPT.csv"))
 
 ### BELOW IS ORIGINAL WAPT OUTPUT FOR REFERENCE

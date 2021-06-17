@@ -64,10 +64,10 @@ Generate_ORD_Observation <- function(con, LP_Primary_Key, Landing_Pair, Radar, S
   # ----------------------------------------------- #
 
   # ORD Adaptation
-  ORD_Operator <- NA ## Added for PWS
+  # ORD_Operator <- NA ## Added for PWS
   ORD_Aircraft <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation")
-  ORD_Wake <- Load_Adaptation_Table(con, "tbl_ORD_Wake_Adaptation")
-  ORD_DBS <- Load_Adaptation_Table(con, "tbl_ORD_DBS_Adaptation")
+  # ORD_Wake <- Load_Adaptation_Table(con, "tbl_ORD_Wake_Adaptation")
+  # ORD_DBS <- Load_Adaptation_Table(con, "tbl_ORD_DBS_Adaptation")
 
   # ORD Profile Selection Type.
   ORD_Profile_Selection <- as.character(ADAP_Config$ORD_Profile_Selection)
@@ -95,14 +95,19 @@ Generate_ORD_Observation <- function(con, LP_Primary_Key, Landing_Pair, Radar, S
   # ----------------------------------------------- #
 
   # Get the Local Stabilisation Thresholds
-  LSTs <- Get_Compression_Distances(Landing_Pair, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, "LST") %>%
-    select(-Leader_Flight_Plan_ID)
+  
+  # TEMP: Add DBS_All_Sep_Distance as RECAT
+  Landing_Pair <- mutate(Landing_Pair, DBS_All_Sep_Distance = Recat_DBS_All_Sep_Distance)
+  # LSTs <- Get_Compression_Distances(Landing_Pair, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, "LST") %>%
+  #   select(-Leader_Flight_Plan_ID)
+  # 
+  # LSTs <- Get_Compression_Distances(Landing_Pair, Precedences, ORD_Levels, ORD_Profile_Selection, Distance)
+  #Landing_Pair <- left_join(Landing_Pair, LSTs, by = c("Landing_Pair_ID"))
 
   # Temporary Hardcode to match Validation Outputs (Will Remove)
-  #LSTs <- mutate(LSTs, Local_Stabilisation_Distance = 4 * NM_to_m)
+  Landing_Pair <- mutate(Landing_Pair, Local_Stabilisation_Distance = 4 * NM_to_m)
 
   # Join on the CCTs and the LSTs
-  Landing_Pair <- left_join(Landing_Pair, LSTs, by = c("Landing_Pair_ID"))
   Landing_Pair <- mutate(Landing_Pair, Delivery_Distance = New_Delivery)
 
 
@@ -233,7 +238,10 @@ Generate_ORD_Observation <- function(con, LP_Primary_Key, Landing_Pair, Radar, S
   Landing_Pair <- Get_Observed_Compression_Values(Landing_Pair, ORDorWAD = "ORD")
 
   # TEMP: Delivered FAF Separation
-  Landing_Pair <- mutate(Landing_Pair, Delivered_FAF_Separation = NA)
+  Landing_Pair <- mutate(Landing_Pair,
+                         Delivered_Threshold_Separation = Follower_ORD_Stop_RTT - Leader_Delivery_RTT,
+                         Delivered_FAF_Separation = Follower_ORD_Start_RTT - Leader_ORD_FAF_RTT
+                         )
 
   # Get the ORD Prediction Filter Flags
   Landing_Pair <- Create_Filter_Flag_Prediction(Landing_Pair, "ORD")
