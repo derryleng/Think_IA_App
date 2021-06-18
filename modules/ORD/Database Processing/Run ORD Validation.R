@@ -88,12 +88,13 @@ source(file.path(DB_Module_Dir, "Setup IA Performance Model.R"), local= T) # Set
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Configuration (## TODO: SETUP FOR SHINY)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-Testing <- F
 Database <- "PWS_Prototyping"
 IP <- "192.168.1.23"
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-PROC_Period <- c("Day", "Month", "All")[3]
-PROC_Criteria <- c("01/06/2019", "06/2019", NA)[3]
+Testing <- T
+PROC <- 1
+PROC_Period <- c("Day", "Month", "All")[PROC]
+PROC_Criteria <- c("01/06/2019", "06/2019", NA)[PROC]
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 con <- Get_DBI_Connection(IP, Database)
 LP_Primary_Key <- Get_LP_Primary_Key("Validation")
@@ -104,28 +105,39 @@ LP_Primary_Key <- Get_LP_Primary_Key("Validation")
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 ADAP_Config <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
 WAD_Enabled <- as.logical(ADAP_Config$Include_Tailwinds_Aloft)
+Combined_ORD <- F
 
 # Get Seg Size
 GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
 Seg_Size <- GWCS_Adaptation$DME_Seg_Size
 
 # PWS "Level" Options (Currently only ORD Operator used!)
-Full_Level_Precedence <- c("Operator", "Aircraft", "Wake20", "Wake14", "Wake")
+Full_Level_Precedence <- c("Operator", "Aircraft", "20Cat", "14Cat", "Wake")
+
+# Levels for New Operation 
 ORD_Levels <- c(F, T, F, F, T)
 TBS_Wake_Levels <- c(F, T, F, F, T)
 TBS_ROT_Levels <- c(T, F, F, F, T)
 
-# - PWS ORD Options
-ORDBuffers <- T # Use the ORD Buffers
-Use_EFDD <- F # Use the adaptable End Final Deceleration Distance
-Use_Variable_Decel <- F # Use Deceleration that varies by wind
+# Levels for Legacy Operation
+ORD_Levels_Legacy <- c(F, F, F, F, T)
+TBS_Wake_Levels_Legacy <- c(F, F, F, F, T)
+TBS_ROT_Levels_Legacy <- c(F, F, F, F, T)
+
+# - PWS Options ((Recat))
+UseLSSAdaptation <- F # If True, uses LSS Adaptation table that can be adapted for testing. False is existing operations.
+FlexibleGusting <- F # If True, creates standardised "flexible" gusting for airbus types. False is existing ops. UseLSSAdaptation must be turned on to use and should be turned on for Use_EFDD.
+Use_EFDD <- F # Use the adaptable End Final Deceleration Distance. False for existing operations.
+ORDBuffers <- F # FALSE for Original Parameters. TRUE for Median Parameters. TRUE must be used for TBSC.
+Use_Variable_Decel <- F # Use Deceleration that varies by wind. False for existing operations.
 
 # - PWS TBSC Options
-TBSCBuffers <- F # Needs fixing.
-TTB_Type <- "Original" # Type of TBSC Calculation: "Original"|"ORD"|"T2F" (T2F still in development)
+TBSCBuffers <- F # Use Time buffers for TBS Cacls. False for existing operations. Needs fixing!
+TTB_Type <- "Original" # Type of TBSC Calculation: "Original"|"ORD"|"T2F" (T2F still in development) - Original is existing operations.
 
 # - Other IA Options
-Constraints <- c("Wake", "Non_Wake", "ROT") # Need to Add Runway Dependency Compatibility
+Constraints <- c("Wake", "Non_Wake", "ROT", "Runway_Dependent") # Need to Add Runway Dependency Compatibility
+Legacy_Constraints <- c("Wake", "Non_Wake", "ROT", "Runway_Dependent")
 Forecast_Compression_Type <- 1 # 1: Traditional Forecast Compression, 2: Use of Forecast Distance, Speed/WE
 Observed_Compression_Type <- 1 # Same as above.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -147,24 +159,33 @@ if (!Testing){
 }
 
 INP_Landing_Pair <- Load_Landing_Pair_Data(con, PROC_Period, PROC_Criteria)
+
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # Processing
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
-INT_Landing_Pairs <- Generate_All_Pair_Reference_Data(con, LP_Primary_Key, INP_Landing_Pair, INP_Radar, INP_Flight_Plan, INP_Surface_Wind, Full_Level_Precedence, TBS_Wake_Levels, TBS_ROT_Levels)
+INT_Landing_Pairs <- Generate_All_Pair_Reference_Data(con, LP_Primary_Key, INP_Landing_Pair, INP_Radar, INP_Flight_Plan, INP_Surface_Wind, Full_Level_Precedence, TBS_Wake_Levels, TBS_ROT_Levels, TBSCBuffers)
 INT_Landing_Pairs <- Generate_ORD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Surface_Wind)
-INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers, Use_EFDD, ORD_Levels[1])
 INT_Full_GWCS_Forecast <- Generate_Full_ORD_GWCS_Forecast(con, LP_Primary_Key, INP_Segments, INT_Landing_Pairs, Time_Key = "Prediction_Time")
+
+INT_Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers, Use_EFDD, Full_Level_Precedence, ORD_Levels, LegacyorRecat = "Recat")
 INT_IAS_Profile <- Generate_ORD_IAS_Profile(con, LP_Primary_Key, INT_Aircraft_Profile, INT_Landing_Pairs, INT_Full_GWCS_Forecast)
 INT_GSPD_Profile <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, INT_IAS_Profile, INT_Full_GWCS_Forecast, Seg_Size)
 INT_Landing_Pairs <- Generate_ORD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile, INT_Full_GWCS_Forecast, INP_Radar,
-                                             Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
-                                             Use_EFDD, ORD_Levels[1])
+                                             Constraints, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
+                                             Use_EFDD, ORD_Levels[1], LegacyorRecat = "Recat")
+
+INT_Aircraft_Profile_Leg <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, INT_Landing_Pairs, ORDBuffers = F, Use_EFDD = F, Full_Level_Precedence, ORD_Levels_Legacy, LegacyorRecat = "Legacy")
+INT_IAS_Profile_Leg <- Generate_ORD_IAS_Profile(con, LP_Primary_Key, INT_Aircraft_Profile_Leg, INT_Landing_Pairs, INT_Full_GWCS_Forecast)
+INT_GSPD_Profile_Leg <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, INT_IAS_Profile_Leg, INT_Full_GWCS_Forecast, Seg_Size)
+INT_Landing_Pairs <- Generate_ORD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile_Leg, INT_Full_GWCS_Forecast, INP_Radar,
+                                             Legacy_Constraints, TTB_Type = "Original", Forecast_Compression_Type, Observed_Compression_Type,
+                                             Use_EFDD = F, F, LegacyorRecat = "Legacy")
+
 INT_Landing_Pairs <- INT_Landing_Pairs %>% mutate(Performance_Flag = 1)
 INT_Landing_Pairs <- Generate_IA_Performance_Model_Setup(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INT_Full_GWCS_Forecast)
 
-
-#if (WAD_Enabled){
+#if (WAD_Enabled & !Combined_ORD){
 #  INT_Landing_Pairs <- Generate_WAD_Observation(con, LP_Primary_Key, INT_Landing_Pairs, INP_Radar, INP_Flight_Plan)
 #  INT_Landing_Pairs <- Generate_WAD_Prediction(con, LP_Primary_Key, INT_Landing_Pairs, INT_GSPD_Profile)
 #}
@@ -256,4 +277,32 @@ message(paste0("Completed ORD Validation Process for ", PROC_Period, " of ", PRO
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
+### TEMP: NEW PERFORMANCE MODEL TABLE
 
+# test <- select(INT_Landing_Pairs, Landing_Pair_ID, Recat_FAF_All_Separation_Distance, Recat_FAF_Max_Constraint, Legacy_FAF_All_Separation_Distance, Legacy_FAF_Max_Constraint)
+# 
+# New_Table <- INT_Landing_Pairs %>%
+#   select(Landing_Pair_ID, Landing_Pair_Date,
+#          Leader_Aircraft_Type, Leader_Callsign, Leader_Operator, Leader_Recat_Wake_Cat, Leader_Legacy_Wake_Cat, Leader_Time_At_4DME, Leader_Landing_Runway,
+#          Follower_Aircraft_Type, Follower_Callsign, Follower_Operator, Follower_Recat_Wake_Cat, Follower_Legacy_Wake_Cat, Follower_Time_At_4DME, Follower_Landing_Runway,
+#          Reference_Recat_Wake_Separation_Distance, Reference_Recat_Wake_Separation_Time, Reference_Recat_Wake_Separation_IAS,
+#          Reference_Recat_ROT_Spacing_Distance, Reference_Recat_ROT_Spacing_Time, Reference_Recat_ROT_Spacing_IAS,
+#          Reference_Legacy_Wake_Separation_Distance, Reference_Legacy_Wake_Separation_Time, Reference_Legacy_Wake_Separation_IAS,
+#          Reference_Legacy_ROT_Spacing_Distance, Reference_Legacy_ROT_Spacing_Time, Reference_Legacy_ROT_Spacing_IAS,
+#          Non_Wake_Separation_Distance, Non_Wake_RNAV_Separation_Distance,
+#          Recat_Threshold_Wake_Separation_Distance, Recat_Threshold_Wake_Separation_IAS, Recat_Threshold_Wake_Separation_Wind_Effect,
+#          Recat_Threshold_ROT_Spacing_Distance, Recat_Threshold_ROT_Spacing_IAS, Recat_Threshold_ROT_Spacing_Wind_Effect,
+#          Recat_Threshold_Non_Wake_Separation_Distance,
+#          Recat_Threshold_All_Separation_Distance, Recat_Threshold_Max_Constraint, Recat_Follower_Assumed_IAS, Recat_Follower_Forecast_Wind_Effect,
+#          Recat_Forecast_ORD_Compression, Recat_FAF_Wake_Separation_Distance, Recat_FAF_ROT_Spacing_Distance, Recat_FAF_Non_Wake_Separation_Distance,
+#          Recat_FAF_All_Separation_Distance, Recat_FAF_Max_Constraint,
+#          Legacy_Threshold_Wake_Separation_Distance, Legacy_Threshold_Wake_Separation_IAS, Legacy_Threshold_Wake_Separation_Wind_Effect,
+#          Legacy_Threshold_ROT_Spacing_Distance, Legacy_Threshold_ROT_Spacing_IAS, Legacy_Threshold_ROT_Spacing_Wind_Effect,
+#          Legacy_Threshold_Non_Wake_Separation_Distance,
+#          Legacy_Threshold_All_Separation_Distance, Legacy_Threshold_Max_Constraint, Legacy_Follower_Assumed_IAS, Legacy_Follower_Forecast_Wind_Effect,
+#          Legacy_Forecast_ORD_Compression, Legacy_FAF_Wake_Separation_Distance, Legacy_FAF_ROT_Spacing_Distance, Legacy_FAF_Non_Wake_Separation_Distance,
+#          Legacy_FAF_All_Separation_Distance, Legacy_FAF_Max_Constraint, Observed_AGI_Surface_Headwind,
+# Observed_AGI_Surface_Wind_SPD,
+# Observed_AGI_Surface_Wind_HDG, Observed_ORD_Compression, Observed_Threshold_Separation_Distance = Delivered_Threshold_Separation, Observed_FAF_Separation_Distance = Delivered_FAF_Separation,
+# Recat_Threshold_Separation_Accuracy, Recat_FAF_Separation_Accuracy, Legacy_Threshold_Separation_Accuracy, Legacy_FAF_Separation_Accuracy, Recat_Observed_Follower_IAS, Recat_Observed_Follower_Wind_Effect,
+# Legacy_Observed_Follower_IAS, Legacy_Observed_Follower_Wind_Effect

@@ -63,8 +63,8 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TBSCBuffers, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
-                                    Use_EFDD, Use_ORD_Operator){
+Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
+                                    Use_EFDD, Use_ORD_Operator, LegacyorRecat){
 
   # Landing_Pair <- INT_Landing_Pairs
   # TBSCBuffers <- F
@@ -76,6 +76,10 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
   message("Generating ORD Predicted Parameter Data...")
+  
+  # Get Constraint Delivery Points
+  Delivery_Points <- Load_Adaptation_Table(con, "tbl_Delivery_Points") %>% rename(SASAI_Constraint = Constraint)
+  if (LegacyorRecat == "Legacy"){Delivery_Column <- "Old_Delivery"} else {Delivery_Column <- "New_Delivery"}
 
   # Order ORD GS Profile
   ORD_GS_Profile <- arrange(ORD_GS_Profile, !!sym(LP_Primary_Key), desc(This_Pair_Role), Section_Number)
@@ -84,39 +88,72 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
   Landing_Pair <- mutate(Landing_Pair, FAF_Distance = Local_Stabilisation_Distance)
 
   ## Get the RNAV/Non-Wake Distances
-  Landing_Pair <- Landing_Pair %>% Get_RNAV_Flag() %>% Get_Non_Wake_Spacing()
+  Landing_Pair <- Landing_Pair %>% Get_RNAV_Flag() %>% Get_Non_Wake_Spacing() %>% Get_Runway_Dependent_Separation()
   Landing_Pair <- Get_TBS_Service_Level(con, Landing_Pair, LP_Primary_Key)
 
   # Initialise Empty Values
   Dist_Values <- c()
-  Time_Buffers <- Generate_TBSC_Time_Buffers(con, Landing_Pair, LP_Primary_Key, Active = TBSCBuffers)  # UNTESTED WITH BUFFER ADAPTATION
-  TBSC_Profiles <- Generate_TBSC_Profiles(con, Landing_Pair, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_ORD_Operator)  # UNTESTED WITH T2F
+  
+  # Create TBSC Profile. Wind Forecast if set to Original.
+  TBSC_Profiles <- Generate_TBSC_Profiles(con, Landing_Pair, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_ORD_Operator, LegacyorRecat)  # UNTESTED WITH T2F
 
   ## Generate the Distance for all Constraints at Threshold
   for (Constraint in Constraints){
+    Constraint_Delivery <- filter(Delivery_Points, SASAI_Constraint == Constraint) %>% select(!!sym(Delivery_Column)) %>% as.character()
     Landing_Pair <- Generate_Constraint_Spacing_All(con, LPR = Landing_Pair, TBSC_Profile = TBSC_Profiles,
                                             TTB_Type, Constraint_Type = Constraint,
-                                            Constraint_Delivery = "THRESHOLD", Evaluated_Delivery = "THRESHOLD",
+                                            Constraint_Delivery, Evaluated_Delivery = "THRESHOLD",
                                             ID_Var = LP_Primary_Key,
-                                            Time_Var = Get_Reference_Variable_Name(Constraint, "Time"), Speed_Var = Get_Reference_Variable_Name(Constraint, "IAS"),
-                                            Seg_Size, Time_Buffers)
-    if (paste0(Get_Constraint_Prefix(Constraint, "THRESHOLD", "TBS"), "_Distance") %in% names(Landing_Pair)){
-      Dist_Values <- append(Dist_Values, paste0(Get_Constraint_Prefix(Constraint, "THRESHOLD", "TBS"), "_Distance"))
+                                            Time_Var = Get_Reference_Variable_Name(Constraint, "Time", LegacyorRecat),
+                                            Speed_Var = Get_Reference_Variable_Name(Constraint, "IAS", LegacyorRecat),
+                                            Seg_Size, LegacyorRecat)
+    Dist_Name_Var <- paste0(Get_Constraint_Prefix(Constraint, "THRESHOLD", "TBS", LegacyorRecat), "_Distance")
+    if (Dist_Name_Var %in% names(Landing_Pair)){
+      Dist_Values <- append(Dist_Values, Dist_Name_Var)
     }
+    rm(Dist_Name_Var)
   }
 
   ## Get the Maximum Distance Threshold Constraint
+  All_Sep_Var <- paste0(LegacyorRecat, "_Threshold_All_Separation_Distance")
+  ORD_Sep_Var <- paste0(LegacyorRecat, "_ORD_Separation_Distance")
+  Sep_Acc_Var <- paste0(LegacyorRecat, "_Threshold_Separation_Accuracy")
+  Thresh_Max_Constraint_Var <- paste0(LegacyorRecat, "_Threshold_Max_Constraint")
   Landing_Pair <- Landing_Pair %>%
-    mutate(Threshold_All_Separation_Distance = pmax(!!!syms(Dist_Values), na.rm=T)) %>%
-    mutate(ORD_Separation_Distance = Threshold_All_Separation_Distance)
-
+    mutate(!!sym(All_Sep_Var) := pmax(!!!syms(Dist_Values), na.rm=T)) %>%
+    mutate(!!sym(ORD_Sep_Var) := !!sym(All_Sep_Var),
+           !!sym(Sep_Acc_Var) := Delivered_Threshold_Separation - !!sym(All_Sep_Var))
+  
+  # Get the Max Constraint (Threshold)
+  Landing_Pair <- mutate(Landing_Pair, !!sym(Thresh_Max_Constraint_Var) := NA)
+  for (c in 1:length(Constraints)){
+    Dist_Name_Var <- paste0(Get_Constraint_Prefix(Constraints[c], "THRESHOLD", "TBS", LegacyorRecat), "_Distance")
+    if (Dist_Name_Var %in% Dist_Values){
+      Landing_Pair <- Landing_Pair %>% 
+        mutate(!!sym(Thresh_Max_Constraint_Var) := ifelse(!is.na(!!sym(Dist_Name_Var)) & abs(!!sym(Dist_Name_Var) - !!sym(All_Sep_Var)) < 0.01, Constraints[c], !!sym(Thresh_Max_Constraint_Var)))
+    }
+  }
+  rm(Dist_Name_Var)
+  
+  # Get the "Winning" Assumed IAS and Forecast WE
+  Wake_Prefix <- Get_Constraint_Prefix("Wake", "THRESHOLD", "TBS", LegacyorRecat)
+  ROT_Prefix <- Get_Constraint_Prefix("ROT", "THRESHOLD", "TBS", LegacyorRecat)
+  Landing_Pair <- Landing_Pair %>%
+    mutate(!!sym(paste0(LegacyorRecat, "_Follower_Assumed_IAS")) := NA,
+           !!sym(paste0(LegacyorRecat, "_Follower_Forecast_Wind_Effect")) := NA,
+           !!sym(paste0(LegacyorRecat, "_Follower_Assumed_IAS")) := ifelse(!!sym(Thresh_Max_Constraint_Var) == "Wake", !!sym(paste0(Wake_Prefix, "_IAS")), !!sym(paste0(LegacyorRecat, "_Follower_Assumed_IAS"))),
+           !!sym(paste0(LegacyorRecat, "_Follower_Assumed_IAS")) := ifelse(!!sym(Thresh_Max_Constraint_Var) == "ROT", !!sym(paste0(ROT_Prefix, "_IAS")), !!sym(paste0(LegacyorRecat, "_Follower_Assumed_IAS"))),
+           !!sym(paste0(LegacyorRecat, "_Follower_Forecast_Wind_Effect")) := ifelse(!!sym(Thresh_Max_Constraint_Var) == "Wake", !!sym(paste0(Wake_Prefix, "_Wind_Effect")), !!sym(paste0(LegacyorRecat, "_Follower_Forecast_Wind_Effect"))),
+           !!sym(paste0(LegacyorRecat, "_Follower_Forecast_Wind_Effect")) := ifelse(!!sym(Thresh_Max_Constraint_Var) == "ROT", !!sym(paste0(ROT_Prefix, "_Wind_Effect")), !!sym(paste0(LegacyorRecat, "_Follower_Forecast_Wind_Effect"))))
+  
   # First Calculate Compression for ORD
   Landing_Pair <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, Landing_Pair, LP_Primary_Key,
                                                 Prefix = "ORD",
                                                 Comp_End_Var = "Delivery_Distance",
                                                 Comp_Start_Var = "Local_Stabilisation_Distance",
-                                                Sep_Dist_Var = "ORD_Separation_Distance",
-                                              Forecast_Compression_Type)
+                                                Sep_Dist_Var = ORD_Sep_Var,
+                                              Forecast_Compression_Type,
+                                              LegacyorRecat)
 
   # Recalculate Observed Compression Metrics if necessary
   if (Observed_Compression_Type != 1){
@@ -124,10 +161,48 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
   }
 
   # Calculate Error Variables
-  Landing_Pair <- Get_Prediction_Error_Variables(Landing_Pair, "ORD")
+  Landing_Pair <- Get_Prediction_Error_Variables(Landing_Pair, "ORD", LegacyorRecat)
 
   # Calculate Surface Wind Error
   Landing_Pair <- mutate(Landing_Pair, Forecast_AGI_Surface_Headwind_Error = Observed_AGI_Surface_Headwind - Forecast_AGI_Surface_Headwind)
+  
+  ## Generate the Distance for all Constraints at FAF
+  Dist_Values <- c()
+  for (Constraint in Constraints){
+    Constraint_Delivery <- filter(Delivery_Points, SASAI_Constraint == Constraint) %>% select(!!sym(Delivery_Column)) %>% as.character()
+    Landing_Pair <- Generate_Constraint_Spacing_All(con, LPR = Landing_Pair, TBSC_Profile = TBSC_Profiles,
+                                                    TTB_Type, Constraint_Type = Constraint,
+                                                    Constraint_Delivery, Evaluated_Delivery = "FAF",
+                                                    ID_Var = LP_Primary_Key,
+                                                    Time_Var = Get_Reference_Variable_Name(Constraint, "Time", LegacyorRecat),
+                                                    Speed_Var = Get_Reference_Variable_Name(Constraint, "IAS", LegacyorRecat),
+                                                    Seg_Size, LegacyorRecat)
+    if (paste0(Get_Constraint_Prefix(Constraint, "FAF", "TBS", LegacyorRecat), "_Distance") %in% names(Landing_Pair)){
+      Dist_Values <- append(Dist_Values, paste0(Get_Constraint_Prefix(Constraint, "FAF", "TBS", LegacyorRecat), "_Distance"))
+    }
+  }
+  
+  ## Get the Maximum Distance FAF Constraint
+  All_Sep_Var <- paste0(LegacyorRecat, "_FAF_All_Separation_Distance")
+  Sep_Acc_Var <- paste0(LegacyorRecat, "_Threshold_Separation_Accuracy")
+  FAF_Max_Constraint_Var <- paste0(LegacyorRecat, "_FAF_Max_Constraint")
+  Landing_Pair <- Landing_Pair %>%
+    mutate(!!sym(All_Sep_Var) := pmax(!!!syms(Dist_Values), na.rm=T),
+           !!sym(Sep_Acc_Var) := Delivered_FAF_Separation - !!sym(All_Sep_Var))
+  
+  # Get the Max Constraint (FAF)
+  Landing_Pair <- mutate(Landing_Pair, !!sym(FAF_Max_Constraint_Var) := NA)
+  for (c in 1:length(Constraints)){
+    Dist_Name_Var <- paste0(Get_Constraint_Prefix(Constraints[c], "FAF", "TBS", LegacyorRecat), "_Distance")
+    if (Dist_Name_Var %in% Dist_Values){
+      Landing_Pair <- Landing_Pair %>% 
+        mutate(!!sym(FAF_Max_Constraint_Var) := ifelse(!is.na(!!sym(Dist_Name_Var)) & !!sym(Dist_Name_Var) == !!sym(All_Sep_Var), Constraints[c], !!sym(FAF_Max_Constraint_Var)))
+    }
+    
+  }
+  rm(Dist_Name_Var)
+  
+  
 
   # How long did it take?
   Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
@@ -149,22 +224,22 @@ Construct_ORD_Prediction <- function(LP_Primary_Key, Landing_Pair){
   # Select Relevant Fields for SQL Table
   ORD_Prediction <- select(Landing_Pair,
                            !!sym(LP_Primary_Key),
-                           ORD_Compression = Forecast_ORD_Compression,
-                           ORD_Compression_Error,
-                           ORD_Mean_Leader_IAS = Forecast_Leader_ORD_IAS,
-                           ORD_Leader_IAS_Error = Forecast_Leader_ORD_IAS_Error,
-                           ORD_Mean_Follower_IAS = Forecast_Follower_ORD_IAS,
-                           ORD_Follower_IAS_Error= Forecast_Follower_ORD_IAS_Error,
-                           Forecast_Mean_Leader_Wind_Effect = Forecast_Leader_ORD_Wind_Effect,
-                           Forecast_Mean_Leader_Wind_Effect_Error = Forecast_Leader_ORD_Wind_Effect_Error,
-                           Forecast_Mean_Follower_Wind_Effect = Forecast_Follower_ORD_Wind_Effect,
-                           Forecast_Mean_Follower_Wind_Effect_Error = Forecast_Follower_ORD_Wind_Effect_Error,
+                           ORD_Compression = Recat_Forecast_ORD_Compression,
+                           ORD_Compression_Error = Recat_ORD_Compression_Error,
+                           ORD_Mean_Leader_IAS = Recat_Forecast_Leader_ORD_IAS,
+                           ORD_Leader_IAS_Error = Recat_Forecast_Leader_ORD_IAS_Error,
+                           ORD_Mean_Follower_IAS = Recat_Forecast_Follower_ORD_IAS,
+                           ORD_Follower_IAS_Error= Recat_Forecast_Follower_ORD_IAS_Error,
+                           Forecast_Mean_Leader_Wind_Effect = Recat_Forecast_Leader_ORD_Wind_Effect,
+                           Forecast_Mean_Leader_Wind_Effect_Error = Recat_Forecast_Leader_ORD_Wind_Effect_Error,
+                           Forecast_Mean_Follower_Wind_Effect = Recat_Forecast_Follower_ORD_Wind_Effect,
+                           Forecast_Mean_Follower_Wind_Effect_Error = Recat_Forecast_Follower_ORD_Wind_Effect_Error,
                            Forecast_AGI_Surface_Headwind,
                            Forecast_AGI_Surface_Headwind_Error,
                            Prediction_Time,
                            Leader_Distance_To_Threshold = Local_Stabilisation_Distance,
-                           ORD_Separation_Distance,
-                           DBS_All_Sep_Distance)
+                           ORD_Separation_Distance = Recat_ORD_Separation_Distance,
+                           DBS_All_Sep_Distance = Recat_DBS_All_Sep_Distance)
 
   return(ORD_Prediction)
 

@@ -142,11 +142,13 @@ Clear_Landing_Pair <- function(con, PROC_Period, PROC_Criteria){
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, Radar, Flight_Plan, Surface_Wind, Adaptation_Levels, Level_Switches_Wake, Level_Switches_ROT){
+Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, Radar, Flight_Plan, Surface_Wind, Adaptation_Levels, Level_Switches_Wake, Level_Switches_ROT, TBSCBuffers){
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
   message("Generating All Pair Reference Data...")
+  
+  ## Get the Level Switches.
 
   # ------------------------------------------------------------------------------------------------------------------------------------------ #
   # ------------------------------------------------------------------------------------------------------------------------------------------ #
@@ -192,38 +194,29 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   #Landing_Pair <- Get_Runway_Pair_Rule_Parameters(Landing_Pair, Runway_Pair_Rule)
 
   # - RECAT (IA PWS Update) ### NOTE: Does not distinguish between nit pairs - but does remove nit ROT contraints.
-  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Distance")
-  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Time")
-  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Speed")
-  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Distance")
-  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Time")
-  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Speed")
-  
-  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Distance", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "Time", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-  # Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Recat", Ref_Source_Type = "IAS", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Distance", TBSCBuffers, "Recat")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Time", TBSCBuffers, "Recat")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Speed", TBSCBuffers, "Recat")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Distance", TBSCBuffers, "Recat")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Time", TBSCBuffers, "Recat")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Speed", TBSCBuffers, "Recat")
 
   # - Legacy
-  Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Distance", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Time", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "IAS", Constraint = "Wake_Separation", ACT_Enabled = F, Operator_Enabled = F)
-  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Distance", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "Time", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-  #Landing_Pair <- Get_Pair_Ref_Parameter(con, Landing_Pair, RecatorLegacy = "Legacy", Ref_Source_Type = "IAS", Constraint = "ROT_Spacing", ACT_Enabled = F, Operator_Enabled = F)
-
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Distance", TBSCBuffers, "Legacy")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Time", TBSCBuffers, "Legacy")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Speed", TBSCBuffers, "Legacy")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Distance", TBSCBuffers, "Legacy")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Time", TBSCBuffers, "Legacy")
+  Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "ROT", Adaptation_Levels, Level_Switches_ROT, Param_Type = "Speed", TBSCBuffers, "Legacy")
+  
   # Fix All DBS Not-in-trail Distances (Not Operational in SQL yet)
   # Landing_Pair <- Get_Dependent_Runway_Offset_Changes(Landing_Pair, Runway_Offsets)
 
-  # Get the DBS All Sep Distance - ## Add Spacing, Non-Wake, Runway Dependent
-  Landing_Pair <- mutate(Landing_Pair, DBS_All_Sep_Distance = Reference_Recat_Wake_Separation_Distance)
-  # Landing_Pair <- Landing_Pair %>%
-  #   mutate(DBS_All_Sep_Distance = ifelse(is.na(DBS_All_Sep_Distance) | Reference_Non_Wake_Separation_Distance > DBS_All_Sep_Distance, Reference_Non_Wake_Separation_Distance, DBS_All_Sep_Distance)) %>%
-  #   mutate(DBS_All_Sep_Distance = ifelse(is.na(DBS_All_Sep_Distance) | Reference_Spacing_Distance > DBS_All_Sep_Distance, Reference_Spacing_Distance, DBS_All_Sep_Distance)) %>%
-  #   mutate(DBS_All_Sep_Distance = ifelse(is.na(DBS_All_Sep_Distance) | Reference_Recat_ROT_Spacing_Distance > DBS_All_Sep_Distance, Reference_Recat_ROT_Spacing_Distance, DBS_All_Sep_Distance))
-
+  # Get the DBS All Sep Distance - ## Wake only for TBS Table for existing operations.
+  Landing_Pair <- mutate(Landing_Pair, 
+                         Recat_DBS_All_Sep_Distance = Reference_Recat_Wake_Separation_Distance,
+                         Legacy_DBS_All_Sep_Distance = Reference_Legacy_Wake_Separation_Distance)
+  
   # Get the Prediction Time
   Landing_Pair <- Get_ORD_Prediction_Time(Landing_Pair, Radar, Path_Legs)
 

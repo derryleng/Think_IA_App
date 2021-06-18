@@ -191,8 +191,8 @@ Generate_IA_Performance_Model_Setup <- function(con, LP_Primary_Key, Landing_Pai
 
   # Get the 4DME RECAT Distances By Adding on the ORD Forecast Compression.
   Landing_Pair <- mutate(Landing_Pair,
-                         Recat_eTBS_4DME_Wake_Separation_Distance = Recat_eTBS_0DME_Wake_Separation_Distance + Forecast_ORD_Compression,
-                         Recat_eTBS_4DME_ROT_Spacing_Distance = Recat_eTBS_0DME_ROT_Spacing_Distance + Forecast_ORD_Compression)
+                         Recat_eTBS_4DME_Wake_Separation_Distance = Recat_eTBS_0DME_Wake_Separation_Distance + Recat_Forecast_ORD_Compression,
+                         Recat_eTBS_4DME_ROT_Spacing_Distance = Recat_eTBS_0DME_ROT_Spacing_Distance + Recat_Forecast_ORD_Compression)
 
   # Make a placeholder for the UK6Cat 4DME Distance
   Landing_Pair <- mutate(Landing_Pair, UK6Cat_TBS_4DME_Wake_Separation_Distance = NA)
@@ -473,7 +473,7 @@ Construct_IA_Performance_Model_Setup <- function(LP_Primary_Key, Landing_Pair){
                               Recat_eTBS_0DME_Wake_Separation_Distance,
                               Recat_eTBS_0DME_ROT_Spacing_Distance,
                               Recat_eTBS_0DME_All_Separation_Distance,
-                              Forecast_ORD_TBS_Compression = Forecast_ORD_Compression,
+                              Forecast_ORD_TBS_Compression = Recat_Forecast_ORD_Compression,
                               Forecast_ORD_eTBS_Compression,
                               Recat_eTBS_4DME_Wake_Separation_Distance,
                               Recat_eTBS_4DME_ROT_Spacing_Distance,

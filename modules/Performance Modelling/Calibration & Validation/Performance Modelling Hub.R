@@ -86,8 +86,8 @@ Script_Version <- "1.0"
 Operation <- "IA" # Want this to be in DB
 
 # Data/Output Versions (Move Adap to DB?)
-Output_Version <- "1.2"
-Input_Collection <- "Test PM Inputs"
+Output_Version <- "1.5"
+Input_Collection <- "PM 15-06-21"
 GWCS_Input_Version <- "2021-05-04 V1.0 (AH)"
 
 # Database Choice
@@ -164,7 +164,7 @@ Grouping_Type <- "Landing_Pair_ID"
 Leader_Start_Var <- "Leader_Local_Stabilisation_Threshold"
 
 # Are all segments required within a distance range?
-All_Segs_Required <- F
+All_Segs_Required <- T
 
 # Max DME Gap between succesive Segments (Only used if All_Segs_Required = T)
 Use_Max_DME_Gap <- T
@@ -194,7 +194,7 @@ source(file.path(Algo_Func_Dir, "PM Functions.R"), local = T)
 # -------------------------------------------------------------------------------------------------- #
 
 # Get Connection
-con <- Get_RODBC_Database_Connection(IP, Database)
+con <- Get_DBI_Connection(IP, Database)
 Airfield <- as.character(Load_Adaptation_Table(con, "tbl_Airfield")$Airfield_Name)
 
 # --------------------------------------------------------------------------------- #
@@ -228,7 +228,7 @@ ORDER BY Landing_Pair_ID, DME_Seg")
 
 ## Performance Model View.
 if (!file.exists(file.path(Inp_Dir, "Performance Model View.csv"))){
-  Performance_Model <- sqlQuery(con, "SELECT * FROM vw_eTBS_Performance_Model", stringsAsFactors = F)
+  Performance_Model <- dbGetQuery(con, "SELECT * FROM vw_eTBS_Performance_Model", stringsAsFactors = F)
   fwrite(Performance_Model, file.path(Inp_Dir, "Performance Model View.csv"))
 } else {
   Performance_Model <- fread(file.path(file.path(Inp_Dir, "Performance Model View.csv")))
@@ -236,7 +236,7 @@ if (!file.exists(file.path(Inp_Dir, "Performance Model View.csv"))){
 
 ## Segments Data.
 if (!file.exists(file.path(Inp_Dir, "Performance Model Segment View.csv"))){
-  Segments <- sqlQuery(con, Segment_Query, stringsAsFactors = F)
+  Segments <- dbGetQuery(con, Segment_Query, stringsAsFactors = F)
   fwrite(Segments, file.path(Inp_Dir, "Performance Model Segment View.csv"))
 } else {
   Segments <- fread(file.path(file.path(Inp_Dir, "Performance Model Segment View.csv")))
@@ -261,12 +261,12 @@ GWCS_Data <- mutate(GWCS_Data, QC_Flag = 0)
 
 # Select relevant fields.
 GWCS_Data <- select(GWCS_Data, FP_Date, Time_At_4DME, Callsign, Forecast_Wind_Effect_IAS, Sep_Dist)
-LP_Times <- sqlQuery(con, "SELECT lp.Landing_Pair_ID, lp.Leader_Flight_Plan_ID, lp.Follower_Flight_Plan_ID, FPDL.Time_At_4DME AS Leader_Time_At_4DME,
+LP_Times <- dbGetQuery(con, "SELECT lp.Landing_Pair_ID, lp.Leader_Flight_Plan_ID, lp.Follower_Flight_Plan_ID, FPDL.Time_At_4DME AS Leader_Time_At_4DME,
               FPDF.Time_At_4DME AS Follower_Time_At_4DME FROM tbl_Landing_Pair lp 
               LEFT JOIN tbl_Flight_Plan_Derived FPDL 
               ON lp.Leader_Flight_Plan_ID = FPDL.Flight_Plan_ID
               LEFT JOIN tbl_Flight_Plan_Derived FPDF
-              ON lp.Follower_Flight_Plan_ID = FPDF.Flight_Plan_ID", stringsAsFactors = F)
+              ON lp.Follower_Flight_Plan_ID = FPDF.Flight_Plan_ID")
 Performance_Model <- left_join(Performance_Model, LP_Times, by = c("Landing_Pair_ID"))
 rm(LP_Times)
 
@@ -276,20 +276,20 @@ rm(LP_Times)
 # 
 
 # Load Adaptation Sources. TODO: Enable Local Files.
-GWCS_Adaptation <- sqlQuery(con, "SELECT * FROM tbl_Mode_S_Wind_Adaptation", stringsAsFactors = F)
-Recat_Wake_Dist <- sqlQuery(con, "SELECT * FROM tbl_Reference_Recat_Separation_Dist", stringsAsFactors = F) %>%
+GWCS_Adaptation <- dbGetQuery(con, "SELECT * FROM tbl_Mode_S_Wind_Adaptation", stringsAsFactors = F)
+Recat_Wake_Dist <- dbGetQuery(con, "SELECT * FROM tbl_Reference_Recat_Separation_Dist", stringsAsFactors = F) %>%
   mutate(Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance / 1852)
-Recat_Wake_Speed <- sqlQuery(con, "SELECT * FROM tbl_Assumed_Recat_Separation_IAS", stringsAsFactors = F) %>%
+Recat_Wake_Speed <- dbGetQuery(con, "SELECT * FROM tbl_Assumed_Recat_Separation_IAS", stringsAsFactors = F) %>%
   mutate(Assumed_Wake_Separation_IAS = Assumed_Wake_Separation_IAS / (1852/3600))
-Recat_Wake_Time <- sqlQuery(con, "SELECT * FROM tbl_Reference_Recat_Separation_Time", stringsAsFactors = F)
-Legacy_Wake_Dist <- sqlQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence", stringsAsFactors = F) %>%
+Recat_Wake_Time <- dbGetQuery(con, "SELECT * FROM tbl_Reference_Recat_Separation_Time", stringsAsFactors = F)
+Legacy_Wake_Dist <- dbGetQuery(con, "SELECT * FROM tbl_DBS_Wake_Turbulence", stringsAsFactors = F) %>%
   mutate(WT_Separation_Distance = WT_Separation_Distance / 1852)
-Recat_AC_To_Wake <- sqlQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake", stringsAsFactors = F)
-Legacy_AC_To_Wake <- sqlQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy", stringsAsFactors = F) %>% unique()
-Recat_ROT_Dist <- sqlQuery(con, "SELECT * FROM tbl_Reference_ROT_Spacing_Dist", stringsAsFactors = F) %>%
+Recat_AC_To_Wake <- dbGetQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake", stringsAsFactors = F)
+Legacy_AC_To_Wake <- dbGetQuery(con, "SELECT * FROM tbl_Aircraft_Type_To_Wake_Legacy", stringsAsFactors = F) %>% unique()
+Recat_ROT_Dist <- dbGetQuery(con, "SELECT * FROM tbl_Reference_ROT_Spacing_Dist", stringsAsFactors = F) %>%
   mutate(Reference_ROT_Spacing_Distance = Reference_ROT_Spacing_Distance / 1852)
-Recat_ROT_Time <- sqlQuery(con, "SELECT * FROM tbl_Reference_ROT_Spacing_Time", stringsAsFactors = F)
-Recat_ROT_Speed <- sqlQuery(con, "SELECT * FROM tbl_Assumed_ROT_Spacing_IAS", stringsAsFactors = F) %>%
+Recat_ROT_Time <- dbGetQuery(con, "SELECT * FROM tbl_Reference_ROT_Spacing_Time", stringsAsFactors = F)
+Recat_ROT_Speed <- dbGetQuery(con, "SELECT * FROM tbl_Assumed_ROT_Spacing_IAS", stringsAsFactors = F) %>%
   mutate(Assumed_ROT_Spacing_IAS = Assumed_ROT_Spacing_IAS / (1852/3600))
 
 # --------------------------------------------------------------------------------- #

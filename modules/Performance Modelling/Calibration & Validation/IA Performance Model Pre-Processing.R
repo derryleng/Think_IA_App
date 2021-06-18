@@ -33,6 +33,9 @@
 # Filtering
 # --------------------------------------------------------------------------------- #
 
+# Add Low Wind Flag
+Performance_Model <- Performance_Model %>% mutate(Low_Wind_Flag = ifelse(abs(Observed_AGI_Surface_Headwind) < 5, 1, 0))
+
 # Initialise Filter Table Columns
 Filter <- c("Original")
 OldRows <- c(NA)
@@ -87,6 +90,7 @@ if (Use_Filter_Average_IAS){
 
 # Add to Filter Table.
 Filter_Table <- data.frame(Filter_Name = Filter, Prev_Count = OldRows, New_Count = NewRows, Removed = Removed)
+fwrite(Filter_Table, file.path(Out_Dir, "Filter_Table.csv"))
 
 # --------------------------------------------------------------------------------- #
 # Legacy Wake Fields
