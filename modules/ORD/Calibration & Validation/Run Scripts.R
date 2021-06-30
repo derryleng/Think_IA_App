@@ -48,6 +48,11 @@ database <- "NavCan_TBS_V3"
 #Airport Code
 Airport_Code <- "CYYZ"
 
+#Operation type, Currently only set up for "PWS" anything else will use a Legacy
+#operation, set to "PWS" or "Legacy"
+
+Operation <- "PWS"
+
 #Find location of script and functions file based for running in shiny or in RSTUDIO
 
 # --------------------------------------------------------------------------- #
@@ -86,7 +91,7 @@ source(file.path(Global_Dir, "unit conversions.R"), local = F)
 source(file.path(Global_Dir, "functions.R"), local = F)
 source(file.path(Algo_Func_Dir, "ORD Functions.R"), local = F)
 
-project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))
+project <- GetProjectID()
 
 #IorO for "Ouputs" or "Inputs" directory, must be a string as used in directory
 Base_Dir <- GetSaveDirectory(Project = project, Algorithm = ModuleFolder, IorO = "Outputs")

@@ -67,10 +67,10 @@ library(getPass)
 # ----------------------------------------------------------------------- #
 
 #Use a version number derived from date or define manually
-version <- paste0(Sys.Date(), " ","V1.0 (AH)")
+version <- paste0(Sys.Date(), " ","V2.0 (AH)")
 # version <- "2021-05-04 V1.0 (AH)"
 
-use_same_input_version <- F
+use_same_input_version <- T
 
 if (use_same_input_version == T) {
   input_version <- version
