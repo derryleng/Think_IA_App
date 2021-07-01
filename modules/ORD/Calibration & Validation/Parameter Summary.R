@@ -2,7 +2,7 @@
 #                |                                                        #
 # Title          |  Parameter Summary                                     #
 #                |                                                        #
-# Version No.    |  4.3                                                   #
+# Version No.    |  4.4                                                   #
 #                |                                                        #
 # Date Modified  |  23/11/2020                                            #
 #                |                                                        #
@@ -15,6 +15,8 @@
 # ----------------------------------------------------------------------- #
 
 # Version History ------------------------------------------------------- #
+# 4.4  Added additional PWS option to calibrate Vref using the median, legacy
+#        operation still uses 1st percentile + 10
 # 4.3  Added a adjustment to Vref or deceleration rate to account for the
 #        1000ft gate limitation, normalising ORD time of flight with observed
 #        time of flight (median) adjusting decel rate if the aircraft stabilises
@@ -433,24 +435,28 @@ for (i in 1:length(actypes)) {
 
   }
 
-
-
-  if (nrow(dat2[Follower_Aircraft_Type == actypes[i]]) >= empirical_threshold) {
-    message("Calibrating ", actypes[i], " using empirical distribution.")
-    vref_selection <- "Empirical"
-    vref <- ifelse(
-      quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
-      quantile(dat2$vref, 0.01) + 10,
-      median(dat2$vref))
+  if (Operation == "PWS") {
+    vref_selection <- "Median"
+    vref <- median(dat2$vref)
     pcile <- quantile(dat2$vref, 0.01)
   } else {
-    message("Calibrating ", actypes[i], " using fitted distribution.")
-    vref_selection <- "Fitted"
-    vref <- ifelse(
-      quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
-      quantile(dat_density, 0.01) + 10,
-      quantile(dat_density, 0.5))
-    pcile <- quantile(dat_density, 0.01)
+    if (nrow(dat2[Follower_Aircraft_Type == actypes[i]]) >= empirical_threshold) {
+      message("Calibrating ", actypes[i], " using empirical distribution.")
+      vref_selection <- "Empirical"
+      vref <- ifelse(
+        quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
+        quantile(dat2$vref, 0.01) + 10,
+        median(dat2$vref))
+      pcile <- quantile(dat2$vref, 0.01)
+    } else {
+      message("Calibrating ", actypes[i], " using fitted distribution.")
+      vref_selection <- "Fitted"
+      vref <- ifelse(
+        quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
+        quantile(dat_density, 0.01) + 10,
+        quantile(dat_density, 0.5))
+      pcile <- quantile(dat_density, 0.01)
+    }
   }
 
 
@@ -483,6 +489,8 @@ for (i in 1:length(actypes)) {
   #Set the Vref for leader and follower and then Vtgt as these Vref with the wind adjustment added back
 
   vref_lead <- as.numeric(vref)
+  # This is a bit janky for PWS as vref = median => vref + 5 is always greater
+  # than median
   vref_foll <- max(vref + 5, median(dat2$vref), na.rm = T)
 
   Vtgt_lead <- vref_lead + calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
@@ -512,7 +520,6 @@ for (i in 1:length(actypes)) {
 
   if (n1 >= thousand_ft_gate) {
 
-
     time_per_ac_type$m2_lead[[i]] <- get_decel_dist(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                     time_per_ac_type$time_lead_observed_alternate[[i]],
                                                     thousand_ft_gate,
@@ -524,7 +531,6 @@ for (i in 1:length(actypes)) {
                                                     thousand_ft_gate,
                                                     type_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                     Vtgt_foll)
-
 
     time_per_ac_type$a_lead[[i]] <- get_decel(time_per_ac_type$m2_lead[[i]],
                                               thousand_ft_gate,
@@ -601,7 +607,7 @@ for (i in 1:length(actypes)) {
 # Filter out all aircraft below empirical_threshold for the type adaptation
 # or not in the list of aircraft to create an adaptation for manually
 
-if(use_Vref_Adjust == T) {
+if(use_Vref_Adjust == T & Operation != "PWS") {
   type_adaptation_all_aircraft <- type_adaptation_modified
   type_adaptation_out <- rbindlist(type_adaptation_modified) %>%
     filter(Aircraft_Type %in% (unique_aircraft_types %>% filter(N >= empirical_threshold) %>% .$Follower_Aircraft_Type) | Aircraft_Type %in% additional_aircraft_to_output)
@@ -897,22 +903,27 @@ for (i in 1:length(wake_cats)) {
   d <- ifelse(type_adaptation_input_table$Steady_Procedural_Speed_Lead - a2 > 0 & n2 != n1, (type_adaptation_input_table$Steady_Procedural_Speed_Lead-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
   d2 <- dat[Type == "d2"]$median %>% ifelse(length(.) > 0, ., NA)
 
-  if (nrow(dat2[Follow_RECAT == wake_cats[i]]) >= empirical_threshold) {
-    message("Calibrating ", wake_cats[i], " using empirical distribution.")
-    vref_selection <- "Empirical"
-    vref <- ifelse(
-      quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
-      quantile(dat2$vref, 0.01) + 10,
-      median(dat2$vref))
-    pcile <- quantile(dat2$vref, 0.01)
+  if (Operation == "PWS") {
+    vref_selection <- "Median"
+    vref <- median(dat2$vref)
   } else {
-    message("Calibrating ", wake_cats[i], " using fitted distribution.")
-    vref_selection <- "Fitted"
-    vref <- ifelse(
-      quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
-      quantile(dat_density, 0.01) + 10,
-      quantile(dat_density, 0.5))
-    pcile <- quantile(dat_density, 0.01)
+    if (nrow(dat2[Follow_RECAT == wake_cats[i]]) >= empirical_threshold) {
+      message("Calibrating ", wake_cats[i], " using empirical distribution.")
+      vref_selection <- "Empirical"
+      vref <- ifelse(
+        quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
+        quantile(dat2$vref, 0.01) + 10,
+        median(dat2$vref))
+      pcile <- quantile(dat2$vref, 0.01)
+    } else {
+      message("Calibrating ", wake_cats[i], " using fitted distribution.")
+      vref_selection <- "Fitted"
+      vref <- ifelse(
+        quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
+        quantile(dat_density, 0.01) + 10,
+        quantile(dat_density, 0.5))
+      pcile <- quantile(dat_density, 0.01)
+    }
   }
 
   png(filename = file.path(out_plot3, paste0(wake_cats[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
@@ -954,8 +965,6 @@ for (i in 1:length(wake_cats)) {
 
   #Calculating a median time of flight per wake category
 
-
-
   time_per_wake_cat$time_lead_observed_alternate[[i]] <- get_time_of_flight(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                                            n2, n1, wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                                            Vtgt_lead)
@@ -977,7 +986,6 @@ for (i in 1:length(wake_cats)) {
                                                      thousand_ft_gate,
                                                      wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                      Vtgt_foll)
-
 
     time_per_wake_cat$a_lead[[i]] <- get_decel(time_per_wake_cat$m2_lead[[i]],
                                                thousand_ft_gate,
@@ -1085,7 +1093,7 @@ for (i in 1:length(wake_cats)) {
 
 }
 
-if(use_Vref_Adjust == T) {
+if(use_Vref_Adjust == T & Operation != "PWS") {
   wake_adaptation <- rbindlist(wake_adaptation)
 } else {
   wake_adaptation <- rbindlist(wake_adaptation_old)
@@ -1163,22 +1171,27 @@ if (run_extended == T){
       next
     }
 
-    if (fit == "E") {
-      message("Calibrating ", actype, " using empirical distribution.")
-      vref_selection <- "Empirical"
-      vref <- ifelse(
-        quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
-        quantile(dat2$vref, 0.01) + 10,
-        median(dat2$vref))
-      pcile <- quantile(dat2$vref, 0.01)
+    if (Operation == "PWS") {
+      vref_selection <- "Median"
+      vref <- median(dat2$vref)
     } else {
-      message("Calibrating ", actype, " using fitted distribution.")
-      vref_selection <- "Fitted"
-      vref <- ifelse(
-        quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
-        quantile(dat_density, 0.01) + 10,
-        quantile(dat_density, 0.5))
-      pcile <- quantile(dat_density, 0.01)
+      if (fit == "E") {
+        message("Calibrating ", actype, " using empirical distribution.")
+        vref_selection <- "Empirical"
+        vref <- ifelse(
+          quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
+          quantile(dat2$vref, 0.01) + 10,
+          median(dat2$vref))
+        pcile <- quantile(dat2$vref, 0.01)
+      } else {
+        message("Calibrating ", actype, " using fitted distribution.")
+        vref_selection <- "Fitted"
+        vref <- ifelse(
+          quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
+          quantile(dat_density, 0.01) + 10,
+          quantile(dat_density, 0.5))
+        pcile <- quantile(dat_density, 0.01)
+      }
     }
 
     # Remove vref outliers
@@ -1435,22 +1448,27 @@ if (use_weighted_average) {
     stop("Not enough aircrafts to generate vref distribution")
   }
 
-  if (nrow(dat2) >= empirical_threshold) {
-    message("Calibrating using empirical distribution.")
-    vref_selection <- "Empirical"
-    vref <- ifelse(
-      quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
-      quantile(dat2$vref, 0.01) + 10,
-      median(dat2$vref))
-    pcile <- quantile(dat2$vref, 0.01)
+  if (Operation == "PWS") {
+    vref_selection <- "Median"
+    vref <- median(dat2$vref)
   } else {
-    message("Calibrating using fitted distribution.")
-    vref_selection <- "Fitted"
-    vref <- ifelse(
-      quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
-      quantile(dat_density, 0.01) + 10,
-      quantile(dat_density, 0.5))
-    pcile <- quantile(dat_density, 0.01)
+    if (nrow(dat2) >= empirical_threshold) {
+      message("Calibrating using empirical distribution.")
+      vref_selection <- "Empirical"
+      vref <- ifelse(
+        quantile(dat2$vref, 0.01) + 10 <= median(dat2$vref),
+        quantile(dat2$vref, 0.01) + 10,
+        median(dat2$vref))
+      pcile <- quantile(dat2$vref, 0.01)
+    } else {
+      message("Calibrating using fitted distribution.")
+      vref_selection <- "Fitted"
+      vref <- ifelse(
+        quantile(dat_density, 0.01) > 0 & quantile(dat_density, 0.01) + 10 <= quantile(dat_density, 0.5),
+        quantile(dat_density, 0.01) + 10,
+        quantile(dat_density, 0.5))
+      pcile <- quantile(dat_density, 0.01)
+    }
   }
 
   png(filename = file.path(out_dir, "Vref Distribution Overall.png"), width = 900, height = 600)

@@ -28,33 +28,24 @@ Get_Non_Wake_Spacing <- function(LPR){
   
 }
 
+Get_Runway_Dependent_Separation <- function(LPR){
+  
+  LPR <- mutate(LPR, Runway_Dependent_Separation_Distance = 1 * NM_to_m)
+  return(LPR)
+  
+}
+
 # Function to extract the Time buffers from adaptation. 
 # Returns A time buffer for each landing pair (i.e. each follower)
 # Returns based on Aircraft Type, Wake, DBS Precedence (Essentially mimicing the ORD_Profile_Type = "Aircraft_Type")
 # Currently requires "Active" argument which turns all buffers on or off
 # If not "Active" returns a buffer of 0 for each Landing Pair/Follower
+#### REDUNDANT
 Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
   
   if (Active){
     
-    if (ID_Var == Get_LP_Primary_Key("Validation")){Actual_Selection <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")$ORD_Profile_Selection} else {
-      Actual_Selection <- "Aircraft_Type"
-    }
-
-    ORD_Aircraft <- Load_Adaptation_Table(con, "tbl_ORD_Aircraft_Adaptation") %>% select(Aircraft_Type, Time_Buffer)
-    ORD_Wake <- Load_Adaptation_Table(con, "tbl_ORD_Wake_Adaptation") %>% select(Wake_Cat, Time_Buffer)
-    ORD_DBS <- Load_Adaptation_Table(con, "tbl_ORD_DBS_Adaptation") %>% select(DBS_Distance, Time_Buffer)
-    ORD_OP <- NA
-    LPR <- rename(LPR, Aircraft_Type = Follower_Aircraft_Type, Wake_Cat = Follower_Recat_Wake_Cat)
     
-    LPR_DBS <- filter(LPR, TBS_Service_Level == "DBS")
-    LPR_TBS <- filter(LPR, TBS_Service_Level == "TBS")
-    
-    LPR_DBS <- Join_ORD_Adaptation(LPR, ORD_Profile_Selection = "TBS_Table", ORD_OP, ORD_Aircraft, ORD_Wake, ORD_DBS)
-    LPR_TBS <- Join_ORD_Adaptation(LPR, ORD_Profile_Selection = Actual_Selection, ORD_OP, ORD_Aircraft, ORD_Wake, ORD_DBS)
-
-    Buffers <- rbind(LPR_TBS, LPR_DBS) %>%
-      select(!!sym(ID_Var), Time_Buffer)
     
   } else {
     
@@ -74,10 +65,10 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_ORD_Operator){
+Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_ORD_Operator, LegacyorRecat){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator, LegacyorRecat)}
   if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(Full_Wind_Forecast)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
@@ -90,7 +81,7 @@ Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Typ
 # This has TTB_Type as an argument to decide which method of calculation to use
 # Time Buffers are added at this stage 
 # Currently only supports TBS Wake/ROT
-Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers){
+Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size){
   
   # LPR <- Landing_Pair
   # Out_Prefix <- "Test"
@@ -103,8 +94,7 @@ Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out
   
   ## Join on the Time Buffers and Generate new Time aim
   LPR <- LPR %>%
-    left_join(Time_Buffers, by = setNames(ID_Var, ID_Var)) %>%
-    mutate(TTB_Reference_Time = !!sym(Time_Var) + Time_Buffer) %>%
+    mutate(TTB_Reference_Time = !!sym(Time_Var)) %>%
     mutate(Sep_Dist_Buffer = 0)
   
   if (TTB_Type == "Original"){TTB_Results <- Calculate_Perfect_TBS_Distance_Original(LPR, TBSC_Profile, Out_Prefix, ID_Var, Time_Var = "TTB_Reference_Time", Speed_Var, Seg_Size)}
@@ -112,7 +102,7 @@ Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out
   if (TTB_Type == "T2F"){TTB_Results <- Calculate_Perfect_TBS_Distance_TTB_T2F(LPR, Full_Wind_Forecast = Other_Data, ID_Var, Dist_Var, Speed_Var, WE_Var)}
   
   LPR <- LPR %>%
-    select(-TTB_Reference_Time, -Sep_Dist_Buffer, -Time_Buffer) 
+    select(-TTB_Reference_Time, -Sep_Dist_Buffer) 
   
   if (exists("TTB_Results")){LPR <- LPR %>% left_join(TTB_Results, by = setNames(ID_Var, ID_Var))}
   
@@ -175,13 +165,13 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator, LegacyorRecat){
   
   # ID_Var <- LP_Primary_Key
   # LPR <- INT_Landing_Pairs
   # Full_Wind_Forecast <- INT_Full_GWCS_Forecast
   # Build an Aircraft Profile without ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = F, Use_EFDD, Use_ORD_Operator)
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Use_ORD_Operator, LegacyorRecat)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)
@@ -275,7 +265,7 @@ Generate_Constraint_DBS_Distance <- function(con, LPR, Out_Prefix, Constraint_Ty
   if (Constraint_Type == "ROT"){LPR <- mutate(LPR, !!sym(Dist_Var) := Reference_Recat_ROT_Spacing_Distance)}
   if (Constraint_Type == "Non_Wake"){
     LPR <- mutate(LPR, !!sym(Dist_Var) := ifelse(RNAV_Flag == 1, Non_Wake_RNAV_Separation_Distance, Non_Wake_Separation_Distance))}
-  # if (Constraint_Type == "Runway_Dependent"){}
+  if (Constraint_Type == "Runway_Dependent"){LPR <- mutate(LPR, !!sym(Dist_Var) := Runway_Dependent_Separation_Distance)}
   return(LPR)
 }
 
@@ -287,20 +277,20 @@ Get_Legal_Spacing_Name <- function(Constraint_Type){
   
 }
 
-Get_Constraint_Prefix <- function(Constraint_Type, Constraint_Delivery, Service_Level){
+Get_Constraint_Prefix <- function(Constraint_Type, Constraint_Delivery, Service_Level, LegacyorRecat){
   
   Legal <- Get_Legal_Spacing_Name(Constraint_Type)
   Constraint_Delivery <- ifelse(Constraint_Delivery == "THRESHOLD", "Threshold", "FAF")
   #return(paste0(Constraint_Delivery, "_", Service_Level, "_", Constraint_Type, "_", Legal))
-  return(paste0(Constraint_Delivery, "_", Constraint_Type, "_", Legal))
+  return(paste0(LegacyorRecat, "_", Constraint_Delivery, "_", Constraint_Type, "_", Legal))
   
 }
 
 # Generic function to Generate Constraint Spacing for ALL constraints at either FAF or Threshold.
-Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level, ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers){
+Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level, ID_Var, Time_Var, Speed_Var, Seg_Size, LegacyorRecat){
   
   # Get the Prefix for the Constraint being EVALUATED.
-  Out_Prefix <- Get_Constraint_Prefix(Constraint_Type, Evaluated_Delivery, Service_Level)
+  Out_Prefix <- Get_Constraint_Prefix(Constraint_Type, Evaluated_Delivery, Service_Level, LegacyorRecat)
   
   # Is this constraint DBS or TBS based?
   Service_Level <- Get_Constraint_Service_Level(Constraint_Type, IA_Service_Level)
@@ -321,7 +311,7 @@ Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constr
     # Apply Minimums here.
     if (Constraint_Delivery == Evaluated_Delivery){
       if (Service_Level == "TBS"){
-        LPR <- Calculate_Perfect_TBS_Distance(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers) 
+        LPR <- Calculate_Perfect_TBS_Distance(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size) 
     } else {
       LPR <- Generate_Constraint_DBS_Distance(con, LPR, Out_Prefix, Constraint_Type)
     }
@@ -329,17 +319,17 @@ Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constr
     
     # If constraint at Threshold and Evaluated at FAF, assume Threshold constraint calculated
     # and Add ORD Compression.
+    Compression_Var <- paste0(LegacyorRecat, "_Forecast_ORD_Compression")
     if (Constraint_Delivery == "THRESHOLD" & Evaluated_Delivery == "FAF"){
-      Thresh_Var <- paste0(Get_Constraint_Prefix(Constraint_Type, Constraint_Delivery, Service_Level), "_Distance")
+      Thresh_Var <- paste0(Get_Constraint_Prefix(Constraint_Type, Constraint_Delivery, Service_Level, LegacyorRecat), "_Distance")
       LPR <- LPR %>%
-        mutate(!!sym(paste0(Out_Prefix, "_Distance")) := !!sym(Thresh_Var) + Forecast_ORD_Compression)
+        mutate(!!sym(paste0(Out_Prefix, "_Distance")) := !!sym(Thresh_Var) + !!sym(Compression_Var))
     }
     
-
-    
+    if (Constraint_Type == "Non_Wake"){Remove_NA = T} else{Remove_NA = F}
     Max_Vars <- c(paste0(Out_Prefix, "_Distance"), "Minimum_Constraint_Distance")
     LPR <- LPR %>%
-      mutate(!!sym(paste0(Out_Prefix, "_Distance")) := pmax(!!!syms(Max_Vars), na.rm = F))
+      mutate(!!sym(paste0(Out_Prefix, "_Distance")) := pmax(!!!syms(Max_Vars), na.rm = Remove_NA))
 
     LPR <- LPR %>% select(-Minimum_Constraint_Distance, -Delivery_Point)
     
@@ -354,12 +344,12 @@ Generate_Constraint_Spacing_All <- function(con, LPR, TBSC_Profile,
                                             Constraint_Delivery, Evaluated_Delivery,
                                             ID_Var, 
                                             Time_Var, Speed_Var,
-                                            Seg_Size, Time_Buffers){
+                                            Seg_Size, LegacyorRecat){
   
   LPR_DBS <- filter(LPR, TBS_Service_Level == "DBS")
-  LPR_DBS <- Generate_Constraint_Spacing(con, LPR_DBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "DBS", ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers)
+  LPR_DBS <- Generate_Constraint_Spacing(con, LPR_DBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "DBS", ID_Var, Time_Var, Speed_Var, Seg_Size, LegacyorRecat)
   LPR_TBS <- filter(LPR, TBS_Service_Level == "TBS")
-  LPR_TBS <- Generate_Constraint_Spacing(con, LPR_TBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "TBS", ID_Var, Time_Var, Speed_Var, Seg_Size, Time_Buffers)
+  LPR_TBS <- Generate_Constraint_Spacing(con, LPR_TBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "TBS", ID_Var, Time_Var, Speed_Var, Seg_Size, LegacyorRecat)
   
   LPR <- rbind(LPR_DBS, LPR_TBS) %>%
     arrange(!!sym(ID_Var))
@@ -368,10 +358,10 @@ Generate_Constraint_Spacing_All <- function(con, LPR, TBSC_Profile,
   
 }
 ## Value can be "IAS", "Distance", "Time"
-Get_Reference_Variable_Name <- function(Constraint_Type, Value){
+Get_Reference_Variable_Name <- function(Constraint_Type, Value, LegacyorRecat){
   
   if (Get_Constraint_Service_Level(Constraint_Type, "TBS") == "TBS"){
-    return(paste0("Reference_Recat_", Constraint_Type, "_", Get_Legal_Spacing_Name(Constraint_Type), "_", Value))
+    return(paste0("Reference_", LegacyorRecat, "_", Constraint_Type, "_", Get_Legal_Spacing_Name(Constraint_Type), "_", Value))
   } else {return(NA)}
   
 }

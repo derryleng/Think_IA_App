@@ -1,12 +1,12 @@
 process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
-  
+
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
-  
+
   message("[",Sys.time(),"] ", "Begin processing CAT48 log file...")
   logs <- fread(LogFilePath, header = F, skip = 1, na.strings = c("NA", "N/A", "NULL", ""))
   message("[",Sys.time(),"] ", "Read ", nrow(logs), " lines.")
-  
+
   names(logs)[1:27] <- c(
     "SAC",
     "SIC",
@@ -36,30 +36,30 @@ process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     "Indicated_Airspeed_kt",
     "Barometric_Pressure_Setting_mbar"
   )
-  
+
   x <- logs[!is.na(Mode_C_ft) & paste0(SIC, SAC) == "5249" & !is.na(Mode_A) & !is.na(Aircraft_ID)]
-  
+
   x <- x[as.numeric(Mode_C_ft) <= 10000 & !grepl("^7777$", Mode_A) & !grepl("^7000$", Mode_A)]
-  
+
   x$Derived_X_nm <- as.numeric(x$Derived_X_nm) * fnc_GI_Nm_To_M()
   x$Derived_Y_nm <- as.numeric(x$Derived_Y_nm) * fnc_GI_Nm_To_M()
-  
+
   x <- x[
     Derived_X_nm >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
       Derived_X_nm <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
       Derived_Y_nm >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
       Derived_Y_nm <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
   ]
-  
+
   if (nrow(x) > 0) {
-    
+
     x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$Derived_X_nm) * fnc_GI_Nm_To_M(), as.numeric(x$Derived_Y_nm) * fnc_GI_Nm_To_M(), tbl_Adaptation_Data))
-    
+
     x[Magnetic_Heading_deg < 0]$Magnetic_Heading_deg <- as.numeric(x[Magnetic_Heading_deg < 0]$Magnetic_Heading_deg) + 360
     x[True_Track_Angle_deg < 0]$True_Track_Angle_deg <- as.numeric(x[True_Track_Angle_deg < 0]$True_Track_Angle_deg) + 360
-    
+
   }
-  
+
   out <- data.table(
     Flight_Plan_ID = integer(),
     Track_Date = Date_String,
@@ -84,31 +84,154 @@ process_Asterix_Cat48 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Mode_S_Roll_Angle = as.numeric(x$Roll_Angle_deg) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = as.numeric(x$Barometric_Pressure_Setting_mbar) * fnc_GI_Mbar_To_Pa()
   )
-  
+
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
   for (j in unique(fp$Flight_Plan_ID)) {
     out[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
+      Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
         Callsign == fp[Flight_Plan_ID == j]$Callsign &
         grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
     ]$Flight_Plan_ID <- j
   }
-  
+
   dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
-  
+
 }
 
-process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
-  
+# process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
+#
+#   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
+#   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
+#
+#   message("[",Sys.time(),"] ", "Begin processing CAT62 log file...")
+#   logs <- fread(LogFilePath, header = F, skip = 2, na.strings = c("NA", "N/A", "NULL", ""))
+#   message("[",Sys.time(),"] ", "Read ", nrow(logs), " lines.")
+#
+#   names(logs)[1:37] <- c(
+#     "062",
+#     "I062/010/Sac",
+#     "I062/010/Sic",
+#     "I062/040/TrackNum",
+#     "I062/060/Mode3A",
+#     "I062/070/Time",
+#     "I062/100/X",
+#     "I062/100/Y",
+#     "I062/105/Lat",
+#     "I062/105/Lon",
+#     "I062/135/QNH",
+#     "I062/135/CTL",
+#     "I062/185/VX",
+#     "I062/185/VY",
+#     "I062/295/MDA/MDA",
+#     "I062/295/MHG/MHG",
+#     "I062/295/TAS/TAS",
+#     "I062/295/BVR/BVR",
+#     "I062/295/RAN/RAN",
+#     "I062/295/TAR/TAR",
+#     "I062/295/TAN/TAN",
+#     "I062/295/GSP/GSP",
+#     "I062/295/IAR/IAR",
+#     "I062/295/BPS/BPS",
+#     "I062/380/ADR/ADR",
+#     "I062/380/ID/ID",
+#     "I062/380/MHG/MHG",
+#     "I062/380/TAS/TAS",
+#     "I062/380/BVR/BVR",
+#     "I062/380/RAN/RAN",
+#     "I062/380/TAR/RateOfTurn",
+#     "I062/380/TAN/TAN",
+#     "I062/380/GSP/GSP",
+#     "I062/380/IAR/IAR",
+#     "I062/380/BPS/BPS",
+#     "I062/390/CSN/CSN",
+#     "I062/SP/CCR/RC"
+#   )
+#
+#   x <- logs[`062` == "62" & !is.na(`I062/135/CTL`) & paste0(`I062/010/Sac`, `I062/010/Sic`) == "52254" & !is.na(`I062/390/CSN/CSN`)]
+#
+#   x <- x[as.numeric(`I062/135/CTL`) < 100 & !grepl("^7777$", `I062/060/Mode3A`) & !grepl("^7000$", `I062/060/Mode3A`)]
+#
+#   x <- x[
+#     `I062/100/X` >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
+#       `I062/100/X` <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
+#       `I062/100/Y` >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
+#       `I062/100/Y` <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
+#   ]
+#
+#   if (nrow(x) > 0) {
+#
+#     if (tbl_Adaptation_Data$Use_Local_Coords) {
+#       x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
+#     } else {
+#       x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I062/100/X`), as.numeric(x$`I062/100/Y`), tbl_Adaptation_Data))
+#     }
+#
+#     x$`I062/380/GSP/GSP` <- ifelse(as.numeric(x$`I062/295/GSP/GSP`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/GSP/GSP`)
+#     x$`I062/380/IAR/IAR` <- ifelse(as.numeric(x$`I062/295/IAR/IAR`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/IAR/IAR`)
+#     x$`I062/380/MHG/MHG` <- ifelse(as.numeric(x$`I062/295/MHG/MHG`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/MHG/MHG`)
+#     x$`I062/380/TAS/TAS` <- ifelse(as.numeric(x$`I062/295/TAS/TAS`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/TAS/TAS`)
+#     x$`I062/380/TAN/TAN` <- ifelse(as.numeric(x$`I062/295/TAN/TAN`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/TAN/TAN`)
+#     x$`I062/380/TAR/RateOfTurn` <- ifelse(as.numeric(x$`I062/295/TAR/TAR`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/TAR/RateOfTurn`)
+#     x$`I062/380/RAN/RAN` <- ifelse(as.numeric(x$`I062/295/RAN/RAN`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/RAN/RAN`)
+#     x$`I062/380/BPS/BPS` <- ifelse(as.numeric(x$`I062/295/BPS/BPS`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/BPS/BPS`)
+#
+#   }
+#
+#   out <- data.table(
+#     Flight_Plan_ID = NA,
+#     Track_Date = Date_String,
+#     Track_Time = as.numeric(x$`I062/070/Time`),
+#     Callsign = x$`I062/390/CSN/CSN`,
+#     SSR_Code = x$`I062/060/Mode3A`,
+#     X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I062/100/X`},
+#     Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
+#     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I062/105/Lat` * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
+#     Lon = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I062/105/Lon` * fnc_GI_Degs_To_Rads()} else {x$PositionLongitude},
+#     Mode_C = as.numeric(x$`I062/135/CTL`) * 100 * fnc_GI_Ft_To_M(),
+#     Track_SPD = sqrt(as.numeric(x$`I062/185/VX`)^2 + as.numeric(x$`I062/185/VY`)^2),
+#     Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$`I062/185/VX`), as.numeric(x$`I062/185/VY`)),
+#     Track_Number = as.integer(x$`I062/040/TrackNum`),
+#     Mode_S_Address = x$`I062/380/ADR/ADR`,
+#     Mode_S_GSPD = as.numeric(x$`I062/380/GSP/GSP`) * fnc_GI_Kts_To_M_Per_Sec(),
+#     Mode_S_IAS = as.numeric(x$`I062/380/IAR/IAR`) * fnc_GI_Kts_To_M_Per_Sec(),
+#     Mode_S_HDG = as.numeric(x$`I062/380/MHG/MHG`) * fnc_GI_Degs_To_Rads(),
+#     Mode_S_TAS = as.numeric(x$`I062/380/TAS/TAS`) * fnc_GI_Kts_To_M_Per_Sec(),
+#     Mode_S_Track_HDG = as.numeric(x$`I062/380/TAN/TAN`) * fnc_GI_Degs_To_Rads(),
+#     Mode_S_Track_HDG_Rate = as.numeric(x$`I062/380/TAR/RateOfTurn`) * fnc_GI_Degs_To_Rads(),
+#     Mode_S_Roll_Angle = as.numeric(x$`I062/380/RAN/RAN`) * fnc_GI_Degs_To_Rads(),
+#     Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * fnc_GI_Mbar_To_Pa()
+#   )
+#
+#   message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
+#
+#   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
+#   for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
+#     out[
+#       Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
+#         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
+#         Callsign == fp[Flight_Plan_ID == j]$Callsign &
+#         grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
+#     ]$Flight_Plan_ID <- j
+#   }
+#
+#   dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
+#   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
+#
+# }
+
+process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airfield_Name, dbi_con) {
+
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
-  
+
+  Next_Day <- format(dmy(Date_String) + days(1), "%d/%m/%Y")
+
   message("[",Sys.time(),"] ", "Begin processing CAT62 log file...")
   logs <- fread(LogFilePath, header = F, skip = 2, na.strings = c("NA", "N/A", "NULL", ""))
   message("[",Sys.time(),"] ", "Read ", nrow(logs), " lines.")
-  
+
   names(logs)[1:37] <- c(
     "062",
     "I062/010/Sac",
@@ -148,26 +271,26 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     "I062/390/CSN/CSN",
     "I062/SP/CCR/RC"
   )
-  
+
   x <- logs[`062` == "62" & !is.na(`I062/135/CTL`) & paste0(`I062/010/Sac`, `I062/010/Sic`) == "52254" & !is.na(`I062/390/CSN/CSN`)]
-  
+
   x <- x[as.numeric(`I062/135/CTL`) < 100 & !grepl("^7777$", `I062/060/Mode3A`) & !grepl("^7000$", `I062/060/Mode3A`)]
-  
+
   x <- x[
     `I062/100/X` >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
       `I062/100/X` <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
       `I062/100/Y` >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
       `I062/100/Y` <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
   ]
-  
+
   if (nrow(x) > 0) {
-    
+
     if (tbl_Adaptation_Data$Use_Local_Coords) {
       x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I062/105/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I062/105/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
     } else {
       x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I062/100/X`), as.numeric(x$`I062/100/Y`), tbl_Adaptation_Data))
     }
-    
+
     x$`I062/380/GSP/GSP` <- ifelse(as.numeric(x$`I062/295/GSP/GSP`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/GSP/GSP`)
     x$`I062/380/IAR/IAR` <- ifelse(as.numeric(x$`I062/295/IAR/IAR`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/IAR/IAR`)
     x$`I062/380/MHG/MHG` <- ifelse(as.numeric(x$`I062/295/MHG/MHG`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/MHG/MHG`)
@@ -176,15 +299,15 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     x$`I062/380/TAR/RateOfTurn` <- ifelse(as.numeric(x$`I062/295/TAR/TAR`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/TAR/RateOfTurn`)
     x$`I062/380/RAN/RAN` <- ifelse(as.numeric(x$`I062/295/RAN/RAN`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/RAN/RAN`)
     x$`I062/380/BPS/BPS` <- ifelse(as.numeric(x$`I062/295/BPS/BPS`) > tbl_Adaptation_Data$Max_Mode_S_Data_Age, NA, x$`I062/380/BPS/BPS`)
-    
+
   }
-  
+
   out <- data.table(
     Flight_Plan_ID = NA,
     Track_Date = Date_String,
     Track_Time = as.numeric(x$`I062/070/Time`),
-    Callsign = x$`I062/390/CSN/CSN`,
-    SSR_Code = x$`I062/060/Mode3A`,
+    Callsign = x$`I062/380/ID/ID`,
+    SSR_Code = as.character(as.numeric(x$`I062/060/Mode3A`)),
     X_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_X} else {x$`I062/100/X`},
     Y_Pos = if (tbl_Adaptation_Data$Use_Local_Coords) {x$Position_Y} else {x$`I062/100/Y`},
     Lat = if (tbl_Adaptation_Data$Use_Local_Coords) {x$`I062/105/Lat` * fnc_GI_Degs_To_Rads()} else {x$PositionLatitude},
@@ -203,33 +326,38 @@ process_Asterix_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Mode_S_Roll_Angle = as.numeric(x$`I062/380/RAN/RAN`) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = (as.numeric(x$`I062/380/BPS/BPS`) + 800) * fnc_GI_Mbar_To_Pa()
   )
-  
-  message("[",Sys.time(),"] ", "Generating Flight_Plan_ID (this may take a while)...")
-  
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
-  for (j in unique(fp[FP_Date %in% unique(out$Track_Date)]$Flight_Plan_ID)) {
-    out[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
-        abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
-        Callsign == fp[Flight_Plan_ID == j]$Callsign &
-        grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
-    ]$Flight_Plan_ID <- j
+
+  out <- out %>% filter(Mode_C > tbl_Adaptation_Data$Load_Min_Alt & Mode_C < tbl_Adaptation_Data$Load_Max_Alt)
+
+  if (Airfield_Name == "CYYZ") {
+    # Timezone Conversion UTC to Est
+    out <- Timezone_Conversion(out, "Track_Date", "Track_Time", "UTC", "EST")
   }
-  
-  dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
-  
+
+  if (nrow(out) > 0) {
+
+    message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
+    out2 <- generateFPID_Join(out, dbi_con, Date_String, T)
+
+    message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
+
+    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out2, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended ", nrow(out2), " rows to tbl_Radar_Track_Point")
+
+  } else {
+    message("[",Sys.time(),"] ", "Exited without change to database.")
+  }
 }
 
 process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
-  
+
   Date_String <- Asterix_Filename_To_Date(basename(LogFilePath))
   message("[",Sys.time(),"] ", "Found date from filename: ", Date_String)
-  
+
   message("[",Sys.time(),"] ", "Begin processing CAT20 log file...")
   logs <- fread(LogFilePath, header = F, skip = 6, na.strings = c("NA", "N/A", "NULL", ""))
   message("[",Sys.time(),"] ", "Read ", nrow(logs), " lines.")
-  
+
   names(logs)[1:50] <- c(
     "I020/010/Sac",
     "I020/010/Sic",
@@ -282,26 +410,26 @@ process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     "I020/250/Bds6_0/Mgh",
     "I020/250/Bds6_0/MghStatus"
   )
-  
+
   x <- logs[`I020/010/Sac` == "52" & !is.na(`I020/090/MFL`) & paste0(`I020/010/Sac`, `I020/010/Sic`) == "52137" & !is.na(`I020/245/ID`)]
-  
+
   x <- x[as.numeric(`I020/090/MFL`) < 100 & !grepl("^7777$", `I020/070/Mode3A`) & !grepl("^7000$", `I020/070/Mode3A`)]
-  
+
   x <- x[
     `I020/042/X` >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
       `I020/042/X` <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
       `I020/042/Y` >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
       `I020/042/Y` <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
   ]
-  
+
   if (nrow(x) > 0) {
-    
+
     if (tbl_Adaptation_Data$Use_Local_Coords) {
       x <- cbind(x, usp_GI_Latlong_To_XY(as.numeric(x$`I020/041/Lat`) * fnc_GI_Degs_To_Rads(), as.numeric(x$`I020/041/Lon`) * fnc_GI_Degs_To_Rads(), tbl_Adaptation_Data))
     } else {
       x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$`I020/042/X`), as.numeric(x$`I020/042/Y`), tbl_Adaptation_Data))
     }
-    
+
     x[`I020/250/Bds6_0/Mgh` < 0]$`I020/250/Bds6_0/Mgh` <- as.numeric(x[`I020/250/Bds6_0/Mgh` < 0]$`I020/250/Bds6_0/Mgh`) + 360
     x[`I020/250/Bds5_0/Tan` < 0]$`I020/250/Bds5_0/Tan` <- as.numeric(x[`I020/250/Bds5_0/Tan` < 0]$`I020/250/Bds5_0/Tan`) + 360
     x$`I020/250/Bds5_0/Gsp` <- ifelse(as.numeric(x$`I020/250/Bds5_0/GspStatus`) != 1, NA, x$`I020/250/Bds5_0/Gsp`)
@@ -312,9 +440,9 @@ process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     x$`I020/250/Bds5_0/TanRate` <- ifelse(as.numeric(x$`I020/250/Bds5_0/TanRateStatus`) != 1, NA, x$`I020/250/Bds5_0/TanRate`)
     x$`I020/250/Bds5_0/Ran` <- ifelse(as.numeric(x$`I020/250/Bds5_0/RanStatus`) != 1, NA, x$`I020/250/Bds5_0/Ran`)
     x$`I020/250/Bds4_0/Bps` <- ifelse(as.numeric(x$`I020/250/Bds4_0/BpsStatus`) != 1, NA, x$`I020/250/Bds4_0/Bps`)
-    
+
   }
-  
+
   out <- data.table(
     Flight_Plan_ID = integer(),
     Track_Date = Date_String,
@@ -339,18 +467,18 @@ process_Asterix_Cat20 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, 
     Mode_S_Roll_Angle = as.numeric(x$`I020/250/Bds5_0/Ran`) * fnc_GI_Degs_To_Rads(),
     Mode_S_BPS = (as.numeric(x$`I020/250/Bds4_0/Bps`) + 800) * fnc_GI_Mbar_To_Pa()
   )
-  
+
   fp <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Flight_Plan"))
   for (j in unique(fp$Flight_Plan_ID)) {
     out[
-      Track_Date == fp[Flight_Plan_ID == j]$FP_Date & 
+      Track_Date == fp[Flight_Plan_ID == j]$FP_Date &
         abs(Track_Time - fp[Flight_Plan_ID == j]$FP_Time) < 7200 &
         Callsign == fp[Flight_Plan_ID == j]$Callsign &
         grepl(paste0("^[0]?", fp[Flight_Plan_ID == j]$SSR_Code, "$"), SSR_Code)
     ]$Flight_Plan_ID <- j
   }
-  
+
   dbWriteTable(dbi_con, "tbl_Radar_Track_Point", out, append = T)
   message("[",Sys.time(),"] ", "Successfully appended ", nrow(out), " rows to tbl_Radar_Track_Point")
-  
+
 }

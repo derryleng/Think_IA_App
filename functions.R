@@ -90,6 +90,22 @@ Time_String_To_Milliseconds <- function(Time_String) {
   }))
 }
 
+Timezone_Conversion <- function(x, Date_Field, Time_Field, Origin_TZ, Destination_TZ) {
+
+  x <- x %>% mutate(Date_Time_String = ifelse(!!sym(Time_Field) >=3600,
+                                              paste(!!sym(Date_Field), seconds_to_period(!!sym(Time_Field))),
+                                              paste(!!sym(Date_Field), "0H", seconds_to_period(!!sym(Time_Field))))) %>%
+             mutate(Date_Time = dmy_hms(Date_Time_String, tz = Origin_TZ)) %>%
+             mutate(New_Date_Time = with_tz(Date_Time, tz = Destination_TZ)) %>%
+             mutate(New_Date = format(New_Date_Time, "%d/%m/%Y")) %>%
+             mutate(New_Time_String = format(New_Date_Time, "%H:%M:%S")) %>%
+             mutate(New_Time = period_to_seconds(hms(New_Time_String))) %>%
+             select(-c(!!sym(Date_Field), !!sym(Time_Field), "Date_Time_String", "Date_Time", "New_Date_Time", "New_Time_String")) %>%
+             rename(!!sym(Date_Field) := "New_Date", !!sym(Time_Field) := "New_Time")
+
+  return(x)
+}
+
 generateFPID <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
   # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={NavCan_Fusion_Test};Uid={vbuser};Pwd={Th!nkvbuser};")
 
@@ -296,43 +312,51 @@ generateFPID_fusion <- function(tracks, dbi_con = dbi_con, skip_leftover = F) {
 
 }
 
-generateFPID_fusion_join <- function(tracks, dbi_con = dbi_con, Date_String) {
+generateFPID_Join <- function(tracks, dbi_con = dbi_con, Date_String, Use_Callsign) {
 
-  Next_Day <- format(dmy(Date_String) + days(1), "%d/%m/%Y")
-  Previous_Day <- format(dmy(Date_String) - days(1), "%d/%m/%Y")
+  # Gets first FP_Date to check format eTBS logs use mm/dd/yy everything else uses
+  # dd/mm/yyyy and for efficiency loading only a few days of flight plans
+  date_format <- dbGetQuery(dbi_con, "SELECT TOP(1) FP_Date FROM tbl_Flight_Plan")
+
+  if (nchar(date_format) == 10) {
+    Date_String <- format(dmy(Date_String), "%d/%m/%Y")
+    Next_Day <- format(dmy(Date_String) + days(1), "%d/%m/%Y")
+    Previous_Day <- format(dmy(Date_String) - days(1), "%d/%m/%Y")
+  }
+
+  if (nchar(date_format) == 6) {
+    Date_String <- format(dmy(Date_String), "%d/%m/%y")
+    Next_Day <- format(dmy(Date_String) + days(1), "%d/%m/%y")
+    Previous_Day <- format(dmy(Date_String) - days(1), "%d/%m/%y")
+
+    tracks$Track_Date <- format(dmy(tracks$Track_Date), "%d/%m/%y")
+  }
+
+
 
   #Gets flight plans within +/- 1 day of filename
 
   fp <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT Flight_Plan_ID, FP_Date, FP_Time, Callsign, SSR_Code FROM tbl_Flight_Plan
                                          WHERE FP_Date = '", Date_String, "' OR FP_Date = '", Next_Day, "' OR FP_Date = '", Previous_Day, "'")))
 
+
+
   # Drop Flight_Plan_ID and Callsign Columns, these will be taken from the Flight_Plan table
-  tracks <- tracks %>% select(-c(Flight_Plan_ID, Callsign))
+  tracks <- tracks %>% select(-c(Flight_Plan_ID))
   # tracks <- out %>% select(-c(Flight_Plan_ID, Callsign))
 
-  ##Matching FPIDs on SSR and within 1 day either side, then filters out based on 2 hour window
+  if (Use_Callsign == T) {
+    tracks <- left_join(tracks, select(fp, c(Flight_Plan_ID, FP_Date, SSR_Code, FP_Time, Callsign)), by = c("SSR_Code", "Callsign", "Track_Date" = "FP_Date"))
+  }
 
-  tracks <- left_join(tracks, select(fp, c(Flight_Plan_ID, FP_Date, SSR_Code, FP_Time, Callsign)), by = c("SSR_Code"))
+  if (Use_Callsign == F) {
+    tracks <- tracks %>% select(-c(Callsign))
+    tracks <- left_join(tracks, select(fp, c(Flight_Plan_ID, FP_Date, SSR_Code, FP_Time, Callsign)), by = c("SSR_Code", "Track_Date" = "FP_Date"))
+  }
 
-  tracks <- tracks %>% relocate(Flight_Plan_ID, .before = Track_Date) %>%
-    relocate(Callsign, .after = Track_Time)
-
-  tracks$Time_Plus <- ifelse(tracks$Track_Time + 7200 > 86400, (tracks$Track_Time + 7200) - 86400, tracks$Track_Time + 7200)
-  tracks$Time_Minus <- ifelse(tracks$Track_Time - 7200 < 0, 86400 - (tracks$Track_Time - 7200), tracks$Track_Time - 7200)
-
-  tracks_prev <- tracks %>% filter(format(dmy(Track_Date) - days(1), "%d/%m/%Y") == FP_Date) %>%
-    filter(Time_Minus < FP_Time & Time_Minus > Track_Time)
-
-  tracks_curr <- tracks %>% filter(Track_Date == FP_Date) %>%
-    filter(Track_Time - 7200 < FP_Time & Track_Time + 7200 > FP_Time)
-
-  tracks_next <- tracks %>% filter(format(dmy(Track_Date) + days(1), "%d/%m/%Y") == FP_Date) %>%
-    filter(Time_Plus > FP_Time & Time_Plus < Track_Time)
-
-  rm(tracks)
-
-  tracks <- rbind(tracks_prev, tracks_curr, tracks_next)
-  tracks <- tracks %>% select(-c("FP_Date", "FP_Time", "Time_Plus", "Time_Minus"))
+  # Removing all tracks that are more than 2 hours away from the assigned FP Time
+  tracks <- tracks %>% filter(FP_Time > Track_Time - 7200 & FP_Time < Track_Time + 7200) %>%
+                       select(-c("FP_Time"))
 
   return(tracks)
 

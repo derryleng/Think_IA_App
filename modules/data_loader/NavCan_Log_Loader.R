@@ -272,6 +272,11 @@ process_NavCan_FP_new_format <- function(LogFilePath, dbi_con) {
   # x$Timestamp <- if_else(!is.na(x$Arr_Time), dmy_hm(x$Arr_Time), dmy_hm(x$Dep_Time))
   x$FP_Date <- format(as.Date(x$Timestamp), "%d/%m/%Y")
   x$FP_Time <- Time_String_To_Seconds(format(x$Timestamp, "%H:%M:%S"))
+
+  # Convert Date and Time from UTC to EST (local time +/- 1 hour) to get around
+  # tracks overlapping 2 days (7pm local is midnight UTC)
+  x <- Timezone_Conversion(x, "FP_Date", "FP_Time", "UTC", "EST")
+
   # Find and deal with entries with same date & callsign & SSR
   message("[",Sys.time(),"] ", "Finding rows with same Date, Callsign and SSR...")
   fp_keys <- table(x[,.(paste(FP_Date, ACID, Transponder_Code))])
@@ -521,7 +526,7 @@ process_NavCan_SurfaceWindQNH <- function(LogFilePath, Airfield_Name, dbi_con) {
 
 }
 
-process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, dbi_con) {
+process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airfield_Name, dbi_con) {
 
   # dbi_con <- dbConnect(odbc::odbc(), .connection_string = "Driver={SQL Server};Server={192.168.1.23};Database={Users/Roles_Test_Database};Uid={vbuser};Pwd={Th!nkvbuser};")
   # tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
@@ -696,10 +701,15 @@ process_NavCan_Fusion_Cat62 <- function(LogFilePath, tbl_Adaptation_Data, tbl_Ru
 
   out <- out %>% filter(Mode_C > tbl_Adaptation_Data$Load_Min_Alt & Mode_C < tbl_Adaptation_Data$Load_Max_Alt)
 
+  if (Airfield_Name == "CYYZ") {
+    # Timezone Conversion UTC to Est
+    out <- Timezone_Conversion(out, "Track_Date", "Track_Time", "UTC", "EST")
+  }
+
   if (nrow(out) > 0) {
 
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
-    out2 <- generateFPID_fusion_join(out, dbi_con, Date_String)
+    out2 <- generateFPID_Join(out, dbi_con, Date_String, F)
     # out2$SSR_Code <- as.character(out2$SSR_Code)
     message("[",Sys.time(),"] ", "Appending ", nrow(out2), " rows to tbl_Radar_Track_Point...")
 

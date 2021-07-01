@@ -977,14 +977,23 @@ GetScriptPath <- function(ScriptDirectory, Airfield, FileName){
   }
 }
 
+GetProjectID <- function(){
+  ID <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3, NODE Replacement = 4", noblank = FALSE, forcemask = FALSE))
+  return(ID)
+  }
+
 GetSaveDirectory <- function(Project, Algorithm, IorO){
 
-  if(missing(Project)){Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3", noblank = FALSE, forcemask = FALSE))}
+  if(missing(Project)){Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3, NODE Replacement = 4", noblank = FALSE, forcemask = FALSE))}
 
 #Add new project direcotries here later, PWS, NODE, etc
   if (Project == 1){
     Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
     # Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis")
+  }
+
+  if (Project == 4){
+    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS Node Replacement", "Data Analysis")
   }
 
   # Go into Algorithm Folder
@@ -1175,6 +1184,63 @@ Convert_Seconds_to_Time_String <- function(total_secs){
   secs_string <- ifelse(nchar(secs) == 1, paste0("0", secs), secs)
   time_string <- paste0(hour_string, ":", mins_string, ":", secs_string)
   return(time_string)
+}
+
+Auto_Unit_Conversion <- function(dat, conversion){
+
+  table_headings <- names(dat)
+
+  #Add any patterns that want to be here, make sure they are unique to the type
+  #they are being used for
+  Speed_Patterns <- c("Speed", "Spd")
+  Distance_Patterns <- c("Distance", "Dist")
+  Decel_Patterns <- c("Deceleration", "Acceleration", "Decel")
+
+
+  # Add any extra types that wont get recognised by the pattern recognition
+  extra_speeds <- c()
+  extra_distances <- c("Compression_Commencement_Threshold", "Test")
+  extra_decels <- c()
+
+  # decel_exclusions <- c(End_Initial_Deceleration_Distance_Lead, End_Initial_Deceleration_Distance_Follower, End_Final_Deceleration_Distance_Lead, End_Final_Deceleration_Distance_Follower)
+
+  speeds <- table_headings[setdiff(grep(paste(Speed_Patterns, collapse = "|"), table_headings, ignore.case = TRUE), grep("Type", table_headings, ignore.case = TRUE))] %>%
+    c(., intersect(extra_speeds, table_headings))
+
+  distances <- table_headings[setdiff(grep(paste(Distance_Patterns, collapse = "|"), table_headings, ignore.case = TRUE), grep("Type", table_headings, ignore.case = TRUE))] %>%
+    c(., intersect(extra_distances, table_headings))
+
+  decelerations <- table_headings[setdiff(grep(paste(Decel_Patterns, collapse = "|"), table_headings, ignore.case = TRUE), grep("Type", table_headings, ignore.case = TRUE))] %>%
+    c(., intersect(extra_decels, table_headings)) %>%
+    setdiff(., .[grep(paste(Distance_Patterns, collapse = "|"), ., ignore.case = TRUE)]) #Removing distance patterns (Deceleration Distance)
+
+  if (conversion == "SI_to_Aviation") {
+    for (i in speeds) {
+      dat <- dat %>% mutate(!!sym(i) := !!sym(i) / kts_To_mps)
+    }
+
+    for (i in distances) {
+      dat <- dat %>% mutate(!!sym(i) := !!sym(i) / NM_to_m)
+    }
+    for (i in decelerations) {
+      dat <- dat %>% mutate(!!sym(i) := !!sym(i) / (kts_To_mps / NM_to_m))
+    }
+  } else if (conversion == "Aviation_to_SI") {
+    for (i in speeds) {
+      dat <- dat %>% mutate(!!sym(i) := !!sym(i) * kts_To_mps)
+    }
+
+    for (i in distances) {
+      dat <- dat %>% mutate(!!sym(i) := !!sym(i) * NM_to_m)
+    }
+    for (i in decelerations) {
+      dat <- dat %>% mutate(!!sym(i) := !!sym(i) * (kts_To_mps / NM_to_m))
+    }
+  } else (message("Unknown conversion"))
+
+
+  return(dat)
+
 }
 
 # ----------------------------------------------- #

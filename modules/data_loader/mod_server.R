@@ -23,7 +23,7 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
     } else if (input$logs_type == "Cat48 radar (NATS)") {
       process_Asterix_Cat48(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Cat62 radar (NATS)") {
-      process_Asterix_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
+      process_Asterix_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "Cat20 radar (NATS)") {
       process_Asterix_Cat20(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Non-Mode_S radar (NAVCAN)") {
@@ -37,7 +37,7 @@ read_logs <- function(LogFilePaths, input, dbi_con) {
     } else if (input$logs_type == "Surface wind and QNH (NAVCAN)") {
       process_NavCan_SurfaceWindQNH(LogFilePaths[i], tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "Cat62 Fusion (NAVCAN)") {
-      process_NavCan_Fusion_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
+      process_NavCan_Fusion_Cat62(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, tbl$Airfield$Airfield_Name, dbi_con)
     } else if (input$logs_type == "Surveillance radar (LVNL)") {
       process_LVNL_Surv(LogFilePaths[i], tbl$Adaptation_Data, tbl$Runway, dbi_con)
     } else if (input$logs_type == "Flight Plan logs (LVNL)") {
