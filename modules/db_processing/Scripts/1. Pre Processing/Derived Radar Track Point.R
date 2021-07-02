@@ -76,7 +76,7 @@ Generate_RTPD_Ground_Track_Heading <- function(RTP, Max_Heading_Diff){
 }
 
 
-rolling_join <- function(Data1, Data2, Vars1, Vars2, Roll, Direction){
+rolling_join <- function(Data1, Data2, Vars1, Vars2, Roll){
  
   String1 <- "setkey(Data1"
   for (i in 1:(length(Vars1))){
