@@ -324,7 +324,7 @@ generateFPID_Join <- function(tracks, dbi_con = dbi_con, Date_String, Use_Callsi
     Previous_Day <- format(dmy(Date_String) - days(1), "%d/%m/%Y")
   }
 
-  if (nchar(date_format) == 6) {
+  if (nchar(date_format) == 8) {
     Date_String <- format(dmy(Date_String), "%d/%m/%y")
     Next_Day <- format(dmy(Date_String) + days(1), "%d/%m/%y")
     Previous_Day <- format(dmy(Date_String) - days(1), "%d/%m/%y")
