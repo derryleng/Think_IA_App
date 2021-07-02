@@ -32,34 +32,40 @@ process_eTBS_logs_9002 <- function(LogFile) {
     
   }), use.names = T)
   
-  x <- logs[!grepl("^0$", SSR_Code)]
+  if (nrow(logs) > 0){
   
-  # Should make sure no duplicates here!
-  
-  x$AC_Wake_Cat <- ifelse(
-    x$AC_Wake_Cat == "0", "J", ifelse(
-      x$AC_Wake_Cat == "1", "H", ifelse(
-        x$AC_Wake_Cat == "2", "UM", ifelse(
-          x$AC_Wake_Cat == "3", "LM", ifelse(
-            x$AC_Wake_Cat == "4", "S", ifelse(
-              x$AC_Wake_Cat == "5", "L", NA
+    x <- logs[!grepl("^0$", SSR_Code)]
+    
+    if (nrow(x) > 0) {
+    
+      # Should make sure no duplicates here!
+      
+      x$AC_Wake_Cat <- ifelse(
+        x$AC_Wake_Cat == "0", "J", ifelse(
+          x$AC_Wake_Cat == "1", "H", ifelse(
+            x$AC_Wake_Cat == "2", "UM", ifelse(
+              x$AC_Wake_Cat == "3", "LM", ifelse(
+                x$AC_Wake_Cat == "4", "S", ifelse(
+                  x$AC_Wake_Cat == "5", "L", NA
+                )
+              )
             )
           )
         )
       )
-    )
-  )
-  
-  return(data.table(
-    FP_Date = format(as.Date(x$Date), "%d/%m/%y"),
-    FP_Time = as.numeric(x$Time),
-    Callsign = x$Callsign,
-    Aircraft_Type = x$Aircraft_Type,
-    SSR_Code = x$SSR_Code,
-    Wake_Vortex = x$AC_Wake_Cat,
-    Destination = x$Arr_APT,
-    Landing_Runway = paste0("R", x$Arrival_Runway)
-  ))
+      
+      return(data.table(
+        FP_Date = format(as.Date(x$Date), "%d/%m/%y"),
+        FP_Time = as.numeric(x$Time),
+        Callsign = x$Callsign,
+        Aircraft_Type = x$Aircraft_Type,
+        SSR_Code = x$SSR_Code,
+        Wake_Vortex = x$AC_Wake_Cat,
+        Destination = x$Arr_APT,
+        Landing_Runway = paste0("R", x$Arrival_Runway)
+      ))
+    } else {return(FALSE)}
+  } else {return(FALSE)}
   
 }
 
@@ -123,65 +129,69 @@ process_eTBS_logs_9005 <- function(LogFile, tbl_Adaptation_Data, tbl_Runway) {
     
   }), use.names = T)
   
-  x <- logs[!is.na(Alt) & !grepl("^-32767.*$", Alt)]
+  if (nrow(logs) > 0) {
   
-  x <- x[
-    as.numeric(Alt) >= -1000 &
-      as.numeric(Alt) <= 8000 &
-      as.numeric(XDot) >= -8192 &
-      as.numeric(XDot) <= 8192 &
-      as.numeric(YDot) >= -8192 &
-      as.numeric(YDot) <= 8192
-  ]
-  
-  x <- x[
-    as.numeric(Rept_Sys_X) >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
-      as.numeric(Rept_Sys_X) <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
-      as.numeric(Rept_Sys_Y) >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
-      as.numeric(Rept_Sys_Y) <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
-  ]
-  
-  if (nrow(x) > 0) {
+    x <- logs[!is.na(Alt) & !grepl("^-32767.*$", Alt)]
     
-    x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$Rept_Sys_X), as.numeric(x$Rept_Sys_Y), tbl_Adaptation_Data))
+    x <- x[
+      as.numeric(Alt) >= -1000 &
+        as.numeric(Alt) <= 8000 &
+        as.numeric(XDot) >= -8192 &
+        as.numeric(XDot) <= 8192 &
+        as.numeric(YDot) >= -8192 &
+        as.numeric(YDot) <= 8192
+    ]
     
-    x$Ground_Speed <- ifelse(grepl("^-32767.*$", x$Ground_Speed) | as.numeric(x$Ground_Speed_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Ground_Speed)
-    x$Indicated_Air_Speed <- ifelse(is.na(x$Indicated_Air_Speed) | grepl("^65535.*$", x$Indicated_Air_Speed) | as.numeric(x$Indicated_ASP_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Indicated_Air_Speed)
-    x$Magnetic_Heading <- ifelse(is.na(x$Magnetic_Heading) | grepl("^-32767.*$", x$Magnetic_Heading) | as.numeric(x$Magnetic_HDG_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Magnetic_Heading)
-    x$True_Air_Speed <- ifelse(is.na(x$True_Air_Speed) | grepl("^65535.*$", x$True_Air_Speed) | as.numeric(x$True_ASPD_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$True_Air_Speed)
-    x$Track_Angle <- ifelse(is.na(x$Track_Angle) | grepl("^-32767.*$", x$Track_Angle) | as.numeric(x$Track_Angle_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Track_Angle)
-    x$Roll_Angle <- ifelse(is.na(x$Roll_Angle) | grepl("^-32767.*$", x$Roll_Angle) | as.numeric(x$Roll_Angle_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Roll_Angle)
-    x$Barometric_Pressure <- ifelse(is.na(x$Barometric_Pressure) | grepl("^-32767.*$", x$Barometric_Pressure) | as.numeric(x$Barometric_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Barometric_Pressure)
-
-  }
+    x <- x[
+      as.numeric(Rept_Sys_X) >= mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range &
+        as.numeric(Rept_Sys_X) <= mean(tbl_Runway$Threshold_X_Pos) + tbl_Adaptation_Data$Load_X_Range &
+        as.numeric(Rept_Sys_Y) >= mean(tbl_Runway$Threshold_Y_Pos) - tbl_Adaptation_Data$Load_Y_Range &
+        as.numeric(Rept_Sys_Y) <= mean(tbl_Runway$Threshold_Y_Pos) + tbl_Adaptation_Data$Load_Y_Range
+    ]
   
-  out <- data.table(
-    Flight_Plan_ID = integer(),
-    Track_Date = as.character(format(as.Date(x$Date), "%d/%m/%y")),
-    Track_Time = as.numeric(x$Time),
-    Callsign = as.character(x$Callsign),
-    SSR_Code = as.character(x$SSR_Code),
-    X_Pos = as.numeric(x$Rept_Sys_X),
-    Y_Pos = as.numeric(x$Rept_Sys_Y),
-    Lat = as.numeric(x$PositionLatitude),
-    Lon = as.numeric(x$PositionLongitude),
-    Mode_C = as.numeric(x$Alt) * fnc_GI_Ft_To_M(),
-    Track_SPD = sqrt(as.numeric(x$XDot)^2 + as.numeric(x$YDot)^2),
-    Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$XDot), as.numeric(x$YDot)),
-    Track_Number = as.integer(x$Track_ID),
-    Mode_S_Address = as.character(x$Target_Address),
-    Mode_S_GSPD = as.numeric(x$Ground_Speed) * fnc_GI_Nm_To_M(),
-    Mode_S_IAS = as.numeric(x$Indicated_Air_Speed) * fnc_GI_Kts_To_M_Per_Sec(),
-    Mode_S_HDG = as.numeric(x$Magnetic_Heading) * fnc_GI_Degs_To_Rads(),
-    Mode_S_TAS = as.numeric(x$True_Air_Speed) * fnc_GI_Kts_To_M_Per_Sec(),
-    Mode_S_Track_HDG = as.numeric(x$Track_Angle) * fnc_GI_Degs_To_Rads(),
-    Mode_S_Track_HDG_Rate = numeric(),
-    Mode_S_Roll_Angle = as.numeric(x$Roll_Angle) * fnc_GI_Degs_To_Rads(),
-    Mode_S_BPS = as.numeric(x$Barometric_Pressure) * fnc_GI_Mbar_To_Pa()
-  )
   
-  return(out)
-  
+    if (nrow(x) > 0) {
+      
+        x <- cbind(x, usp_GI_Latlong_From_XY(as.numeric(x$Rept_Sys_X), as.numeric(x$Rept_Sys_Y), tbl_Adaptation_Data))
+        
+        x$Ground_Speed <- ifelse(grepl("^-32767.*$", x$Ground_Speed) | as.numeric(x$Ground_Speed_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Ground_Speed)
+        x$Indicated_Air_Speed <- ifelse(is.na(x$Indicated_Air_Speed) | grepl("^65535.*$", x$Indicated_Air_Speed) | as.numeric(x$Indicated_ASP_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Indicated_Air_Speed)
+        x$Magnetic_Heading <- ifelse(is.na(x$Magnetic_Heading) | grepl("^-32767.*$", x$Magnetic_Heading) | as.numeric(x$Magnetic_HDG_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Magnetic_Heading)
+        x$True_Air_Speed <- ifelse(is.na(x$True_Air_Speed) | grepl("^65535.*$", x$True_Air_Speed) | as.numeric(x$True_ASPD_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$True_Air_Speed)
+        x$Track_Angle <- ifelse(is.na(x$Track_Angle) | grepl("^-32767.*$", x$Track_Angle) | as.numeric(x$Track_Angle_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Track_Angle)
+        x$Roll_Angle <- ifelse(is.na(x$Roll_Angle) | grepl("^-32767.*$", x$Roll_Angle) | as.numeric(x$Roll_Angle_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Roll_Angle)
+        x$Barometric_Pressure <- ifelse(is.na(x$Barometric_Pressure) | grepl("^-32767.*$", x$Barometric_Pressure) | as.numeric(x$Barometric_Age) > tbl_Adaptation_Data$Max_Mode_S_Data_Age[1], NA, x$Barometric_Pressure)
+    
+      
+      
+      out <- data.table(
+        Flight_Plan_ID = integer(),
+        Track_Date = as.character(format(as.Date(x$Date), "%d/%m/%y")),
+        Track_Time = as.numeric(x$Time),
+        Callsign = as.character(x$Callsign),
+        SSR_Code = as.character(x$SSR_Code),
+        X_Pos = as.numeric(x$Rept_Sys_X),
+        Y_Pos = as.numeric(x$Rept_Sys_Y),
+        Lat = as.numeric(x$PositionLatitude),
+        Lon = as.numeric(x$PositionLongitude),
+        Mode_C = as.numeric(x$Alt) * fnc_GI_Ft_To_M(),
+        Track_SPD = sqrt(as.numeric(x$XDot)^2 + as.numeric(x$YDot)^2),
+        Track_HDG = fnc_GI_To_Vector_Angle(as.numeric(x$XDot), as.numeric(x$YDot)),
+        Track_Number = as.integer(x$Track_ID),
+        Mode_S_Address = as.character(x$Target_Address),
+        Mode_S_GSPD = as.numeric(x$Ground_Speed) * fnc_GI_Nm_To_M(),
+        Mode_S_IAS = as.numeric(x$Indicated_Air_Speed) * fnc_GI_Kts_To_M_Per_Sec(),
+        Mode_S_HDG = as.numeric(x$Magnetic_Heading) * fnc_GI_Degs_To_Rads(),
+        Mode_S_TAS = as.numeric(x$True_Air_Speed) * fnc_GI_Kts_To_M_Per_Sec(),
+        Mode_S_Track_HDG = as.numeric(x$Track_Angle) * fnc_GI_Degs_To_Rads(),
+        Mode_S_Track_HDG_Rate = numeric(),
+        Mode_S_Roll_Angle = as.numeric(x$Roll_Angle) * fnc_GI_Degs_To_Rads(),
+        Mode_S_BPS = as.numeric(x$Barometric_Pressure) * fnc_GI_Mbar_To_Pa()
+      )
+      
+      return(out)
+    } else {return(FALSE)}
+  } else {return(FALSE)}
 }
 
 process_eTBS_logs_9043 <- function(LogFile, Airfield_Name) {
@@ -223,14 +233,18 @@ process_eTBS_logs_9043 <- function(LogFile, Airfield_Name) {
     
   }), use.names = T, fill = T)
   
-  x <- logs[Derived_QNH_Update == 1]
+  if (nrow(logs) > 0) {
   
-  return(data.table(
-    Airfield = Airfield_Name,
-    Baro_Date = format(as.Date(x$Date), "%d/%m/%y"),
-    Baro_Time = as.numeric(x$Derived_QNH_Time) / 1000,
-    Baro_Pressure = as.numeric(x$Derived_QNH) * fnc_GI_Mbar_To_Pa()
-  ))
+    x <- logs[Derived_QNH_Update == 1]
+    if (nrow(x) > 0) {
+      return(data.table(
+        Airfield = Airfield_Name,
+        Baro_Date = format(as.Date(x$Date), "%d/%m/%y"),
+        Baro_Time = as.numeric(x$Derived_QNH_Time) / 1000,
+        Baro_Pressure = as.numeric(x$Derived_QNH) * fnc_GI_Mbar_To_Pa()
+      ))
+    } else {return(FALSE)}
+  } else {return(FALSE)}
   
 }
 
@@ -303,20 +317,25 @@ process_eTBS_logs_9081 <- function(LogFile, Airfield_Name) {
     
   }), use.names = T, fill = T)
   
-  out <- data.table(
-    Airfield = Airfield_Name,
-    Landing_Runway = paste0("R", logs$Runway),
-    Anemo_Date = format(as.Date(logs$Date), "%d/%m/%y"),
-    Anemo_Time = as.numeric(logs$Time),
-    Anemo_SPD = as.numeric(logs$Runway_Surface_Wind_SPD) * fnc_GI_Kts_To_M_Per_Sec(),
-    Anemo_HDG = as.numeric(logs$Runway_Surface_Wind_HDG) * fnc_GI_Degs_To_Rads(),
-    Anemo_HW = as.numeric(logs$Runway_Surface_Headwind) * fnc_GI_Kts_To_M_Per_Sec(),
-    Anemo_CW = NA
-  )
-  
-  #out <- out[!duplicated(out)]
+  if (nrow(logs) > 0) {
     
-  return(out)
+    out <- data.table(
+      Airfield = Airfield_Name,
+      Landing_Runway = paste0("R", logs$Runway),
+      Anemo_Date = format(as.Date(logs$Date), "%d/%m/%y"),
+      Anemo_Time = as.numeric(logs$Time),
+      Anemo_SPD = as.numeric(logs$Runway_Surface_Wind_SPD) * fnc_GI_Kts_To_M_Per_Sec(),
+      Anemo_HDG = as.numeric(logs$Runway_Surface_Wind_HDG) * fnc_GI_Degs_To_Rads(),
+      Anemo_HW = as.numeric(logs$Runway_Surface_Headwind) * fnc_GI_Kts_To_M_Per_Sec(),
+      Anemo_CW = NA
+    )
+    
+    #out <- out[!duplicated(out)]
+    
+    out <- unique(out, by = c("Anemo_Date", "Anemo_Time", "Landing_Runway"))
+      
+    return(out)
+  } else {return(FALSE)}
   
 }
 
@@ -330,49 +349,62 @@ process_eTBS_logs <- function(LogFilePath, tbl_Adaptation_Data, tbl_Runway, Airf
   ### Flight Plan
   message("[",Sys.time(),"] ", "Begin processing 9002 entries...")
   logs_9002 <- process_eTBS_logs_9002(LogFile)
-  message("[",Sys.time(),"] ", "Finished processing 9002 entries (", nrow(logs_9002), " found), saving to tbl_Flight_Plan...")
   
-  message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
-  logs_9002_pass_1 <- unique(logs_9002, by = c("FP_Date", "Callsign", "SSR_Code"))
+  if (typeof(logs_9002) != "logical") {
   
-  message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
-  fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
-  if (nrow(fp) > 0) {
-    logs_9002_pass_2 <- logs_9002_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
-  } else {
-    logs_9002_pass_2 <- logs_9002_pass_1
-  }
-  
-  dbWriteTable(dbi_con, "tbl_Flight_Plan", logs_9002_pass_2, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Flight_Plan.")
+    message("[",Sys.time(),"] ", "Finished processing 9002 entries (", nrow(logs_9002), " found), saving to tbl_Flight_Plan...")
+    
+    message("[",Sys.time(),"] ", "Checking for duplicates within loaded data...")
+    logs_9002_pass_1 <- unique(logs_9002, by = c("FP_Date", "Callsign", "SSR_Code"))
+    
+    message("[",Sys.time(),"] ", "Checking for duplicates with existing data...")
+    fp <- as.data.table(dbGetQuery(dbi_con, "SELECT DISTINCT FP_Date, Callsign, SSR_Code, Destination FROM tbl_Flight_Plan"))
+    if (nrow(fp) > 0) {
+      logs_9002_pass_2 <- logs_9002_pass_1[paste(FP_Date, Callsign, SSR_Code, Destination) %!in% paste(fp$FP_Date, fp$Callsign, fp$SSR_Code, fp$Destination)]
+    } else {
+      logs_9002_pass_2 <- logs_9002_pass_1
+    }
+    
+    dbWriteTable(dbi_con, "tbl_Flight_Plan", logs_9002_pass_2, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Flight_Plan.")
+  } else {message("[",Sys.time(),"] ", "No 9002 logs found.")}
   
   ### Radar tracks
   message("[",Sys.time(),"] ", "Begin processing 9005 entries...")
   logs_9005 <- process_eTBS_logs_9005(LogFile, tbl_Adaptation_Data, tbl_Runway)
-  message("[",Sys.time(),"] ", "Finished processing 9005 entries (", nrow(logs_9005), " found), cross referencing FPIDs...")
-  
-  if (nrow(logs_9005) > 0) {
-    # Flight plan ID cross reference
+  if (typeof(logs_9005) != "logical") {
+    message("[",Sys.time(),"] ", "Finished processing 9005 entries (", nrow(logs_9005), " found), cross referencing FPIDs...")
     message("[",Sys.time(),"] ", "Generating Flight_Plan_ID...")
+    # Flight plan ID cross reference
     logs_9005 <- generateFPID(logs_9005, dbi_con)
+    if (nrow(logs_9005) > 0) {
+      message("[",Sys.time(),"] ", "Finished cross referencing FPIDs, saving to tbl_Radar_Track_Point...")
+      dbWriteTable(dbi_con, "tbl_Radar_Track_Point", logs_9005, append = T)
+      message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Radar_Track_Point.")
+    } else {message("[",Sys.time(),"] ", "No 9005 logs found.")}
+  } else {message("[",Sys.time(),"] ", "No 9005 logs found.")}
     
-    message("[",Sys.time(),"] ", "Finished cross referencing FPIDs, saving to tbl_Radar_Track_Point...")
-    dbWriteTable(dbi_con, "tbl_Radar_Track_Point", logs_9005, append = T)
-    message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Radar_Track_Point.")
-  }
+
+  
   
   ### Barometer
   message("[",Sys.time(),"] ", "Begin processing 9043 entries...")
   logs_9043 <- process_eTBS_logs_9043(LogFile, Airfield_Name)
-  message("[",Sys.time(),"] ", "Finished processing 9043 entries (", nrow(logs_9043), " found), saving to tbl_Baro...")
-  dbWriteTable(dbi_con, "tbl_Baro", logs_9043, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Baro.")
+  if (typeof(logs_9043) != "logical") {
+    if (nrow(logs_9043) > 0) {
+      message("[",Sys.time(),"] ", "Finished processing 9043 entries (", nrow(logs_9043), " found), saving to tbl_Baro...")
+      dbWriteTable(dbi_con, "tbl_Baro", logs_9043, append = T)
+      message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Baro.")
+    } else {message("[",Sys.time(),"] ", "No 9043 logs found.")}
+  } else {message("[",Sys.time(),"] ", "No 9043 logs found.")}
+  
   
   ### Anemometer
   message("[",Sys.time(),"] ", "Begin processing 9081 entries...")
   logs_9081 <- process_eTBS_logs_9081(LogFile, Airfield_Name)
-  message("[",Sys.time(),"] ", "Finished processing 9081 entries (", nrow(logs_9081), " found), saving to tbl_Anemometer...")
-  dbWriteTable(dbi_con, "tbl_Anemometer", logs_9081, append = T)
-  message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Anemometer.")
-  
+  if (typeof(logs_9081) != "logical") {
+    message("[",Sys.time(),"] ", "Finished processing 9081 entries (", nrow(logs_9081), " found), saving to tbl_Anemometer...")
+    dbWriteTable(dbi_con, "tbl_Anemometer", logs_9081, append = T)
+    message("[",Sys.time(),"] ", "Successfully appended rows to tbl_Anemometer.")
+  } else {message("[",Sys.time(),"] ", "No 9081 logs found.")}
 }
