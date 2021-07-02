@@ -190,7 +190,8 @@ if (Include_Observed_Values_WaPT){
                            "Observed_1DME_Separation_Distance",
                            "Observed_0DME_Separation_Time",
                            "Observed_1DME_Separation_Time",
-                           "Observed_Follower_eTBS_Wind_Effect"))
+                           "Observed_Follower_eTBS_Wind_Effect",
+                           "Observed_Follower_eTBS_IAS"))
 }
 
 More_WaPT_Columns <- c("Follower_Forecast_eTBS_Wind_Effect", "Forecast_ORD_TBS_Compression", "Bolster_Flag_Main")
