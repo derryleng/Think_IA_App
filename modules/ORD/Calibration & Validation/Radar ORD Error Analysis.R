@@ -392,7 +392,29 @@ Radar2 <- Bin_Radar_Data(Radar2, "Wind_Effect_IAS", Wind_Bin_Width)
 
 Speed_Prof <- fread(file.path(speed_prof_dir, "Approach_Speed_Profiles.csv"))
 
+# Gets a vector containing all FPIDs in Speed_Prof
+Prof_FPIDS <- Speed_Prof %>% select(Follower_Flight_Plan_ID) %>% 
+                             distinct() %>% 
+                             pull(Follower_Flight_Plan_ID) 
 
+# converts FPID vector to a character vector
+Prof_FPIDS_String <- FPID_String <- toString(sprintf("'%s'", Prof_FPIDS))
+
+# Initialises query to select FP_Time for desired FPIDs assembles query and fetches from database
+FPID_Query <- "SELECT Flight_Plan_ID, FP_Time FROM tbl_Flight_Plan WHERE Flight_Plan_ID IN (%s)"
+FPID_Query <- sprintf(FPID_Query, Prof_FPIDS_String)
+FP_Times <- dbGetQuery(con, FPID_Query)
+
+#Joins FP_Time onto Speed Prof by FPID
+Speed_Prof <- left_join(Speed_Prof, FP_Times, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
+
+rm(Prof_FPIDS, Prof_FPIDS_String, FPID_Query, FP_Times)
+
+#Getting all Barometer data to join QNH on as a grouping for errors
+tbl_Baro <- dbGetQuery(con, "SELECT Baro_Date, Baro_Time, Baro_Pressure FROM tbl_Baro")
+
+#Rolling join, exact match on date, nearest match on time
+Speed_Prof <- rolling_join(Speed_Prof, tbl_Baro, c("FP_Date", "FP_Time"), c("Baro_Date", "Baro_Time"), "nearest")
 
 
 # tbl_ORD_Aircraft_Adaptation <- dbGetQuery(con, "SELECT * FROM tbl_ORD_Aircraft_Adaptation") %>%
@@ -591,8 +613,8 @@ Plot_profile_error <- function(dat, Error_Var, Grouping_Var, Max_Error_Val, Face
 # Here you can define the facet or leave argument blank (last argument of the function).
 # Set filter to Inf if you dont want a filter.
 
-Plot_profile_error(Speed_Prof_Errors, "e5", "Follower_Aircraft_Type", 1000, "wake")
-
+Plot_profile_error(Speed_Prof_Errors, "e1", "Follower_Aircraft_Type", 1000, "wake")
+Plot_profile_error(Speed_Prof_Errors, "e1", "wake", 1000)
 
 #-----------------------------------------------------------------------------#
 ## Plot aircraft specific ORD profiles against median profile -----------------
