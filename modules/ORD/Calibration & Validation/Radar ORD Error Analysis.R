@@ -613,8 +613,18 @@ Plot_profile_error <- function(dat, Error_Var, Grouping_Var, Max_Error_Val, Face
 # Here you can define the facet or leave argument blank (last argument of the function).
 # Set filter to Inf if you dont want a filter.
 
-Plot_profile_error(Speed_Prof_Errors, "e1", "Follower_Aircraft_Type", 1000, "wake")
-Plot_profile_error(Speed_Prof_Errors, "e1", "wake", 1000)
+Plot_profile_error(Speed_Prof_Errors, "e3", "Follower_Aircraft_Type", 50, "wake")
+Plot_profile_error(Speed_Prof_Errors, "e3", "wake", 20)
+
+#######################################
+# Create a plot based on QNH... need data for this (PWS database when ORD is run)
+# ie... 
+# Plot_profile_error(Speed_Prof_Errors, "e1", "QNH", 1000, "wake")
+
+
+
+
+
 
 #-----------------------------------------------------------------------------#
 ## Plot aircraft specific ORD profiles against median profile -----------------

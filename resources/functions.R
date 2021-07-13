@@ -984,14 +984,16 @@ GetProjectID <- function(){
 
 GetSaveDirectory <- function(Project, Algorithm, IorO){
 
-  if(missing(Project)){Project <- as.numeric(getPass(msg = "Choose a Project: NAV TBS = 1,  IA LVNL = 2, Heathrow PWS = 3, NODE Replacement = 4", noblank = FALSE, forcemask = FALSE))}
+  if(missing(Project)){Project <- GetProjectID()}
 
 #Add new project direcotries here later, PWS, NODE, etc
   if (Project == 1){
     Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "23 Data Analysis")
     # Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS NavCanada TBS", "Data Analysis")
   }
-
+  if (Project == 3){
+    Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS Pairwise and Mixed Mode TBS", "13. Data Analysis")
+  }
   if (Project == 4){
     Dir <- file.path("C:", "Users", Sys.getenv("USERNAME"), "Dropbox (Think Research)", "NATS Projects", "NATS Node Replacement", "Data Analysis")
   }
@@ -1318,32 +1320,32 @@ Get_2D_Scalar_Product <- function(amp1, ang1, amp2, ang2){
 
 # The Rolling Join function now compatible with dplyr formulation!
 rolling_join <- function(Data1, Data2, Vars1, Vars2, Roll){
-  
+
   String1 <- "setkey(Data1"
   for (i in 1:(length(Vars1))){
     String1 <- paste0(String1, ", ", Vars1[i])
     if (i == length(Vars1)){String1 <- paste0(String1, ")")}
   }
-  
+
   String2 <- "setkey(Data2"
   for (i in 1:(length(Vars2))){
     Data2 <- Data2 %>%
-      rename(!!sym(Vars1[i]) := !!sym(Vars2[i])) 
+      rename(!!sym(Vars1[i]) := !!sym(Vars2[i]))
     String2 <- paste0(String2, ", ", Vars1[i])
     if (i == length(Vars2)){String2 <- paste0(String2, ")")}
   }
-  
+
   Data1 <- as.data.table(Data1)
   Data2 <- as.data.table(Data2)
-  
+
   eval(str2lang(String1))
   eval(str2lang(String2))
-  
+
   Data <- Data2[Data1, roll=Roll]
   Data <- as.data.frame(Data)
-  
+
   Data <- Data %>%
     select(all_of(names(Data1)), everything())
-  
+
   return(Data)
 }
