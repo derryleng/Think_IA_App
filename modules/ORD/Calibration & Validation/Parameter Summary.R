@@ -1570,6 +1570,8 @@ if (Operation != "PWS") {
 
 if (Operation == 'PWS') {
   
+  modeldata_filtered_a1 <- modeldata_filtered_a1 %>% mutate(per_flight_vref = a1 - ifelse(is.na(landing_adjustment), 0, landing_adjustment))
+  
   aircraft_adaptation_int <- modeldata_filtered_a1 %>% group_by(Follower_Aircraft_Type) %>%
     summarise(N = n(),
               a1 = median(a1, na.rm = T),
