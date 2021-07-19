@@ -11,9 +11,21 @@ evalParse <- function(...) {
 }
 
 read_SQL_File <- function(filepath){
-  # NOTE: Can read from multiple file paths (vector of strings)
-  # WARNING: R does not support reading UTF-16 (UCS-2 LE BOM) encoded files!
-  return(paste(sapply(filepath, function(x) gsub("\\t", " ", gsub("--.*$", "", readLines(x)))), collapse = " "))
+  # PLEASE NOTE:
+  # - R does not support reading UTF-16 (UCS-2 LE BOM) encoded files!
+  # - This function can read from multiple file paths (vector of strings)
+  # - This function will remove duplicated declarations!
+  sql.string <- as.vector(sapply(filepath, function(x) {
+    gsub("\\t", " ", gsub("^\\s{0,}\\/\\*.*\\*\\/\\s{0,}$", "", gsub("^\\s{0,}--.*$", "", readLines(x))))
+  }))
+  if (length(filepath) > 1) {
+    dup_declared_vars <- unique(gsub("^\\s{0,}[A-z]{7}\\s+(@[A-z0-9_]+)\\s.*$", "\\1", sql.string[grepl("^\\s{0,}DECLARE\\s+@.*$", sql.string, ignore.case = T)]))
+    for (var in dup_declared_vars) {
+      declarations <- sql.string[grepl(paste0("^\\s{0,}DECLARE\\s+", var, "\\s+.*$"), sql.string, ignore.case = T)]
+      sql.string <- sql.string[-which(sql.string == declarations)[-1]]
+    }
+  }
+  return(paste(sql.string, collapse = " "))
 }
 
 Asterix_Filename_To_Date <- function(Log_Filename) {
