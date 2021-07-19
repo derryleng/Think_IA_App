@@ -239,12 +239,14 @@ landing_adjustments <- left_join(landing_adjustments, lss_types, by = c("Followe
 landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment = NA)
 landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment_boeing = NA)
 
-for (i in 1:nrow(landing_adjustments)) {
+# for (i in 1:nrow(landing_adjustments)) {
+# 
+#   landing_adjustments$landing_adjustment[i] <- calc_landing_adjustment(landing_adjustments$landing_stabilisation_speed_type[i], landing_adjustments$Surface_Headwind[i])
+#   landing_adjustments$landing_adjustment_boeing[i] <- calc_landing_adjustment(0, landing_adjustments$Surface_Headwind[i])
+# 
+# }
 
-  landing_adjustments$landing_adjustment[i] <- calc_landing_adjustment(landing_adjustments$landing_stabilisation_speed_type[i], landing_adjustments$Surface_Headwind[i])
-  landing_adjustments$landing_adjustment_boeing[i] <- calc_landing_adjustment(0, landing_adjustments$Surface_Headwind[i])
-
-}
+landing_adjustments <- calc_landing_adjustment_vect(landing_adjustments)
 
 modeldata <- select(modeldata, c(-landing_adjustment, -landing_adjustment_boeing, -lss_type))
 
@@ -1570,7 +1572,13 @@ if (Operation != "PWS") {
 
 if (Operation == 'PWS') {
   
-  modeldata_filtered_a1 <- modeldata_filtered_a1 %>% mutate(per_flight_vref = a1 - ifelse(is.na(landing_adjustment), 0, landing_adjustment))
+  
+  
+  modeldata_filtered_a1 <- modeldata_filtered_a1 %>% mutate(per_flight_vref = a1 - ifelse(is.na(landing_adjustment), 0, landing_adjustment)) %>%
+                                                     select(-wake) %>%
+                                                     left_join(dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake"), by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
+  
+  
   
   aircraft_adaptation_int <- modeldata_filtered_a1 %>% group_by(Follower_Aircraft_Type) %>%
     summarise(N = n(),
@@ -1609,7 +1617,7 @@ if (Operation == 'PWS') {
            Initial_Deceleration_Lead = type_adaptation_input_table$Initial_Deceleration_Lead,
            Initial_Deceleration_Follower = type_adaptation_input_table$Initial_Deceleration_Follower)
   
-  wake_adaptation_int <- modeldata_filtered_a1 %>% group_by(wake) %>%
+  wake_adaptation_int <- modeldata_filtered_a1 %>% group_by(Wake) %>%
     summarise(N = n(),
               a1 = median(a1, na.rm = T),
               a2 = median(a2, na.rm = T),
@@ -1644,7 +1652,7 @@ if (Operation == 'PWS') {
            Initial_Procedural_Speed_Buffer_Follower = 0,    #This needs setting, how are we calculating this buffer?
            Initial_Deceleration_Lead = wake_adaptation_input_table$Initial_Deceleration_Lead,
            Initial_Deceleration_Follower = wake_adaptation_input_table$Initial_Deceleration_Follower) %>%
-    rename(Wake_Cat = wake)
+    rename(Wake_Cat = Wake)
   
   
   
@@ -1793,7 +1801,7 @@ if (Operation == 'PWS') {
   for (i in 1:nrow(wake_adaptation_int)) {
     if (wake_adaptation_int$N[i] >= observation_threshold) {
       
-      dat2 <- modeldata_filtered_a1[wake == wake_adaptation_int$Wake_Cat[i]]
+      dat2 <- modeldata_filtered_a1[Wake == wake_adaptation_int$Wake_Cat[i]]
       dat_density <- density(dat2$per_flight_vref %>% .[!is.na(.)], n = max(512, length(dat2$per_flight_vref %>% .[!is.na(.)])))
       
       #Plot for Vref Distributions

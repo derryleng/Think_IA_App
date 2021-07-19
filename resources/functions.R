@@ -1200,7 +1200,7 @@ Auto_Unit_Conversion <- function(dat, conversion){
 
 
   # Add any extra types that wont get recognised by the pattern recognition
-  extra_speeds <- c()
+  extra_speeds <- c("VRef", "vref", "Vref")
   extra_distances <- c("Compression_Commencement_Threshold", "Test")
   extra_decels <- c()
 

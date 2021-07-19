@@ -27,9 +27,9 @@ library(getPass)
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
-# version <- "2021-05-04 V1.0 (AH)"
+version <- "2021-07-16 V1.0 (AH)"
 
-use_same_input_version <- F
+use_same_input_version <- T
 
 if (use_same_input_version == T) {
   input_version <- version
@@ -44,12 +44,15 @@ if (Server == "Maverick") {ip <- "192.168.1.23"}
 if (Server == "Goose") {ip <- "192.168.1.39"}
 
 #Set the database name for SQL connection
-database <- "NavCan_TBS_V3"
+database <- "EGLL_PWS"
 
 #Airport Code
-Airport_Code <- "CYYZ"
+Airport_Code <- "EGLL"
 
-Operation <- "Legacy"
+Operation <- "PWS"
+
+# If True uses [tbl_ORD_Aircraft_Profile] if False uses the adaptation
+Use_ORD_Profile <- T
 
 #Find location of script and functions file based for running in shiny or in RSTUDIO
 
@@ -362,14 +365,16 @@ Radar2 <- Generate_ORD_Profile_Radar_Point_Error(Radar, GS_Profile, LorF = "Foll
 
 # Use fpid to get aircraft type and wake categories from db
 
-FPIDS <- Radar %>% select(Flight_Plan_ID) %>% distinct() %>% pull(Flight_Plan_ID)
-FPID_String <- toString(sprintf("'%s'", FPIDS))
+# FPIDS <- Radar %>% select(Flight_Plan_ID) %>% distinct() %>% pull(Flight_Plan_ID)
+# FPID_String <- toString(sprintf("'%s'", FPIDS))
+# 
+# Type_Query <- "SELECT Flight_Plan_ID, Aircraft_Type FROM tbl_Flight_Plan WHERE Flight_Plan_ID IN (%s)"
+# 
+# Type_Query <- sprintf(Type_Query, FPID_String)
+# 
+# Aircraft_Types <- dbGetQuery(con, Type_Query)
 
-Type_Query <- "SELECT Flight_Plan_ID, Aircraft_Type FROM tbl_Flight_Plan WHERE Flight_Plan_ID IN (%s)"
-
-Type_Query <- sprintf(Type_Query, FPID_String)
-
-Aircraft_Types <- dbGetQuery(con, Type_Query)
+Aircraft_Types <- dbGetQuery(con, "SELECT Flight_Plan_ID, Aircraft_Type FROM tbl_Flight_Plan")
 
 Wake_Categories <- dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake")
 
@@ -397,18 +402,24 @@ Prof_FPIDS <- Speed_Prof %>% select(Follower_Flight_Plan_ID) %>%
                              distinct() %>% 
                              pull(Follower_Flight_Plan_ID) 
 
-# converts FPID vector to a character vector
-Prof_FPIDS_String <- FPID_String <- toString(sprintf("'%s'", Prof_FPIDS))
 
-# Initialises query to select FP_Time for desired FPIDs assembles query and fetches from database
-FPID_Query <- "SELECT Flight_Plan_ID, FP_Time FROM tbl_Flight_Plan WHERE Flight_Plan_ID IN (%s)"
-FPID_Query <- sprintf(FPID_Query, Prof_FPIDS_String)
-FP_Times <- dbGetQuery(con, FPID_Query)
+###### This section of code dosnt work for very large tables SQL cant deal with the amount of subqueries, need to fetch the whole table instead.
+
+# # converts FPID vector to a character vector
+# Prof_FPIDS_String <- FPID_String <- toString(sprintf("'%s'", Prof_FPIDS))
+# 
+# # Initialises query to select FP_Time for desired FPIDs assembles query and fetches from database
+# FPID_Query <- "SELECT Flight_Plan_ID, FP_Time FROM tbl_Flight_Plan WHERE Flight_Plan_ID IN (%s)"
+# FPID_Query <- sprintf(FPID_Query, Prof_FPIDS_String)
+# FP_Times <- dbGetQuery(con, FPID_Query)
+
+FP_Times <- dbGetQuery(con, "SELECT Flight_Plan_ID, FP_Time FROM tbl_Flight_Plan")
 
 #Joins FP_Time onto Speed Prof by FPID
 Speed_Prof <- left_join(Speed_Prof, FP_Times, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
 
-rm(Prof_FPIDS, Prof_FPIDS_String, FPID_Query, FP_Times)
+# rm(Prof_FPIDS, Prof_FPIDS_String, FPID_Query, FP_Times)
+rm(FP_Times)
 
 #Getting all Barometer data to join QNH on as a grouping for errors
 tbl_Baro <- dbGetQuery(con, "SELECT Baro_Date, Baro_Time, Baro_Pressure FROM tbl_Baro")
@@ -416,47 +427,33 @@ tbl_Baro <- dbGetQuery(con, "SELECT Baro_Date, Baro_Time, Baro_Pressure FROM tbl
 #Rolling join, exact match on date, nearest match on time
 Speed_Prof <- rolling_join(Speed_Prof, tbl_Baro, c("FP_Date", "FP_Time"), c("Baro_Date", "Baro_Time"), "nearest")
 
+#Rolling join gusting data
+# Speed_Prof <- rolling_join(Speed_Prof, tbl_Gust, c("FP_Date", "FP_Time"), c("Gust_Date", "Gust_Time"), "nearest")
 
-# tbl_ORD_Aircraft_Adaptation <- dbGetQuery(con, "SELECT * FROM tbl_ORD_Aircraft_Adaptation") %>%
-#                                mutate(Compression_Commencement_Threshold = Compression_Commencement_Threshold / NM_to_m,
-#                                       Min_Safe_Landing_Speed_Lead = Min_Safe_Landing_Speed_Lead / kts_To_mps,
-#                                       Min_Safe_Landing_Speed_Follower = Min_Safe_Landing_Speed_Follower / kts_To_mps,
-#                                       Local_Stabilisation_Distance_Lead = Local_Stabilisation_Distance_Lead / NM_to_m,
-#                                       Local_Stabilisation_Distance_Follower = Local_Stabilisation_Distance_Follower / NM_to_m,
-#                                       Steady_Procedural_Speed_Lead = Steady_Procedural_Speed_Lead / kts_To_mps,
-#                                       Steady_Procedural_Speed_Follower = Steady_Procedural_Speed_Follower / kts_To_mps,
-#                                       Final_Deceleration_Lead = Final_Deceleration_Lead / (kts_To_mps / NM_to_m),
-#                                       Final_Deceleration_Follower = Final_Deceleration_Follower / (kts_To_mps / NM_to_m),
-#                                       End_Initial_Deceleration_Distance_Lead = End_Initial_Deceleration_Distance_Lead / NM_to_m,
-#                                       End_Initial_Deceleration_Distance_Follower = End_Initial_Deceleration_Distance_Follower / NM_to_m,
-#                                       Initial_Procedural_Speed_Lead = Initial_Procedural_Speed_Lead / kts_To_mps,
-#                                       Initial_Procedural_Speed_Follower = Initial_Procedural_Speed_Follower / kts_To_mps,
-#                                       Initial_deceleration_Lead = Initial_deceleration_Lead / (kts_To_mps / NM_to_m),
-#                                       Initial_deceleration_follower = Initial_deceleration_follower / (kts_To_mps / NM_to_m)
-#                                       )
+# Filtering the speed profiles fitted parameters, replaces out of range
+# values with NA so the flight can be used if other parameters are good
 
+a1_min <- 75; a1_max <- 220
 
-# tbl_ORD_Wake_Adaptation <- dbGetQuery(con, "SELECT * FROM tbl_ORD_Wake_Adaptation") %>%
-#                            mutate(Compression_Commencement_Threshold = Compression_Commencement_Threshold / NM_to_m,
-#                                   Min_Safe_Landing_Speed_Lead = Min_Safe_Landing_Speed_Lead / kts_To_mps,
-#                                   Min_Safe_Landing_Speed_Follower = Min_Safe_Landing_Speed_Follower / kts_To_mps,
-#                                   Local_Stabilisation_Distance_Lead = Local_Stabilisation_Distance_Lead / NM_to_m,
-#                                   Local_Stabilisation_Distance_Follower = Local_Stabilisation_Distance_Follower / NM_to_m,
-#                                   Steady_Procedural_Speed_Lead = Steady_Procedural_Speed_Lead / kts_To_mps,
-#                                   Steady_Procedural_Speed_Follower = Steady_Procedural_Speed_Follower / kts_To_mps,
-#                                   Final_Deceleration_Lead = Final_Deceleration_Lead / (kts_To_mps / NM_to_m),
-#                                   Final_Deceleration_Follower = Final_Deceleration_Follower / (kts_To_mps / NM_to_m),
-#                                   End_Initial_Deceleration_Distance_Lead = End_Initial_Deceleration_Distance_Lead / NM_to_m,
-#                                   End_Initial_Deceleration_Distance_Follower = End_Initial_Deceleration_Distance_Follower / NM_to_m,
-#                                   Initial_Procedural_Speed_Lead = Initial_Procedural_Speed_Lead / kts_To_mps,
-#                                   Initial_Procedural_Speed_Follower = Initial_Procedural_Speed_Follower / kts_To_mps,
-#                                   Initial_deceleration_Lead = Initial_deceleration_Lead / (kts_To_mps / NM_to_m),
-#                                   Initial_deceleration_Follower = Initial_deceleration_Follower / (kts_To_mps / NM_to_m)
-#                                   )
+a2_min <- 75; a2_max <- 220
 
-tbl_ORD_Wake_Adaptation <- Auto_Unit_Conversion(dbGetQuery(con, "SELECT * FROM tbl_ORD_Wake_Adaptation"), "SI_to_Aviation")
+b_min <- 100; b_max <- 180
 
-tbl_ORD_Aircraft_Adaptation <- Auto_Unit_Conversion(dbGetQuery(con, "SELECT * FROM tbl_ORD_Aircraft_Adaptation"), "SI_to_Aviation")
+n1_min <- 0; n1_max <- 12
+
+n2_min <- 0; n2_max <- 14
+
+d_min <- 0; d_max <- 50
+
+Speed_Prof <- Speed_Prof %>% mutate(a1 = ifelse(a1 >= a1_min & a1 <= a1_max, a1, NA), 
+                                    a2 = ifelse(a2 >= a2_min & a2 <= a2_max, a2, NA),
+                                    b = ifelse(b >= b_min & b <= b_max, b, NA),
+                                    n1 = ifelse(n1 >= n1_min & n1 <= n1_max, n1, NA),
+                                    n2 = ifelse(n2 >= n2_min & n2 <= n2_max, n2, NA),
+                                    d = ifelse(d >= d_min & d <= d_max, d, NA)) %>%
+                                    select(-wake) %>%
+                                    left_join(dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake"), by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
+
 
 
 ###############################################################################
@@ -474,76 +471,159 @@ tbl_ORD_Aircraft_Adaptation <- Auto_Unit_Conversion(dbGetQuery(con, "SELECT * FR
 # have a different value around 2.9, depend on runway alt
 thousand_ft_gate <- 3
 
-PWS_Type_Join <- c("Aircraft_Type",
-                   "Min_Safe_Landing_Speed_Follower",
-                   "Local_Stabilisation_Distance_Follower",
-                   "Steady_Procedural_Speed_Follower",
-                   "Final_Deceleration_Follower",
-                   "End_Initial_Deceleration_Distance_Follower",
-                   "Initial_Procedural_Speed_Follower",
-                   "End_Final_Deceleration_Distance_Follower",
-                   "Initial_Deceleration_Follower"
-                   )
-
-PWS_Wake_Join <- c("Wake_Cat",
-                   "Min_Safe_Landing_Speed_Follower",
-                   "Local_Stabilisation_Distance_Follower",
-                   "Steady_Procedural_Speed_Follower",
-                   "Final_Deceleration_Follower",
-                   "End_Initial_Deceleration_Distance_Follower",
-                   "Initial_Procedural_Speed_Follower",
-                   "End_Final_Deceleration_Distance_Follower",
-                   "Initial_Deceleration_Follower"
-                   )
-
-Legacy_Type_Join <- c("Aircraft_Type",
-                      "Min_Safe_Landing_Speed_Follower",
-                      "Local_Stabilisation_Distance_Follower",
-                      "Steady_Procedural_Speed_Follower",
-                      "Final_Deceleration_Follower",
-                      "End_Initial_Deceleration_Distance_Follower",
-                      "Initial_Procedural_Speed_Follower",
-                      "Initial_deceleration_follower"
-                      )
-
-Legacy_Wake_Join <- c("Wake_Cat",
-                      "Min_Safe_Landing_Speed_Follower",
-                      "Local_Stabilisation_Distance_Follower",
-                      "Steady_Procedural_Speed_Follower",
-                      "Final_Deceleration_Follower",
-                      "End_Initial_Deceleration_Distance_Follower",
-                      "Initial_Procedural_Speed_Follower",
-                      "Initial_deceleration_Follower"
-                      )
-
-# Takes all tracks that have an aircraft type in the type specififc adaptation and joins on these parameters
-Speed_Prof_Type <- Speed_Prof %>% filter(Follower_Aircraft_Type %in% tbl_ORD_Aircraft_Adaptation$Aircraft_Type) %>%
-                                  left_join(select(tbl_ORD_Aircraft_Adaptation, if (Operation == "PWS") {PWS_Type_Join} else {Legacy_Type_Join}),
-                                            by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
-
-# Renames the Follower deceleration to match the wake naming, ty RW for the inconsistency
-if (Operation == "Legacy") {Speed_Prof_Type <- Speed_Prof_Type %>% rename(Initial_deceleration_Follower = Initial_deceleration_follower)}
-
-#Takes all tracks that arent in the type specific adaptation and joins on the wake adaptation
-
-Speed_Prof_Wake <- Speed_Prof %>% filter(!(Follower_Aircraft_Type %in% tbl_ORD_Aircraft_Adaptation$Aircraft_Type)) %>%
-                                  left_join(select(tbl_ORD_Wake_Adaptation, if (Operation == "PWS") {PWS_Wake_Join} else {Legacy_Wake_Join}),
-                                            by = c("wake" = "Wake_Cat"))
-
-# The observed deceleration rate is calculated here, the input from Approach Speed Profiling outputs decel as a wake cat value
-# Would probably be best to implement this into the approach speed profiling script instead of recalculating here
-
-Speed_Prof_Errors <- rbind(Speed_Prof_Type, Speed_Prof_Wake) %>%
-                     mutate(d = (b - a1)/(n2 - n1),
-                            Start_Final_Deceleration_Follower = (Steady_Procedural_Speed_Follower - Min_Safe_Landing_Speed_Follower) /
-                            Final_Deceleration_Follower + ifelse(Operation == "PWS", End_Final_Deceleration_Distance_Follower, thousand_ft_gate)) %>%
-                     mutate(e1 = a1 - Min_Safe_Landing_Speed_Follower,
-                            e2 = n1 - ifelse(Operation == "PWS", End_Final_Deceleration_Distance_Follower, thousand_ft_gate),
-                            e3 = d - Final_Deceleration_Follower,
-                            e4 = n2 - Start_Final_Deceleration_Follower,
-                            e5 = b - Steady_Procedural_Speed_Follower
+if (Use_ORD_Profile == F) {
+  
+  tbl_ORD_Wake_Adaptation <- Auto_Unit_Conversion(dbGetQuery(con, "SELECT * FROM tbl_ORD_Wake_Adaptation"), "SI_to_Aviation")
+  
+  tbl_ORD_Aircraft_Adaptation <- Auto_Unit_Conversion(dbGetQuery(con, "SELECT * FROM tbl_ORD_Aircraft_Adaptation"), "SI_to_Aviation")
+  
+  PWS_Type_Join <- c("Aircraft_Type",
+                     "Min_Safe_Landing_Speed_Follower",
+                     "Local_Stabilisation_Distance_Follower",
+                     "Steady_Procedural_Speed_Follower",
+                     "Final_Deceleration_Follower",
+                     "End_Initial_Deceleration_Distance_Follower",
+                     "Initial_Procedural_Speed_Follower",
+                     "End_Final_Deceleration_Distance_Follower",
+                     "Initial_Deceleration_Follower"
                      )
+  
+  PWS_Wake_Join <- c("Wake_Cat",
+                     "Min_Safe_Landing_Speed_Follower",
+                     "Local_Stabilisation_Distance_Follower",
+                     "Steady_Procedural_Speed_Follower",
+                     "Final_Deceleration_Follower",
+                     "End_Initial_Deceleration_Distance_Follower",
+                     "Initial_Procedural_Speed_Follower",
+                     "End_Final_Deceleration_Distance_Follower",
+                     "Initial_Deceleration_Follower"
+                     )
+  
+  Legacy_Type_Join <- c("Aircraft_Type",
+                        "Min_Safe_Landing_Speed_Follower",
+                        "Local_Stabilisation_Distance_Follower",
+                        "Steady_Procedural_Speed_Follower",
+                        "Final_Deceleration_Follower",
+                        "End_Initial_Deceleration_Distance_Follower",
+                        "Initial_Procedural_Speed_Follower",
+                        "Initial_deceleration_follower"
+                        )
+  
+  Legacy_Wake_Join <- c("Wake_Cat",
+                        "Min_Safe_Landing_Speed_Follower",
+                        "Local_Stabilisation_Distance_Follower",
+                        "Steady_Procedural_Speed_Follower",
+                        "Final_Deceleration_Follower",
+                        "End_Initial_Deceleration_Distance_Follower",
+                        "Initial_Procedural_Speed_Follower",
+                        "Initial_deceleration_Follower"
+                        )
+  
+  # Takes all tracks that have an aircraft type in the type specififc adaptation and joins on these parameters
+  Speed_Prof_Type <- Speed_Prof %>% filter(Follower_Aircraft_Type %in% tbl_ORD_Aircraft_Adaptation$Aircraft_Type) %>%
+                                    left_join(select(tbl_ORD_Aircraft_Adaptation, if (Operation == "PWS") {PWS_Type_Join} else {Legacy_Type_Join}),
+                                              by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
+  
+  # Renames the Follower deceleration to match the wake naming, ty RW for the inconsistency
+  if (Operation == "Legacy") {Speed_Prof_Type <- Speed_Prof_Type %>% rename(Initial_deceleration_Follower = Initial_deceleration_follower)}
+  
+  #Takes all tracks that arent in the type specific adaptation and joins on the wake adaptation
+  
+  Speed_Prof_Wake <- Speed_Prof %>% filter(!(Follower_Aircraft_Type %in% tbl_ORD_Aircraft_Adaptation$Aircraft_Type)) %>%
+                                    left_join(select(tbl_ORD_Wake_Adaptation, if (Operation == "PWS") {PWS_Wake_Join} else {Legacy_Wake_Join}),
+                                              by = c("wake" = "Wake_Cat"))
+  
+  # The observed deceleration rate is calculated here, the input from Approach Speed Profiling outputs decel as a wake cat value
+  # Would probably be best to implement this into the approach speed profiling script instead of recalculating here
+  
+  
+  
+  
+  Speed_Prof_Errors <- rbind(Speed_Prof_Type, Speed_Prof_Wake) %>%
+                       mutate(d = (b - a1)/(n2 - n1),
+                              Start_Final_Deceleration_Follower = (Steady_Procedural_Speed_Follower - Min_Safe_Landing_Speed_Follower) /
+                              Final_Deceleration_Follower + ifelse(Operation == "PWS", End_Final_Deceleration_Distance_Follower, thousand_ft_gate)) %>%
+                       mutate(e1 = a1 - Min_Safe_Landing_Speed_Follower,
+                              e2 = n1 - ifelse(Operation == "PWS", End_Final_Deceleration_Distance_Follower, thousand_ft_gate),
+                              e3 = d - Final_Deceleration_Follower,
+                              e4 = n2 - Start_Final_Deceleration_Follower,
+                              e5 = b - Steady_Procedural_Speed_Follower
+                       )
+}
 
+if (Use_ORD_Profile == T) {
+  
+  if (Operation != "PWS") {
+  
+    ORD_Profile_Query <- "SELECT ORD.[Landing_Pair_ID]
+                                ,ORD.[This_Pair_Role]
+                                ,ORD.[Aircraft_Type]
+                                ,ORD.[Wake_Cat]
+                                ,ORD.[VRef]
+                                ,ORD.[Apply_Gusting]
+                                ,ORD.[Landing_Stabilisation_Speed_Type]
+                                ,ORD.[Local_Stabilisation_Distance]
+                                ,ORD.[Landing_Stabilisation_Speed]
+                                ,ORD.[Final_Deceleration]
+                                ,ORD.[Final_Deceleration_Distance]
+                                ,ORD.[Steady_Procedural_Speed]
+                                ,ORD.[End_Initial_Deceleration_Distance]
+                                ,ORD.[Start_Initial_Deceleration_Distance]
+                                ,ORD.[Initial_Procedural_Speed]
+                          	    ,LP.[Follower_Flight_Plan_ID]
+                          FROM [tbl_ORD_Aircraft_Profile] ORD
+                          LEFT JOIN tbl_Landing_Pair LP
+                          ON ORD.Landing_Pair_ID = LP.Landing_Pair_ID
+                          WHERE This_Pair_Role = 'F' "
+  } else {
+    
+    ORD_Profile_Query <- "SELECT ORD.[Landing_Pair_ID]
+                                ,ORD.[This_Pair_Role]
+                                ,ORD.[Aircraft_Type]
+                                ,ORD.[Operator]
+                                ,ORD.[Wake_Cat]
+                                ,ORD.[Runway]
+                                ,ORD.[VRef]
+                                ,ORD.[Apply_Gusting]
+                                ,ORD.[Landing_Stabilisation_Speed_Type]
+                                ,ORD.[Local_Stabilisation_Distance]
+                                ,ORD.[Compression_Commencement_Threshold]
+                                ,ORD.[Landing_Stabilisation_Speed]
+                                ,ORD.[Final_Deceleration]
+                                ,ORD.[End_Final_Deceleration_Distance]
+                                ,ORD.[Start_Final_Deceleration_Distance]
+                                ,ORD.[Steady_Procedural_Speed]
+                                ,ORD.[Initial_Deceleration]
+                                ,ORD.[End_Initial_Deceleration_Distance]
+                                ,ORD.[Start_Initial_Deceleration_Distance]
+                                ,ORD.[Initial_Procedural_Speed]
+                          	    ,LP.[Follower_Flight_Plan_ID]
+                          FROM [tbl_ORD_Aircraft_Profile] ORD
+                          LEFT JOIN tbl_Landing_Pair LP
+                          ON ORD.Landing_Pair_ID = LP.Landing_Pair_ID
+                          WHERE This_Pair_Role = 'F' "
+    
+  }
+  tbl_ORD_Aircraft_Profile <- Auto_Unit_Conversion(dbGetQuery(con, ORD_Profile_Query), "SI_to_Aviation")
+  
+  Speed_Prof_Errors <- inner_join(Speed_Prof, tbl_ORD_Aircraft_Profile, by = "Follower_Flight_Plan_ID") %>%
+                       mutate(d = (b - a1)/(n2 - n1),
+                              Start_Final_Deceleration = (Steady_Procedural_Speed - VRef) /
+                              Final_Deceleration + ifelse(Operation == "PWS", End_Final_Deceleration_Distance, thousand_ft_gate)) %>%
+                       mutate(e1 = a1 - VRef,
+                              e2 = n1 - ifelse(Operation == "PWS", End_Final_Deceleration_Distance, thousand_ft_gate),
+                              e3 = d - Final_Deceleration,
+                              e4 = n2 - Start_Final_Deceleration,
+                              e5 = b - Steady_Procedural_Speed
+                       )
+  
+}
+
+
+
+
+##############################
+# Recalculate these performance metrics using the ORD profile that is calculated on the DB (Contains wind adjustments)
 
 
 
@@ -586,7 +666,7 @@ plot_error_by_group(Radar1, "Leader_Forecast_IAS_Error", "Wake", 150)
 # plot_error_all_ac(dat, Error_Var, Max_Error_Val, height, width)
 # height and width refer to the number of plots per page
 
-plot_error_all_ac(Radar1, "Leader_Forecast_IAS_Error", 200, 3, 3)
+plot_error_all_ac(Radar1, "Leader_Forecast_IAS_Error", 25, 3, 3)
 
 # Plot an error type for an specific aircraft type
 # plot_error_specific_ac_type(dat, Error_Var, Max_Error_Val, AC_Type)
@@ -609,20 +689,143 @@ Plot_profile_error <- function(dat, Error_Var, Grouping_Var, Max_Error_Val, Face
 
 }
 
+Plot_profile_error_no_group <- function(dat, Error_Var, Grouping_Var, Max_Error_Val, Facet) {
+
+  
+  m <- ggplot(dat %>% filter(abs(!!sym(Error_Var)) < Max_Error_Val)) +
+    geom_boxplot(aes(x = ifelse(Grouping_Var == "NONE", factor(0), !!sym(Grouping_Var)), y = !!sym(Error_Var))) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle(paste(Error_Var, "lss type", sep = " "))
+  
+  if (!missing(Facet)) {
+    m <- m + facet_wrap(as.formula(paste("~", Facet)), scales = "free")
+  }
+  
+  return(m)
+  
+}
 
 # Here you can define the facet or leave argument blank (last argument of the function).
 # Set filter to Inf if you dont want a filter.
 
-Plot_profile_error(Speed_Prof_Errors, "e3", "Follower_Aircraft_Type", 50, "wake")
-Plot_profile_error(Speed_Prof_Errors, "e3", "wake", 20)
+Plot_profile_error(Speed_Prof_Errors, "e1", "Follower_Aircraft_Type", 50, "Wake")
+Plot_profile_error_no_group(Speed_Prof_Errors, "e3", "NONE", 5, "lss_type")
+# 
+Plot_profile_error(Speed_Prof_Errors, "e1", "lss_type", 50)
+
+
+error_types <- c("e1", "e2", "e4","e3", "e5")
+# Filter values c(e1, e2, e3, e4, e5)
+filters <- c(25, 3, 20, 3, 30)
+
+
+
+# Plot_profile_error(Speed_Prof_Errors, "e3", "Follower_Aircraft_Type", 50, "lss_type")
+
+for (i in 1:length(error_types)) {
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_type.png")), width = 1920, height = 1080)
+  m <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Follower_Aircraft_Type", filters[i], "Wake")
+  print(m)
+  dev.off()
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_wake.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Wake", filters[i])
+  print(n)
+  dev.off()
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_lss_type_and_ac_type.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Follower_Aircraft_Type", filters[i], "lss_type")
+  print(n)
+  dev.off()
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_lss_type.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error_no_group(Speed_Prof_Errors, error_types[i], "NONE", filters[i], "lss_type")
+  print(n)
+  dev.off()
+  
+}
+
+
+
+
+###############################
+
 
 #######################################
 # Create a plot based on QNH... need data for this (PWS database when ORD is run)
 # ie... 
-# Plot_profile_error(Speed_Prof_Errors, "e1", "QNH", 1000, "wake")
+# Plot_profile_error(Speed_Prof_Errors, "e1", "QNH_bins", 1000, "Wake_Cat")
+####
+# Do the same for gusting ~~~~~~~ I need to load this data still
 
 
 
+###############################
+# Creating a summary table of error metric
+
+make_summary_table <- function(dat, Error_Var) {
+  
+  dat_summary <- dat %>% group_by(Follower_Aircraft_Type) %>%
+                         summarise('5%' = quantile(!!sym(Error_Var), 0.05, na.rm = T),
+                                   'median' = quantile(!!sym(Error_Var), 0.50, na.rm = T),
+                                   '95%' = quantile(!!sym(Error_Var), 0.95, na.rm = T),
+                                   'Standard Dev' = sd(!!sym(Error_Var), na.rm = T),
+                                   'Mean' = mean(!!sym(Error_Var), na.rm = T))
+                        
+}
+
+E1_Summary <- make_summary_table(Speed_Prof_Errors, "e1")
+E2_Summary <- make_summary_table(Speed_Prof_Errors, "e2")
+E3_Summary <- make_summary_table(Speed_Prof_Errors, "e3")
+E4_Summary <- make_summary_table(Speed_Prof_Errors, "e4")
+E5_Summary <- make_summary_table(Speed_Prof_Errors, "e5")
+
+fwrite(E1_Summary, file.path(out_data, "E1 Summary.csv"))
+fwrite(E2_Summary, file.path(out_data, "E2 Summary.csv"))
+fwrite(E3_Summary, file.path(out_data, "E3 Summary.csv"))
+fwrite(E4_Summary, file.path(out_data, "E4 Summary.csv"))
+fwrite(E5_Summary, file.path(out_data, "E5 Summary.csv"))
+
+
+##############################
+# Creating a summary for mean ORD IAS error, removing all tracks where RTT > Decel distance
+# so error is only across the deceleration 
+
+ORD_Profile_Query_Lead <- "SELECT ORD.[Landing_Pair_ID]
+                                 ,ORD.[Start_Final_Deceleration_Distance]
+                            	   ,LP.[Leader_Flight_Plan_ID]
+                           FROM [tbl_ORD_Aircraft_Profile] ORD
+                           LEFT JOIN tbl_Landing_Pair LP
+                           ON ORD.Landing_Pair_ID = LP.Landing_Pair_ID
+                           WHERE This_Pair_Role = 'L' "
+
+
+ORD_Profile_Query_Foll <- "SELECT ORD.[Landing_Pair_ID]
+                                 ,ORD.[Start_Final_Deceleration_Distance]
+                            	   ,LP.[Follower_Flight_Plan_ID]
+                           FROM [tbl_ORD_Aircraft_Profile] ORD
+                           LEFT JOIN tbl_Landing_Pair LP
+                           ON ORD.Landing_Pair_ID = LP.Landing_Pair_ID
+                           WHERE This_Pair_Role = 'F' "
+
+ORD_Prof_Lead <- Auto_Unit_Conversion(dbGetQuery(con, ORD_Profile_Query_Lead), "SI_to_Aviation")
+ORD_Prof_Foll <- Auto_Unit_Conversion(dbGetQuery(con, ORD_Profile_Query_Foll), "SI_to_Aviation")
+
+Mean_IAS_Lead <- left_join(Radar1, ORD_Prof_Lead, by = c("Flight_Plan_ID" = "Leader_Flight_Plan_ID")) %>% 
+                 filter(Start_Final_Deceleration_Distance >= Range_To_Threshold) %>%
+                 group_by(Aircraft_Type) %>%
+                 summarise(Mean_Foll_IAS_Error = mean(Leader_Forecast_IAS_Error))
+                
+Mean_IAS_Foll <- left_join(Radar2, ORD_Prof_Foll, by = c("Flight_Plan_ID" = "Follower_Flight_Plan_ID")) %>% 
+                 filter(Start_Final_Deceleration_Distance >= Range_To_Threshold) %>%
+                 group_by(Aircraft_Type) %>%
+                 summarise(Mean_Lead_IAS_Error = mean(Follower_Forecast_IAS_Error))
+
+Mean_IAS_Error <- full_join(Mean_IAS_Lead, Mean_IAS_Foll, by = "Aircraft_Type")
+
+fwrite(Mean_IAS_Error, file.path(out_data, "Mean_IAS_Error_By_Aircraft_Type.csv"))
 
 
 
