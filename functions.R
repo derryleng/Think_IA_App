@@ -11,17 +11,9 @@ evalParse <- function(...) {
 }
 
 read_SQL_File <- function(filepath){
+  # NOTE: Can read from multiple file paths (vector of strings)
   # WARNING: R does not support reading UTF-16 (UCS-2 LE BOM) encoded files!
-  con <- file(filepath, "r")
-  sql.string <- ""
-  while (T) {
-    line <- readLines(con, n = 1)
-    if (length(line) == 0) break
-    if (grepl("^--.*$",line)) next
-    sql.string <- paste(sql.string, gsub("\\t", " ", gsub("--.*$", "", line)))
-  }
-  close(con)
-  return(sql.string)
+  return(paste(sapply(filepath, function(x) gsub("\\t", " ", gsub("--.*$", "", readLines(x)))), collapse = " "))
 }
 
 Asterix_Filename_To_Date <- function(Log_Filename) {

@@ -791,10 +791,12 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }
     
     if (all_tables_populated) {
-      for (k in variants) {
-        message("Executing UTMA_PLT_Validation_Run_Variant_", k, ".sql")
-        dbSendQuery(dbi_con, read_SQL_File(paste0("modules/plt_tools/UTMA_PLT_Validation_Run_Variant_", k, ".sql")))
-      }
+      message("Executing UTMA_PLT_Validation_Run_Variant_k.sql for k = ", paste(variants, collapse = ", "))
+      dbSendQuery(dbi_con, read_SQL_File(c(
+        "modules/plt_tools/UTMA_PLT_Validation_Run_Variant_1.sql",
+        "modules/plt_tools/UTMA_PLT_Validation_Run_Variant_2.sql",
+        "modules/plt_tools/UTMA_PLT_Validation_Run_Variant_3.sql"
+      )))
     }
     
   })
