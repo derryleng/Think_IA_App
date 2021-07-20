@@ -293,7 +293,7 @@ d_max <- 50
 # )
 type_adaptation_input_table <- data.table(
   Aircraft_Type = "ALL",
-  Compression_Commencement_Threshold = 10,
+  Compression_Commencement_Threshold = 4,
   Landing_Stabilisation_Speed_Type_Lead = NA,
   Landing_Stabilisation_Speed_Type_Follower = NA,
   Min_Safe_Landing_Speed_Lead = NA,
@@ -316,7 +316,7 @@ type_adaptation_input_table <- data.table(
 
 wake_adaptation_input_table <- data.table(
   Wake_Cat = "ALL",
-  Compression_Commencement_Threshold = 10,
+  Compression_Commencement_Threshold = 4,
   Landing_Stabilisation_Speed_Type_Lead = 0,
   Landing_Stabilisation_Speed_Type_Follower = 0,
   Min_Safe_Landing_Speed_Lead = NA,
@@ -340,7 +340,7 @@ wake_adaptation_input_table <- data.table(
 
 dbs_adaptation_input_table <- data.table(
   DBS_Distance = "ALL",
-  Compression_Commencement_Threshold = 10,
+  Compression_Commencement_Threshold = 4,
   Landing_Stabilisation_Speed_Type_Lead = 0,
   Landing_Stabilisation_Speed_Type_Follower = 0,
   Min_Safe_Landing_Speed_Lead = NA,

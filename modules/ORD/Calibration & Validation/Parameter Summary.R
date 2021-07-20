@@ -240,10 +240,10 @@ landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment = N
 landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment_boeing = NA)
 
 # for (i in 1:nrow(landing_adjustments)) {
-# 
+#
 #   landing_adjustments$landing_adjustment[i] <- calc_landing_adjustment(landing_adjustments$landing_stabilisation_speed_type[i], landing_adjustments$Surface_Headwind[i])
 #   landing_adjustments$landing_adjustment_boeing[i] <- calc_landing_adjustment(0, landing_adjustments$Surface_Headwind[i])
-# 
+#
 # }
 
 landing_adjustments <- calc_landing_adjustment_vect(landing_adjustments)
@@ -336,7 +336,7 @@ modeldata_filtered_d <- if (d_filter) {
 # ----------------------------------------------------------------------- #
 
 if (Operation != "PWS") {
-  
+
   type_params <- rbindlist(list(
     # parameter_summary(modeldata_filtered_a1, "Follower_Aircraft_Type", "a1"),
     # parameter_summary(modeldata_filtered_a2, "Follower_Aircraft_Type", "a2"),
@@ -353,31 +353,31 @@ if (Operation != "PWS") {
     parameter_summary(modeldata_filtered_d[,c("Follower_Aircraft_Type", "d")]),
     parameter_summary(modeldata[,c("Follower_Aircraft_Type", "d2")])
   ))
-  
+
   fwrite(type_params, file.path(out_dir, "Parameter_Summary_Aircraft_Type.csv"))
-  
+
   actypes <- unique(type_params$Follower_Aircraft_Type)
-  
+
   type_params_req <- list()
   type_adaptation <- list()
   type_adaptation_modified <- list()
   type_params <- as.data.table(type_params)
   modeldata <- as.data.table(modeldata)
-  
+
   sink(file.path(out_plot2, "summary.txt"))
   sink()
-  
+
   # adding a row for counts by ac type and ordering by ac type
-  
+
   unique_aircraft_types$N <- rep(0, nrow(unique_aircraft_types))
   unique_aircraft_types <- unique_aircraft_types %>% arrange(Follower_Aircraft_Type)
-  
-  
+
+
   # Initialising a df to display and calculate all parameters corresponding to the
   # adjustment to account for 1000ft gate limitation
-  
+
   time_per_ac_type <- unique_aircraft_types %>% select(., c("Follower_Aircraft_Type"))
-  
+
   time_per_ac_type$time_lead_observed_alternate <- rep(NA, nrow(time_per_ac_type))
   time_per_ac_type$time_foll_observed_alternate <- rep(NA, nrow(time_per_ac_type))
   time_per_ac_type$a_lead <- rep(NA, nrow(time_per_ac_type))
@@ -392,20 +392,20 @@ if (Operation != "PWS") {
   time_per_ac_type$n2 <- rep(NA, nrow(time_per_ac_type))
   time_per_ac_type$m2_lead <- rep(NA, nrow(time_per_ac_type))
   time_per_ac_type$m2_foll <- rep(NA, nrow(time_per_ac_type))
-  
-  
-  
+
+
+
   for (i in 1:length(actypes)) {
-  
+
     dat <- type_params[Follower_Aircraft_Type == actypes[i]]
     dat2 <- modeldata_filtered_a1[Follower_Aircraft_Type == actypes[i]]
     dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment), 0, dat2$landing_adjustment)
-  
+
     # Add counts to the unique_aircraft_types table
     if (actypes[i] == unique_aircraft_types$Follower_Aircraft_Type[i]) {
       unique_aircraft_types$N[i] <- nrow(dat2[Follower_Aircraft_Type == actypes[i]])
     } else {message("Mismatched Aircraft Type for ", i, " either ", actypes[i], " or ", unique_aircraft_types$Follower_Aircraft_Type[i])}
-  
+
     N <- dat[Type == "a1"]$N %>% ifelse(length(.) > 0, ., NA)
     a1 <- dat[Type == "a1"]$median %>% ifelse(length(.) > 0, ., NA)
     a2 <- dat[Type == "a2"]$median %>% ifelse(length(.) > 0, ., NA)
@@ -415,30 +415,30 @@ if (Operation != "PWS") {
     # d <- ifelse(b - a2 > 0 & n2 != n1, (b-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
     d <- ifelse(type_adaptation_input_table$Steady_Procedural_Speed_Lead - a2 > 0 & n2 != n1, (type_adaptation_input_table$Steady_Procedural_Speed_Lead-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
     d2 <- dat[Type == "d2"]$median %>% ifelse(length(.) > 0, ., NA)
-  
+
     # Generate normal distribution using mean and sd of vref
     # vref_dist <- rnorm(1e6, mean = mean(dat2$vref), sd = sd(dat2$vref))
-  
+
     if (grepl("^LVNL_.*$", database)) {
-  
+
       if (length(dat2$vref) > 1 & (N >= observation_threshold | actypes[i] %in% additional_types)) {
         dat_density <- density(dat2$vref %>% .[!is.na(.)], n = max(512, length(dat2$vref %>% .[!is.na(.)])))
       } else {
         message("Not enough aircrafts for ", actypes[i])
         next
       }
-  
+
     } else {
-  
+
       if (length(dat2$vref) > 1 & N >= observation_threshold) {
         dat_density <- density(dat2$vref %>% .[!is.na(.)], n = max(512, length(dat2$vref %>% .[!is.na(.)])))
       } else {
         message("Not enough aircrafts for ", actypes[i])
         next
       }
-  
+
     }
-  
+
     if (nrow(dat2[Follower_Aircraft_Type == actypes[i]]) >= empirical_threshold) {
       message("Calibrating ", actypes[i], " using empirical distribution.")
       vref_selection <- "Empirical"
@@ -456,9 +456,9 @@ if (Operation != "PWS") {
         quantile(dat_density, 0.5))
       pcile <- quantile(dat_density, 0.01)
     }
-  
-  
-  
+
+
+
     png(filename = file.path(out_plot1, paste0(actypes[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
     hist(
       dat2$vref,
@@ -472,7 +472,7 @@ if (Operation != "PWS") {
     abline(v = vref, col = "red", lty = 2)
     abline(v = pcile, col = "red", lty = 2)
     dev.off()
-  
+
     type_params_req[[i]] <- data.table(
       Follower_Aircraft_Type = actypes[i],
       N = N %>% ifelse(length(.) > 0, ., NA),
@@ -484,90 +484,90 @@ if (Operation != "PWS") {
       vref = vref %>% ifelse(length(.) > 0, ., NA),
       vref_selection = vref_selection
     )
-  
-    
-    
-    
+
+
+
+
     #Set the Vref for leader and follower and then Vtgt as these Vref with the wind adjustment added back
-  
+
     vref_lead <- as.numeric(vref)
-  
+
     vref_foll <- max(vref + 5, median(dat2$vref), na.rm = T)
-  
+
     Vtgt_lead <- vref_lead + calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
     Vtgt_foll <- vref_foll + calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
-  
-  
+
+
     #Assigning the predetermined values (from wrapper function)
     type_adaptation[[i]] <- type_adaptation_input_table
     type_adaptation_modified[[i]] <- type_adaptation_input_table
-  
+
     #Calculating an observed time of flight (12 DME to thresh) from median positions and speeds
-  
-  
-  
-  
+
+
+
+
     time_per_ac_type$time_lead_observed_alternate[[i]] <- get_time_of_flight(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                                              n2, n1, type_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                                              Vtgt_lead)
-  
+
     time_per_ac_type$time_foll_observed_alternate[[i]] <- get_time_of_flight(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
                                                                              n2, n1, type_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                                              Vtgt_foll)
-  
+
     # Using a deceleration rate adjustment for aircraft stabilising before the 1000ft gate
-  
-  
-  
+
+
+
     if (n1 >= thousand_ft_gate) {
-  
+
       time_per_ac_type$m2_lead[[i]] <- get_decel_dist(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                       time_per_ac_type$time_lead_observed_alternate[[i]],
                                                       thousand_ft_gate,
                                                       type_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                       Vtgt_lead)
-  
+
       time_per_ac_type$m2_foll[[i]] <- get_decel_dist(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
                                                       time_per_ac_type$time_foll_observed_alternate[[i]],
                                                       thousand_ft_gate,
                                                       type_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                       Vtgt_foll)
-  
+
       time_per_ac_type$a_lead[[i]] <- get_decel(time_per_ac_type$m2_lead[[i]],
                                                 thousand_ft_gate,
                                                 type_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                 Vtgt_lead)
-  
+
       time_per_ac_type$a_foll[[i]] <- get_decel(time_per_ac_type$m2_foll[[i]],
                                                 thousand_ft_gate,
                                                 type_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                 Vtgt_foll)
     }
-  
+
     # Using a Vtgt adjustment for aircraft stabilising after the 1000ft gate
-  
+
     if (n1 < thousand_ft_gate) {
-  
+
       time_per_ac_type$a_lead[[i]] <- d
       time_per_ac_type$adjusted_Vtgt_lead[[i]] <- adjust_Vref(type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead, thousand_ft_gate, n2, type_adaptation_input_table$Steady_Procedural_Speed_Lead, time_per_ac_type$time_lead_observed_alternate[[i]], vref_lead)
       vref_lead <- time_per_ac_type$adjusted_Vtgt_lead[[i]] - calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
-  
+
       time_per_ac_type$a_foll[[i]] <- d
       time_per_ac_type$adjusted_Vtgt_foll[[i]] <- adjust_Vref(type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower, thousand_ft_gate, n2, type_adaptation_input_table$Steady_Procedural_Speed_Follower, time_per_ac_type$time_foll_observed_alternate[[i]], vref_foll)
       vref_foll <- time_per_ac_type$adjusted_Vtgt_foll[[i]] - calc_landing_adjustment(dat2 %>% select(lss_type) %>% distinct(), reference_wind)
     }
-  
-  
+
+
     time_per_ac_type$a1[[i]] <- a1
     time_per_ac_type$Vtgt_lead[[i]] <- Vtgt_lead
     time_per_ac_type$Vtgt_foll[[i]] <- Vtgt_foll
     time_per_ac_type$n1[[i]] <- n1
     time_per_ac_type$n2[[i]] <- n2
-  
-  
+
+
     time_per_ac_type$a_original[[i]] <- round(d, 1)
-  
-  
+
+
     type_adaptation[[i]]$Aircraft_Type <- actypes[i]
     type_adaptation[[i]]$Landing_Stabilisation_Speed_Type_Lead <- unique(dat2$lss_type)
     type_adaptation[[i]]$Landing_Stabilisation_Speed_Type_Follower <- unique(dat2$lss_type)
@@ -575,8 +575,8 @@ if (Operation != "PWS") {
     type_adaptation[[i]]$Min_Safe_Landing_Speed_Follower <- max(round(vref + 5, 1), round(median(dat2$vref), 1), na.rm = T)
     type_adaptation[[i]]$Final_Deceleration_Lead <- round(d, 1)
     type_adaptation[[i]]$Final_Deceleration_Follower <- round(d, 1)
-  
-  
+
+
     type_adaptation_modified[[i]]$Aircraft_Type <- actypes[i]
     type_adaptation_modified[[i]]$Landing_Stabilisation_Speed_Type_Lead <- unique(dat2$lss_type)
     type_adaptation_modified[[i]]$Landing_Stabilisation_Speed_Type_Follower <- unique(dat2$lss_type)
@@ -584,8 +584,8 @@ if (Operation != "PWS") {
     type_adaptation_modified[[i]]$Min_Safe_Landing_Speed_Follower <- round(vref_foll, 1)
     type_adaptation_modified[[i]]$Final_Deceleration_Lead <- round(time_per_ac_type$a_lead[[i]], 1)
     type_adaptation_modified[[i]]$Final_Deceleration_Follower <- round(time_per_ac_type$a_foll[[i]], 1)
-  
-  
+
+
     png(filename = file.path(out_plot2, paste0(actypes[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
     print({
       ggplot(data = dat2, aes(x = Surface_Headwind, y = a1)) +
@@ -596,19 +596,19 @@ if (Operation != "PWS") {
         theme_classic()
     })
     dev.off()
-  
+
     sink(file.path(out_plot2, "summary.txt"), append = T)
     cat(actypes[i], "\n")
     print(summary(lm(a1 ~ Surface_Headwind, data = dat2)))
     cat("# ----------------------------------------------------------------------- #\n\n")
     sink()
-  
+
   }
-  
-  
+
+
   # Filter out all aircraft below empirical_threshold for the type adaptation
   # or not in the list of aircraft to create an adaptation for manually
-  
+
   if(use_Vref_Adjust == T) {
     type_adaptation_all_aircraft <- type_adaptation_modified
     type_adaptation_out <- rbindlist(type_adaptation_modified) %>%
@@ -618,21 +618,21 @@ if (Operation != "PWS") {
     type_adaptation_out <- rbindlist(type_adaptation) %>%
       filter(Aircraft_Type %in% (unique_aircraft_types %>% filter(N >= empirical_threshold) %>% .$Follower_Aircraft_Type) | Aircraft_Type %in% additional_aircraft_to_output)
   }
-  
-  
-  
+
+
+
   fwrite(rbindlist(type_params_req, use.names=T, fill=T), file.path(out_dir, "Parameters_Aircraft_Type.csv"))
-  
+
   fwrite(type_adaptation_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_", Airport_Code, ".csv")))
-  
+
   fwrite(rbindlist(type_adaptation_all_aircraft), file.path(out_dir, paste0("All_Aircraft_Adaptation_Parameters_", Airport_Code, ".csv")))
-  
+
   fwrite(time_per_ac_type, file.path(out_dir, paste0("Aircraft_Types_m2_decel_", Airport_Code, ".csv")))
-  
+
   zipr(zipfile = paste0(out_plot1, ".zip"), files = list.files(out_plot1, pattern = ".png", full.names = T))
-  
+
   zipr(zipfile = paste0(out_plot2, ".zip"), files = list.files(out_plot2, pattern = ".png", full.names = T))
-  
+
   # # ----------------------------------------------------------------------- #
   # # Second Pass at Type Params to filter for the decel values near vref -----
   # # ----------------------------------------------------------------------- #
@@ -802,13 +802,13 @@ if (Operation != "PWS") {
   # fwrite(rbindlist(type_params_req_2, use.names=T, fill=T), file.path(out_dir, "Parameters_Aircraft_Type_Decel.csv"))
   #
   # fwrite(rbindlist(type_adaptation_2), file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_", Airport_Code, "_Decel.csv")))
-  
+
   # ----------------------------------------------------------------------- #
   # Wake Category Parameter Summary & Adaptation ----------------------------
   # ----------------------------------------------------------------------- #
-  
+
   if (grepl("^LVNL_.*$", database)) {
-  
+
     wake_params <- rbindlist(list(
       # parameter_summary(modeldata_filtered_a1, "Follow_RECAT", "a1"),
       # parameter_summary(modeldata_filtered_a2, "Follow_RECAT", "a2"),
@@ -825,9 +825,9 @@ if (Operation != "PWS") {
       parameter_summary(modeldata_filtered_d[!(Follower_Aircraft_Type %in% removed_types),c("Follow_RECAT", "d")]),
       parameter_summary(modeldata[,c("Follow_RECAT", "d2")])
     ))
-  
+
   } else {
-  
+
     wake_params <- rbindlist(list(
       # parameter_summary(modeldata_filtered_a1, "Follow_RECAT", "a1"),
       # parameter_summary(modeldata_filtered_a2, "Follow_RECAT", "a2"),
@@ -844,25 +844,25 @@ if (Operation != "PWS") {
       parameter_summary(modeldata_filtered_d[,c("Follow_RECAT", "d")]),
       parameter_summary(modeldata[,c("Follow_RECAT", "d2")])
     ))
-  
+
   }
-  
+
   fwrite(wake_params, file.path(out_dir, "Parameter_Summary_Wake.csv"))
-  
+
   wake_cats <- unique(wake_params$Follow_RECAT)
-  
+
   wake_params_req <- list()
   wake_adaptation_old <- list()
   wake_adaptation <- list()
-  
+
   sink(file.path(out_plot4, "summary.txt"))
   sink()
-  
+
   # Initialising a df to display and calculate all parameters corresponding to the
   # adjustment to account for 1000ft gate limitation
-  
+
   time_per_wake_cat <- wake_cats %>% enframe() %>% rename(Wake_Cat = value) %>% select("Wake_Cat")
-  
+
   time_per_wake_cat$time_lead_observed_alternate <- rep(NA, nrow(time_per_wake_cat))
   time_per_wake_cat$time_foll_observed_alternate <- rep(NA, nrow(time_per_wake_cat))
   time_per_wake_cat$a_lead <- rep(NA, nrow(time_per_wake_cat))
@@ -877,24 +877,24 @@ if (Operation != "PWS") {
   time_per_wake_cat$n2 <- rep(NA, nrow(time_per_wake_cat))
   time_per_wake_cat$m2_lead <- rep(NA, nrow(time_per_wake_cat))
   time_per_wake_cat$m2_foll <- rep(NA, nrow(time_per_wake_cat))
-  
+
   for (i in 1:length(wake_cats)) {
-  
+
     dat <- as.data.table(wake_params)[Follow_RECAT == wake_cats[i]]
-  
+
     if (grepl("^LVNL_.*$", database)) {
       dat2 <- as.data.table(modeldata_filtered_a2)[Follow_RECAT == wake_cats[i] & !(Follower_Aircraft_Type %in% removed_types)]
     } else {
       dat2 <- as.data.table(modeldata_filtered_a2)[Follow_RECAT == wake_cats[i]]
     }
-  
+
     dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment_boeing), 0, dat2$landing_adjustment_boeing)
-  
+
     # Generate normal distribution using mean and sd of vref
     # vref_dist <- rnorm(1e6, mean = mean(dat2$vref), sd = sd(dat2$vref))
-  
+
     dat_density <- density(dat2$vref %>% .[!is.na(.)], n = max(512, length(dat2$vref %>% .[!is.na(.)])))
-  
+
     N <- dat[Type == "a1"]$N %>% ifelse(length(.) > 0, ., NA)
     a1 <- dat[Type == "a1"]$median %>% ifelse(length(.) > 0, ., NA)
     a2 <- dat[Type == "a2"]$median %>% ifelse(length(.) > 0, ., NA)
@@ -904,8 +904,8 @@ if (Operation != "PWS") {
     # d <- ifelse(b - a2 > 0 & n2 != n1, (b-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
     d <- ifelse(type_adaptation_input_table$Steady_Procedural_Speed_Lead - a2 > 0 & n2 != n1, (type_adaptation_input_table$Steady_Procedural_Speed_Lead-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
     d2 <- dat[Type == "d2"]$median %>% ifelse(length(.) > 0, ., NA)
-  
-  
+
+
     if (nrow(dat2[Follow_RECAT == wake_cats[i]]) >= empirical_threshold) {
       message("Calibrating ", wake_cats[i], " using empirical distribution.")
       vref_selection <- "Empirical"
@@ -923,8 +923,8 @@ if (Operation != "PWS") {
         quantile(dat_density, 0.5))
       pcile <- quantile(dat_density, 0.01)
     }
-    
-  
+
+
     png(filename = file.path(out_plot3, paste0(wake_cats[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
     hist(
       dat2$vref,
@@ -938,7 +938,7 @@ if (Operation != "PWS") {
     abline(v = vref, col = "red", lty = 2)
     abline(v = pcile, col = "red", lty = 2)
     dev.off()
-  
+
     wake_params_req[[i]] <- data.table(
       Follow_RECAT = wake_cats[i],
       N = ifelse(length(N) > 0, N, NA),
@@ -950,55 +950,55 @@ if (Operation != "PWS") {
       vref = ifelse(length(vref) > 0, vref, NA),
       vref_selection = vref_selection
     )
-  
+
     vref_lead <- as.numeric(vref)
     vref_foll <- max(vref + 5, median(dat2$vref), na.rm = T)
-  
+
     Vtgt_lead <- vref_lead + calc_landing_adjustment(0, reference_wind)
     Vtgt_foll <- vref_foll + calc_landing_adjustment(0, reference_wind)
-  
-  
+
+
     #Setting the parameters pre-defined in the table (from wraper script)
     wake_adaptation_old[[i]] <- wake_adaptation_input_table
     wake_adaptation[[i]] <- wake_adaptation_input_table
-  
+
     #Calculating a median time of flight per wake category
-  
+
     time_per_wake_cat$time_lead_observed_alternate[[i]] <- get_time_of_flight(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                                              n2, n1, wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                                              Vtgt_lead)
-  
+
     time_per_wake_cat$time_foll_observed_alternate[[i]] <- get_time_of_flight(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
                                                                              n2, n1, wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                                              Vtgt_foll)
-  
+
     if (n1 >= thousand_ft_gate) {
-  
+
       time_per_wake_cat$m2_lead[[i]] <- get_decel_dist(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                        time_per_wake_cat$time_lead_observed_alternate[[i]],
                                                        thousand_ft_gate,
                                                        wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                        Vtgt_lead)
-  
+
       time_per_wake_cat$m2_foll[[i]] <- get_decel_dist(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
                                                        time_per_wake_cat$time_foll_observed_alternate[[i]],
                                                        thousand_ft_gate,
                                                        wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                        Vtgt_foll)
-  
+
       time_per_wake_cat$a_lead[[i]] <- get_decel(time_per_wake_cat$m2_lead[[i]],
                                                  thousand_ft_gate,
                                                  wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                  Vtgt_lead)
-  
+
       time_per_wake_cat$a_foll[[i]] <- get_decel(time_per_wake_cat$m2_foll[[i]],
                                                  thousand_ft_gate,
                                                  wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                  Vtgt_foll)
     }
-  
+
     if (n1 < thousand_ft_gate) {
-  
+
       time_per_wake_cat$a_lead[[i]] <- d
       time_per_wake_cat$adjusted_Vtgt_lead[[i]] <- adjust_Vref(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
                                                                thousand_ft_gate,
@@ -1006,9 +1006,9 @@ if (Operation != "PWS") {
                                                                wake_adaptation_input_table$Steady_Procedural_Speed_Lead,
                                                                time_per_wake_cat$time_lead_observed_alternate[[i]],
                                                                vref_lead)
-  
+
       vref_lead <- time_per_wake_cat$adjusted_Vtgt_lead[[i]] - calc_landing_adjustment(0, reference_wind)
-  
+
       time_per_wake_cat$a_foll[[i]] <- d
       time_per_wake_cat$adjusted_Vtgt_foll[[i]] <- adjust_Vref(wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
                                                                thousand_ft_gate,
@@ -1016,17 +1016,17 @@ if (Operation != "PWS") {
                                                                wake_adaptation_input_table$Steady_Procedural_Speed_Follower,
                                                                time_per_wake_cat$time_foll_observed_alternate[[i]],
                                                                vref_foll)
-  
+
       vref_foll <- time_per_wake_cat$adjusted_Vtgt_foll[[i]] - calc_landing_adjustment(0, reference_wind)
     }
-  
+
     time_per_wake_cat$a1[[i]] <- a1
     time_per_wake_cat$Vtgt_lead[[i]] <- Vtgt_lead
     time_per_wake_cat$Vtgt_foll[[i]] <- Vtgt_foll
     time_per_wake_cat$n1[[i]] <- n1
     time_per_wake_cat$n2[[i]] <- n2
     time_per_wake_cat$a_original[[i]] <- round(d, 1)
-  
+
     #Setting parameters not defined in the wrapper
     wake_adaptation_old[[i]]$Wake_Cat <- wake_cats[i]
     wake_adaptation_old[[i]]$Min_Safe_Landing_Speed_Lead <- round(vref, 1)
@@ -1035,7 +1035,7 @@ if (Operation != "PWS") {
     wake_adaptation_old[[i]]$Final_Deceleration_Follower <- round(d, 1)
     # wake_adaptation[[i]]$Initial_Deceleration_Lead <- d2
     # wake_adaptation[[i]]$Initial_Deceleration_Follower <- d2
-  
+
     wake_adaptation[[i]]$Wake_Cat <- wake_cats[i]
     wake_adaptation[[i]]$Landing_Stabilisation_Speed_Type_Lead <- 0
     wake_adaptation[[i]]$Landing_Stabilisation_Speed_Type_Follower <- 0
@@ -1043,11 +1043,11 @@ if (Operation != "PWS") {
     wake_adaptation[[i]]$Min_Safe_Landing_Speed_Follower <- round(vref_foll, 1)
     wake_adaptation[[i]]$Final_Deceleration_Lead <- round(time_per_wake_cat$a_lead[[i]], 1)
     wake_adaptation[[i]]$Final_Deceleration_Follower <- round(time_per_wake_cat$a_foll[[i]], 1)
-  
+
     #Convert back to a table with:
     ######     wake_adaptation <- rbindlist(wake_adaptation)
-  
-  
+
+
     # wake_adaptation[[i]] <- data.table(
     #   Wake_Cat = wake_cats[i],
     #   Compression_Commencement_Threshold = 4,
@@ -1070,9 +1070,9 @@ if (Operation != "PWS") {
     #   Initial_Deceleration_Lead = d2,
     #   Initial_Deceleration_Follower = d2
     # )
-  
-  
-  
+
+
+
     png(filename = file.path(out_plot4, paste0(wake_cats[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
     print({
       ggplot(data = dat2, aes(x = Surface_Headwind, y = a1)) +
@@ -1083,35 +1083,35 @@ if (Operation != "PWS") {
         theme_classic()
     })
     dev.off()
-  
+
     sink(file.path(out_plot4, "summary.txt"), append = T)
     cat(wake_cats[i], "\n")
     print(summary(lm(a1 ~ Surface_Headwind, data = dat2)))
     cat("# ----------------------------------------------------------------------- #\n\n")
     sink()
-  
+
   }
-  
+
   if(use_Vref_Adjust == T) {
     wake_adaptation <- rbindlist(wake_adaptation)
   } else {
     wake_adaptation <- rbindlist(wake_adaptation_old)
   }
-  
+
   fwrite(rbindlist(wake_params_req, use.names=T, fill=T), file.path(out_dir, "Parameters_Wake.csv"))
-  
+
   # fwrite(rbindlist(wake_adaptation), file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", Airport_Code, ".csv")))
   fwrite(wake_adaptation, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", Airport_Code, ".csv")))
-  
+
   zipr(zipfile = paste0(out_plot3, ".zip"), files = list.files(out_plot3, pattern = ".png", full.names = T))
-  
+
   zipr(zipfile = paste0(out_plot4, ".zip"), files = list.files(out_plot4, pattern = ".png", full.names = T))
-  
+
   run_extended <- F
   if (run_extended == T){
-  
+
     f_type_list <- filter(modeldata, wake == "F", !(Follower_Aircraft_Type %in% c("TBM8", "TBM9", "PC12", "SF50", "H25B"))) %>% select(Follower_Aircraft_Type) %>% distinct()
-  
+
     tbm8 <- generate_aircraft_parameters(c("TBM8", "TBM9"), "TBM8", "F", F)
     tbm9 <- generate_aircraft_parameters(c("TBM8", "TBM9"), "TBM9", "F", F)
     pc12 <- generate_aircraft_parameters(c("PC12"), "PC12", "E", F)
@@ -1122,35 +1122,35 @@ if (Operation != "PWS") {
     CRJ9 <- generate_aircraft_parameters(c("CRJ9"), "CRJ9", "E", F)
     GLEX <- generate_aircraft_parameters(c("GLEX"), "GLEX", "E", F)
     GLF5 <- generate_aircraft_parameters(c("GLF5"), "GLF5", "E", F)
-  
-  
+
+
     f_types <- generate_aircraft_parameters(f_type_list$Follower_Aircraft_Type, "F", "E", T)
-  
+
     new_adaptation <- rbindlist(list(tbm8[[1]], tbm8[[1]], pc12[[1]], sf50[[1]], h25b[[1]], C56x[[1]], CL35[[1]], CRJ9[[1]], GLEX[[1]], GLF5[[1]], f_types[[1]]), use.names = T)
     fwrite(new_adaptation, file.path(out_dir, "additional_adaptation_params.csv"))
-  
+
     compare_aircraft_parameters(c("B77L", "B78X"), "E", F)
-  
+
     b78x <- filter(modeldata, Follower_Aircraft_Type == "B78X")
-  
+
     generate_aircraft_parameters <- function(type_list, actype, fit, use_boeing) {
-  
+
       dat <- filter(type_params, Follower_Aircraft_Type %in% type_list)
       dat2 <- filter(modeldata_filtered_a1, Follower_Aircraft_Type %in% type_list)
-  
+
       dat <- as.data.table(dat)
       dat2 <- as.data.table(dat2)
-  
+
       #dat <- type_params[Follower_Aircraft_Type == actypes[i]]
       #dat2 <- modeldata_filtered_a1[Follower_Aircraft_Type == actypes[i]]
       if (use_boeing == T){
         dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment_boeing), 0, dat2$landing_adjustment_boeing)
       } else {
         dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment), 0, dat2$landing_adjustment)
-  
+
       }
       #actype = dat2[1, ]$Follower_Aircraft_Type
-  
+
       N <- dat[Type == "a1"]$N %>% ifelse(length(.) > 0, ., NA)
       a1 <- dat[Type == "a1"]$median %>% ifelse(length(.) > 0, ., NA)
       a2 <- dat[Type == "a2"]$median %>% ifelse(length(.) > 0, ., NA)
@@ -1159,18 +1159,18 @@ if (Operation != "PWS") {
       n2 <- dat[Type == "n2"]$median %>% ifelse(length(.) > 0, ., NA)
       d <- ifelse(b - a2 > 0 & n2 != n1, (b-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
       d2 <- dat[Type == "d2"]$median %>% ifelse(length(.) > 0, ., NA)
-  
+
       # Generate normal distribution using mean and sd of vref
       # vref_dist <- rnorm(1e6, mean = mean(dat2$vref), sd = sd(dat2$vref))
-  
+
       if (length(dat2$vref) > 1 & N >= 5) {
         dat_density <- density(dat2$vref %>% .[!is.na(.)], n = max(512, length(dat2$vref %>% .[!is.na(.)])))
       } else {
         message("Not enough aircrafts for ", actype)
         next
       }
-  
-  
+
+
       if (fit == "E") {
         message("Calibrating ", actype, " using empirical distribution.")
         vref_selection <- "Empirical"
@@ -1188,11 +1188,11 @@ if (Operation != "PWS") {
           quantile(dat_density, 0.5))
         pcile <- quantile(dat_density, 0.01)
       }
-  
-  
+
+
       # Remove vref outliers
       #vref <- vref[!(vref %in% boxplot(vref, plot = F)$out)]
-  
+
       # p1 <- hist(
       #   dat2$vref,
       #   main=paste0("Vref Distribution - ", actypes[i]),
@@ -1204,7 +1204,7 @@ if (Operation != "PWS") {
       # lines(dat_density, col = "blue")
       # abline(v = vref, col = "red", lty = 2)
       # abline(v = pcile, col = "red", lty = 2)
-  
+
       p1 <- ggplot(data = dat2)+
         geom_histogram(aes(x = vref, y = ..density..), color  = "black", fill = "skyblue")+
         geom_density(aes(x = vref), alpha = 0.5, color = "red")+
@@ -1213,7 +1213,7 @@ if (Operation != "PWS") {
         scale_x_continuous(breaks = seq(floor(min(dat2$vref)) -5, ceiling(max(dat2$vref)) +5, 5), limits = c(floor(min(dat2$vref)) -5, ceiling(max(dat2$vref)) +5))+
         labs(main = paste0("Vref Distribution - ", actype), x = "Vref (kts)")+
         theme_bw()
-  
+
       type_params_req <- data.table(
         Follower_Aircraft_Type = actype,
         N = N %>% ifelse(length(.) > 0, ., NA),
@@ -1225,9 +1225,9 @@ if (Operation != "PWS") {
         vref = vref %>% ifelse(length(.) > 0, ., NA),
         vref_selection = vref_selection
       )
-  
-  
-  
+
+
+
       type_adaptation <- data.table(
         Aircraft_Type = actype,
         Compression_Commencement_Threshold = 4,
@@ -1250,34 +1250,34 @@ if (Operation != "PWS") {
         Initial_Deceleration_Lead = d2,
         Initial_Deceleration_Follower = d2
       )
-  
+
       p2 <- ggplot(data = dat2, aes(x = Surface_Headwind, y = a1)) +
         geom_point() +
         geom_smooth(method = "lm", se = F) +
         scale_y_continuous(expand = c(0, 0.5)) +
         labs(title = actype, x = "Surface Headwind (kts)", y = "Landing Speed / Fitted parameter a1 (kts)") +
         theme_bw()
-  
+
       return(list("adaptation" = type_adaptation, "params" = type_params, "phist" = p1, "pscatter" = p2))
-  
+
     }
-  
-  
+
+
     compare_aircraft_parameters <- function(type_list, fit, use_boeing) {
-  
+
       dat2 <- filter(modeldata_filtered_a1, Follower_Aircraft_Type %in% type_list)
-  
+
       if (use_boeing == T){
         dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment_boeing), 0, dat2$landing_adjustment_boeing)
       } else {
         dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment), 0, dat2$landing_adjustment)
-  
+
       }
-  
+
       vrefs <- group_by(dat2, Follower_Aircraft_Type) %>%
         summarise(vref = ifelse(quantile(vref, 0.01) + 10 <= median(vref),quantile(vref, 0.01) + 10, median(vref)),
                   pcile = quantile(vref, 0.01)) %>% ungroup()
-  
+
       p1 <- ggplot(data = dat2)+
         geom_histogram(aes(x = vref, y = ..density..), color  = "black", fill = "skyblue")+
         geom_density(aes(x = vref), alpha = 0.5, color = "red")+
@@ -1287,83 +1287,83 @@ if (Operation != "PWS") {
         labs(main = paste0("Vref Distributions"), x = "Vref (kts)")+
         theme_bw()+
         facet_wrap(~Follower_Aircraft_Type)
-  
+
       print(p1)
-  
+
       return(p1)
-  
+
     }
-  
-  
+
+
     boxplot_carrier <- function(aircraft_type){
-  
+
       dat2 <- filter(modeldata_filtered_a1, Follower_Aircraft_Type == aircraft_type) %>% mutate(Carrier = as.factor(substr(Follower_Callsign, 1, 3)))
       dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment_boeing), 0, dat2$landing_adjustment_boeing)
       dat2 <- mutate(dat2, Carrier = fct_reorder(Carrier, vref))
-  
+
       p1 <- ggplot(data = dat2)+
         geom_boxplot(mapping = aes(x = Carrier, y = vref, fill = Carrier))+
         theme(legend.position = "none")
-  
+
       print(p1)
     }
-  
+
     boxplot_carrier("B744")
     boxplot_carrier("B748")
-  
+
     B748 <- filter(modeldata_filtered_a1, Follower_Aircraft_Type == "B748") %>% mutate(vref = a1 - landing_adjustment)
-  
+
     quantile(filter(mutate(modeldata_filtered_a1,vref = a1 - landing_adjustment), Follower_Aircraft_Type == "B748", substr(Follower_Callsign, 1, 3)!="QTR",substr(Follower_Callsign, 1, 3)!="CPA" )$vref, 0.01) + 10
     quantile(filter(B748, vref >= 135)$vref, 0.01) + 10
-  
+
     quantile(filter(mutate(modeldata_filtered_a1,vref = a1 - landing_adjustment), Follower_Aircraft_Type == "B744", substr(Follower_Callsign, 1, 3)!="TAY",substr(Follower_Callsign, 1, 3)!="CKS" )$vref, 0.01) + 10
-  
-  
+
+
   }
-  
+
   # ----------------------------------------------------------------------- #
   # DBS adaptation parameters -----------------------------------------------
   # ----------------------------------------------------------------------- #
-  
+
   if (use_weighted_average) {
-  
+
     ifelse(use_Vref_Adjust == T, wake_adaptation <- wake_adaptation, wake_adaptation <- rbindlist(wake_adaptation_old))
-  
+
     wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
     setnames(wake_dbs_lookup, "Reference_Wake_Separation_Distance", "DBS_Distance")
-  
+
     #Taking historical formatting
     wake_pairs <- wake_dbs_lookup
-  
+
     #assigning the counts from GWCS script output
     wake_pairs$Count <- Wake_Pair_Counts$n
-  
+
     fwrite(wake_pairs, file.path(out_dir, paste0("DBS_Distance_Wake_Pairs_Count.csv")))
-  
+
     #Presetting empty list
     dbs_adaptation_list <- list()
-  
+
     #Creating a vector to represent unique entries in the dbs table
-  
+
     unique_DBS_distance <- wake_pairs %>% select(DBS_Distance) %>% distinct()
     unique_DBS_distance <- sort(unique_DBS_distance$DBS_Distance)
-  
-  
+
+
     for (i in 1:length(unique_DBS_distance)) {
-  
+
       wake_pairs_leader <- wake_pairs[DBS_Distance == unique_DBS_distance[i], .(Count = sum(Count)), by = Leader_WTC]
       Min_Safe_Landing_Speed_Lead_i <- sum(wake_adaptation[match(wake_pairs_leader$Leader_WTC, Wake_Cat)]$Min_Safe_Landing_Speed_Lead * wake_pairs_leader$Count) / sum(wake_pairs_leader$Count)
       Final_Deceleration_Lead_i <- sum(wake_adaptation[match(wake_pairs_leader$Leader_WTC, Wake_Cat)]$Final_Deceleration_Lead * wake_pairs_leader$Count) / sum(wake_pairs_leader$Count)
       Initial_Deceleration_Lead_i <- sum(wake_adaptation[match(wake_pairs_leader$Leader_WTC, Wake_Cat)]$Initial_Deceleration_Lead * wake_pairs_leader$Count) / sum(wake_pairs_leader$Count)
-  
+
       wake_pairs_follower <- wake_pairs[DBS_Distance == unique_DBS_distance[i], .(Count = sum(Count)), by = Follower_WTC]
       Min_Safe_Landing_Speed_Follower_i <- sum(wake_adaptation[match(wake_pairs_follower$Follower_WTC, Wake_Cat)]$Min_Safe_Landing_Speed_Follower * wake_pairs_follower$Count) / sum(wake_pairs_follower$Count)
       Final_Deceleration_Foll_i <- sum(wake_adaptation[match(wake_pairs_follower$Follower_WTC, Wake_Cat)]$Final_Deceleration_Follower * wake_pairs_follower$Count) / sum(wake_pairs_follower$Count)
       Initial_Deceleration_Foll_i <- sum(wake_adaptation[match(wake_pairs_follower$Follower_WTC, Wake_Cat)]$Initial_Deceleration_Follower * wake_pairs_follower$Count) / sum(wake_pairs_follower$Count)
-  
+
       #Setting the predetermined variables
       dbs_adaptation_list[[i]] <- dbs_adaptation_input_table
-  
+
       #Setting the parameters not predefined
       dbs_adaptation_list[[i]]$DBS_Distance <- unique_DBS_distance[i]
       dbs_adaptation_list[[i]]$Min_Safe_Landing_Speed_Lead <- Min_Safe_Landing_Speed_Lead_i
@@ -1372,26 +1372,26 @@ if (Operation != "PWS") {
       dbs_adaptation_list[[i]]$Final_Deceleration_Follower <- Final_Deceleration_Foll_i
       dbs_adaptation_list[[i]]$Initial_Deceleration_Lead <- Initial_Deceleration_Lead_i
       dbs_adaptation_list[[i]]$Initial_Deceleration_Follower <- Initial_Deceleration_Foll_i
-  
+
     }
-  
+
     dbs_adaptation <- rbindlist(dbs_adaptation_list)
     fwrite(dbs_adaptation, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", Airport_Code, ".csv")))
-  
+
   } else {
-  
+
     # Wake and ROT spacing distance from database
     rot_spacing_dist <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_ROT_Spacing_Dist_Data") %>% as.data.table()
     wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
     spacings_joined <- merge(rot_spacing_dist, wake_dbs_lookup, by = c("Leader_WTC", "Follower_WTC"), all.x = T)
     spacings_joined_2 <- spacings_joined[!is.na(Reference_ROT_Spacing_Distance) & !is.na(Reference_Wake_Separation_Distance)][order(Runway, Leader_WTC, Follower_WTC)]
-  
+
     unique_pairs <- unique(spacings_joined_2[,paste(Leader_WTC, Follower_WTC)])
-  
+
     # Review action add begins
     unique_pairs <- unique(wake_dbs_lookup[,paste(Leader_WTC, Follower_WTC)])
     # Review action add ends
-  
+
     all_params <- lapply(c("a1", "a2", "b", "n1", "n2", "d", "d2"), function(i) {
       x <- if (i == "a1") {
         modeldata_filtered_a1[paste(Leader_RECAT, Follow_RECAT) %in% unique_pairs]
@@ -1419,13 +1419,13 @@ if (Operation != "PWS") {
         Type = i
       ))
     }) %>% rbindlist()
-  
+
     dat <- all_params
     dat2 <- modeldata_filtered_a1[paste(Leader_RECAT, Follow_RECAT) %in% unique_pairs]
     dat2$vref <- dat2$a1 - ifelse(is.na(dat2$landing_adjustment), 0, dat2$landing_adjustment)
-  
+
     fwrite(all_params, file.path(out_dir, "Parameter_Summary_Overall.csv"))
-  
+
     N <- dat[Type == "a1"]$N %>% ifelse(length(.) > 0, ., NA)
     a1 <- dat[Type == "a1"]$median %>% ifelse(length(.) > 0, ., NA)
     a2 <- dat[Type == "a2"]$median %>% ifelse(length(.) > 0, ., NA)
@@ -1434,17 +1434,17 @@ if (Operation != "PWS") {
     n2 <- dat[Type == "n2"]$median %>% ifelse(length(.) > 0, ., NA)
     d <- ifelse(b - a2 > 0 & n2 != n1, (b-a2)/(n2-n1), dat[Type == "d"]$median) %>% ifelse(length(.) > 0, ., NA)
     d2 <- dat[Type == "d2"]$median %>% ifelse(length(.) > 0, ., NA)
-  
+
     # Generate normal distribution using mean and sd of vref
     # vref_dist <- rnorm(1e6, mean = mean(dat2$vref), sd = sd(dat2$vref))
-  
+
     if (length(dat2$vref) > 1 & N >= observation_threshold) {
       dat_density <- density(dat2$vref %>% .[!is.na(.)], n = max(512, length(dat2$vref %>% .[!is.na(.)])))
     } else {
       stop("Not enough aircrafts to generate vref distribution")
     }
-  
-  
+
+
     if (nrow(dat2) >= empirical_threshold) {
       message("Calibrating using empirical distribution.")
       vref_selection <- "Empirical"
@@ -1462,8 +1462,8 @@ if (Operation != "PWS") {
         quantile(dat_density, 0.5))
       pcile <- quantile(dat_density, 0.01)
     }
-  
-  
+
+
     png(filename = file.path(out_dir, "Vref Distribution Overall.png"), width = 900, height = 600)
     hist(
       dat2$vref,
@@ -1477,7 +1477,7 @@ if (Operation != "PWS") {
     abline(v = vref, col = "red", lty = 2)
     abline(v = pcile, col = "red", lty = 2)
     dev.off()
-  
+
     all_params_req <- data.table(
       N = N %>% ifelse(length(.) > 0, ., NA),
       a1 = a1 %>% ifelse(length(.) > 0, ., NA),
@@ -1488,14 +1488,14 @@ if (Operation != "PWS") {
       vref = vref %>% ifelse(length(.) > 0, ., NA),
       vref_selection = vref_selection
     )
-  
+
     dbs_adaptation <- list()
-  
+
     for (i in 1:length(unique_DBS_distance)) {
-  
+
       #predefined variables
       dbs_adaptation[[i]] <- dbs_adaptation_input_table
-  
+
       #non predefined parameters
       dbs_adaptation[[i]]$DBS_Distance <- unique_DBS_distance[i]
       dbs_adaptation[[i]]$Min_Safe_Landing_Speed_Lead <- round(vref, 1)
@@ -1505,7 +1505,7 @@ if (Operation != "PWS") {
       # dbs_adaptation[[i]]$Initial_Deceleration_Lead <- d2
       # dbs_adaptation[[i]]$Initial_Deceleration_Follower <- d2
     }
-  
+
     # for (i in seq(3, 8, 1)) {
     #
     #   #predefined variables
@@ -1520,11 +1520,11 @@ if (Operation != "PWS") {
     #   dbs_adaptation[[i]]$Initial_Deceleration_Lead <- d2
     #   dbs_adaptation[[i]]$Initial_Deceleration_Follower <- d2
     # }
-  
+
     dbs_adaptation <- rbindlist(dbs_adaptation)
-  
-  
-  
+
+
+
     # dbs_adaptation <- data.table(
     #   DBS_Distance = seq(3, 8, 1),
     #   Compression_Commencement_Threshold = 4,
@@ -1547,7 +1547,7 @@ if (Operation != "PWS") {
     #   Initial_Deceleration_Lead = d2,
     #   Initial_Deceleration_Follower = d2
     # )
-  
+
     # png(filename = file.path(out_dir, "Surface Headwind vs a1.png"), width = 900, height = 600)
     # print({
     #   ggplot(data = dat2, aes(x = Surface_Headwind, y = a1)) +
@@ -1558,11 +1558,11 @@ if (Operation != "PWS") {
     #     theme_classic()
     # })
     # dev.off()
-  
+
     fwrite(all_params_req, file.path(out_dir, "Parameters_Overall.csv"))
-  
+
     fwrite(dbs_adaptation, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", Airport_Code, ".csv")))
-  
+
   }
 }
 
@@ -1571,15 +1571,15 @@ if (Operation != "PWS") {
 # ----------------------------------------------------------------------- #
 
 if (Operation == 'PWS') {
-  
-  
-  
+
+
+
   modeldata_filtered_a1 <- modeldata_filtered_a1 %>% mutate(per_flight_vref = a1 - ifelse(is.na(landing_adjustment), 0, landing_adjustment)) %>%
                                                      select(-wake) %>%
                                                      left_join(dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake"), by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
-  
-  
-  
+
+
+
   aircraft_adaptation_int <- modeldata_filtered_a1 %>% group_by(Follower_Aircraft_Type) %>%
     summarise(N = n(),
               a1 = median(a1, na.rm = T),
@@ -1594,7 +1594,7 @@ if (Operation == 'PWS') {
     left_join(lss_types, by = c("Follower_Aircraft_Type" = "aircraft_type")) %>%
     rename("Landing_Stabilisation_Speed_Type_Lead" = "landing_stabilisation_speed_type") %>%
     mutate(Landing_Stabilisation_Speed_Type_Follower = Landing_Stabilisation_Speed_Type_Lead,
-           Compression_Commencement_Threshold = type_adaptation_input_table$Compression_Commencement_Threshold,
+           Compression_Commencement_Threshold = ifelse(Follower_Aircraft_Type == "A388", 5, type_adaptation_input_table$Compression_Commencement_Threshold),
            Min_Safe_Landing_Speed_Lead = pmin(vref_percentile, vref_med),
            Min_Safe_Landing_Speed_Follower = pmax(Min_Safe_Landing_Speed_Lead + 5, vref_med, na.rm = T),
            Min_Safe_Landing_Speed_Buffer_Follower = vref_med - Min_Safe_Landing_Speed_Follower,
@@ -1607,16 +1607,17 @@ if (Operation == 'PWS') {
            Steady_Procedural_Speed_Buffer_Follower = 0,     #This needs setting, how are we calculating this buffer? difference between median and proc?
            Final_Deceleration_Lead = ifelse(Steady_Procedural_Speed_Lead - a2 > 0 & n2 != n1, (Steady_Procedural_Speed_Lead-a2)/(n2-n1), wake_decel),
            Final_Deceleration_Follower = ifelse(Steady_Procedural_Speed_Follower - a2 > 0 & n2 != n1, (Steady_Procedural_Speed_Follower-a2)/(n2-n1), wake_decel),
-           End_Final_Deceleration_Distance_Lead = n2,
-           End_Final_Deceleration_Distance_Follower = n2,
+           End_Final_Deceleration_Distance_Lead = n1,
+           End_Final_Deceleration_Distance_Follower = n1,
            End_Initial_Deceleration_Distance_Lead = type_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
            End_Initial_Deceleration_Distance_Follower = type_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
            Initial_Procedural_Speed_Lead = type_adaptation_input_table$Initial_Procedural_Speed_Lead,
            Initial_Procedural_Speed_Follower = type_adaptation_input_table$Initial_Procedural_Speed_Follower,
            Initial_Procedural_Speed_Buffer_Follower = 0,    #This needs setting, how are we calculating this buffer?
            Initial_Deceleration_Lead = type_adaptation_input_table$Initial_Deceleration_Lead,
-           Initial_Deceleration_Follower = type_adaptation_input_table$Initial_Deceleration_Follower)
-  
+           Initial_Deceleration_Follower = type_adaptation_input_table$Initial_Deceleration_Follower) %>%
+    relocate(Compression_Commencement_Threshold, .before = Landing_Stabilisation_Speed_Type_Lead)
+
   wake_adaptation_int <- modeldata_filtered_a1 %>% group_by(Wake) %>%
     summarise(N = n(),
               a1 = median(a1, na.rm = T),
@@ -1628,9 +1629,9 @@ if (Operation == 'PWS') {
               d2 = median(d2, na.rm = T),
               vref_med = median(per_flight_vref, na.rm = T),
               vref_percentile = as.numeric(quantile(per_flight_vref, 0.01, na.rm = T) + 10)) %>%
-    mutate(Landing_Stabilisation_Speed_Type_Lead = wake_adaptation_input_table$Landing_Stabilisation_Speed_Type_Lead,
+    mutate(Compression_Commencement_Threshold = ifelse(Wake == "A", 5, wake_adaptation_input_table$Compression_Commencement_Threshold),
+           Landing_Stabilisation_Speed_Type_Lead = wake_adaptation_input_table$Landing_Stabilisation_Speed_Type_Lead,
            Landing_Stabilisation_Speed_Type_Follower = wake_adaptation_input_table$Landing_Stabilisation_Speed_Type_Follower,
-           Compression_Commencement_Threshold = wake_adaptation_input_table$Compression_Commencement_Threshold,
            Min_Safe_Landing_Speed_Lead = pmin(vref_percentile, vref_med),
            Min_Safe_Landing_Speed_Follower = pmax(Min_Safe_Landing_Speed_Lead + 5, vref_med, na.rm = T),
            Min_Safe_Landing_Speed_Buffer_Follower = vref_med - Min_Safe_Landing_Speed_Follower,
@@ -1643,8 +1644,8 @@ if (Operation == 'PWS') {
            Steady_Procedural_Speed_Buffer_Follower = 0,     #This needs setting, how are we calculating this buffer? difference between median and proc?
            Final_Deceleration_Lead = ifelse(Steady_Procedural_Speed_Lead - a2 > 0 & n2 != n1, (Steady_Procedural_Speed_Lead-a2)/(n2-n1), wake_decel),
            Final_Deceleration_Follower = ifelse(Steady_Procedural_Speed_Follower - a2 > 0 & n2 != n1, (Steady_Procedural_Speed_Follower-a2)/(n2-n1), wake_decel),
-           End_Final_Deceleration_Distance_Lead = n2,
-           End_Final_Deceleration_Distance_Follower = n2,
+           End_Final_Deceleration_Distance_Lead = n1,
+           End_Final_Deceleration_Distance_Follower = n1,
            End_Initial_Deceleration_Distance_Lead = wake_adaptation_input_table$End_Initial_Deceleration_Distance_Lead,
            End_Initial_Deceleration_Distance_Follower = wake_adaptation_input_table$End_Initial_Deceleration_Distance_Follower,
            Initial_Procedural_Speed_Lead = wake_adaptation_input_table$Initial_Procedural_Speed_Lead,
@@ -1653,27 +1654,27 @@ if (Operation == 'PWS') {
            Initial_Deceleration_Lead = wake_adaptation_input_table$Initial_Deceleration_Lead,
            Initial_Deceleration_Follower = wake_adaptation_input_table$Initial_Deceleration_Follower) %>%
     rename(Wake_Cat = Wake)
-  
-  
-  
+
+
+
   wake_dbs_lookup <- dbGetQuery(con, "EXEC usp_GI_Get_Reference_Recat_Separation_Dist_Data") %>% as.data.table()
   setnames(wake_dbs_lookup, "Reference_Wake_Separation_Distance", "DBS_Distance")
-  
+
   #Taking historical formatting
   wake_pairs <- wake_dbs_lookup
-  
+
   #assigning the counts from GWCS script output
   wake_pairs$Count <- Wake_Pair_Counts$n
-  
+
   fwrite(wake_pairs, file.path(out_dir, paste0("DBS_Distance_Wake_Pairs_Count.csv")))
-  
-  
-  
+
+
+
   #Creating a vector to represent unique entries in the dbs table
-  
+
   unique_DBS_distance <- wake_pairs %>% select(DBS_Distance) %>% distinct()
   unique_DBS_distance <- sort(unique_DBS_distance$DBS_Distance)
-  
+
   dbs_names <- c("DBS_Distance",
                  "Compression_Commencement_Threshold",
                  "Landing_Stabilisation_Speed_Type_Lead",
@@ -1699,25 +1700,25 @@ if (Operation == 'PWS') {
                  "Initial_Procedural_Speed_Buffer_Follower",
                  "Initial_Deceleration_Lead",
                  "Initial_Deceleration_Follower")
-  
-  dbs_out <- data.frame(matrix(NA, nrow = length(unique_DBS_distance), ncol = length(dbs_names))) 
+
+  dbs_out <- data.frame(matrix(NA, nrow = length(unique_DBS_distance), ncol = length(dbs_names)))
   names(dbs_out) <- dbs_names
-  
+
   for (i in 1:length(unique_DBS_distance)) {
-    
+
     wake_pairs_leader <- wake_pairs[DBS_Distance == unique_DBS_distance[i], .(Count = sum(Count)), by = Leader_WTC]
-    
+
     dbs_lead <- right_join(wake_adaptation_int, wake_pairs_leader, by = c("Wake_Cat" = "Leader_WTC"))
-    
+
     Min_Safe_Landing_Speed_Lead_i <- sum(dbs_lead$Min_Safe_Landing_Speed_Lead * dbs_lead$Count) / sum(dbs_lead$Count)
     Final_Deceleration_Lead_i <- sum(dbs_lead$Final_Deceleration_Lead * dbs_lead$Count) / sum(dbs_lead$Count)
     Initial_Deceleration_Lead_i <- sum(dbs_lead$Initial_Deceleration_Lead * dbs_lead$Count) / sum(dbs_lead$Count)
     End_Final_Deceleration_Distance_Lead_i <- sum(dbs_lead$End_Final_Deceleration_Distance_Lead * dbs_lead$Count) / sum(dbs_lead$Count)
-    
+
     wake_pairs_follower <- wake_pairs[DBS_Distance == unique_DBS_distance[i], .(Count = sum(Count)), by = Follower_WTC]
-    
+
     dbs_foll <- right_join(wake_adaptation_int, wake_pairs_follower, by = c("Wake_Cat" = "Follower_WTC"))
-    
+
     Min_Safe_Landing_Speed_Follower_i <- sum(dbs_foll$Min_Safe_Landing_Speed_Follower * dbs_foll$Count) / sum(dbs_foll$Count)
     Min_Safe_Landing_Speed_Buffer_Follower_i <- sum(dbs_foll$Min_Safe_Landing_Speed_Buffer_Follower * dbs_foll$Count) / sum(dbs_foll$Count)
     Initial_Procedural_Speed_Buffer_Follower_i <- sum(dbs_foll$Initial_Procedural_Speed_Buffer_Follower * dbs_foll$Count) / sum(dbs_foll$Count)
@@ -1725,7 +1726,7 @@ if (Operation == 'PWS') {
     Initial_Deceleration_Foll_i <- sum(dbs_foll$Initial_Deceleration_Follower * dbs_foll$Count) / sum(dbs_foll$Count)
     End_Final_Deceleration_Distance_Foll_i <- sum(dbs_foll$End_Final_Deceleration_Distance_Follower * dbs_foll$Count) / sum(dbs_foll$Count)
     Steady_Procedural_Speed_Buffer_Foll_i <- sum(dbs_foll$Steady_Procedural_Speed_Buffer_Follower * dbs_foll$Count) / sum(dbs_foll$Count)
-    
+
     dbs_out$DBS_Distance[i] <- unique_DBS_distance[i]
     dbs_out$Compression_Commencement_Threshold[i] <- dbs_adaptation_input_table$Compression_Commencement_Threshold
     dbs_out$Landing_Stabilisation_Speed_Type_Lead[i] <- dbs_adaptation_input_table$Landing_Stabilisation_Speed_Type_Lead
@@ -1752,16 +1753,16 @@ if (Operation == 'PWS') {
     dbs_out$Initial_Deceleration_Lead[i] <- dbs_adaptation_input_table$Initial_Deceleration_Lead
     dbs_out$Initial_Deceleration_Follower[i] <- dbs_adaptation_input_table$Initial_Deceleration_Follower
   }
-  
-  
+
+
   for (i in 1:nrow(aircraft_adaptation_int)) {
     if (aircraft_adaptation_int$N[i] >= observation_threshold) {
-      
+
       dat2 <- modeldata_filtered_a1[Follower_Aircraft_Type == aircraft_adaptation_int$Follower_Aircraft_Type[i]]
       dat_density <- density(dat2$per_flight_vref %>% .[!is.na(.)], n = max(512, length(dat2$per_flight_vref %>% .[!is.na(.)])))
-      
+
       #Vref distribution plots
-      
+
       png(filename = file.path(out_plot1, paste0(aircraft_adaptation_int$Follower_Aircraft_Type[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
       hist(
         dat2$per_flight_vref,
@@ -1775,9 +1776,9 @@ if (Operation == 'PWS') {
       abline(v = aircraft_adaptation_int$Min_Safe_Landing_Speed_Lead[i], col = "red", lty = 2)
       abline(v = ifelse(aircraft_adaptation_int$N >= empirical_threshold, quantile(dat2$per_flight_vref, 0.01), quantile(dat_density, 0.01)), col = "red", lty = 2)
       dev.off()
-      
+
       #Vref against surface headwind
-      
+
       png(filename = file.path(out_plot2, paste0(aircraft_adaptation_int$Follower_Aircraft_Type[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
       print({
         ggplot(data = dat2, aes(x = Surface_Headwind, y = a1)) +
@@ -1788,24 +1789,24 @@ if (Operation == 'PWS') {
           theme_classic()
       })
       dev.off()
-      
+
       sink(file.path(out_plot2, "summary.txt"), append = T)
       cat(aircraft_adaptation_int$Follower_Aircraft_Type[i], "\n")
       print(summary(lm(a1 ~ Surface_Headwind, data = dat2)))
       cat("# ----------------------------------------------------------------------- #\n\n")
       sink()
-      
+
     }
   }
-  
+
   for (i in 1:nrow(wake_adaptation_int)) {
     if (wake_adaptation_int$N[i] >= observation_threshold) {
-      
+
       dat2 <- modeldata_filtered_a1[Wake == wake_adaptation_int$Wake_Cat[i]]
       dat_density <- density(dat2$per_flight_vref %>% .[!is.na(.)], n = max(512, length(dat2$per_flight_vref %>% .[!is.na(.)])))
-      
+
       #Plot for Vref Distributions
-      
+
       png(filename = file.path(out_plot3, paste0(wake_adaptation_int$Wake_Cat[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
       hist(
         dat2$per_flight_vref,
@@ -1819,9 +1820,9 @@ if (Operation == 'PWS') {
       abline(v = wake_adaptation_int$Min_Safe_Landing_Speed_Lead[i], col = "red", lty = 2)
       abline(v = ifelse(wake_adaptation_int$N >= empirical_threshold, quantile(dat2$per_flight_vref, 0.01), quantile(dat_density, 0.01)), col = "red", lty = 2)
       dev.off()
-      
+
       #Vref by surface headwind
-      
+
       png(filename = file.path(out_plot4, paste0(wake_adaptation_int$Wake_Cat[i], ".png")) %>% gsub("%", "%%", .), width = 900, height = 600)
       print({
         ggplot(data = dat2, aes(x = Surface_Headwind, y = a1)) +
@@ -1832,7 +1833,7 @@ if (Operation == 'PWS') {
           theme_classic()
       })
       dev.off()
-      
+
       sink(file.path(out_plot4, "summary.txt"), append = T)
       cat(wake_adaptation_int$Wake_Cat[i], "\n")
       print(summary(lm(a1 ~ Surface_Headwind, data = dat2)))
@@ -1840,17 +1841,21 @@ if (Operation == 'PWS') {
       sink()
     }
   }
-  
-  
-  type_out <- aircraft_adaptation_int %>% filter(N >= empirical_threshold | 
+
+
+  type_out <- aircraft_adaptation_int %>% filter(N >= empirical_threshold |
                                                    (Follower_Aircraft_Type %in% additional_aircraft_to_output & N >= observation_threshold)) %>%
     select(-c(N, a1, b, a2, n1, n2, wake_decel, d2, vref_med, vref_percentile)) %>%
     rename(Aircraft_Type = Follower_Aircraft_Type)
-  
+
   wake_out <- wake_adaptation_int %>% select(-c(N, a1, b, a2, n1, n2, wake_decel, d2, vref_med, vref_percentile))
+
+  # fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_", Airport_Code, ".csv")))
+  # fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", Airport_Code, ".csv")))
+  # fwrite(dbs_out, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", Airport_Code, ".csv")))
   
-  fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_", Airport_Code, ".csv")))
-  fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", Airport_Code, ".csv")))
-  fwrite(dbs_out, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", Airport_Code, ".csv")))
-  
+  fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_","LL", ".csv")))
+  fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", "LL", ".csv")))
+  fwrite(dbs_out, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", "LL", ".csv")))
+
 }
