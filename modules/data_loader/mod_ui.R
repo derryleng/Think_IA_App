@@ -81,7 +81,6 @@ data_loader_ui <- function(id) {
                 "Ground radar (NAVCAN)",
                 "Surface wind and QNH (NAVCAN)",
                 "Cat62 Fusion (NAVCAN)",
-                "Cat62 ARTAS (NODE)",
                 "Surveillance radar (LVNL)",
                 "Flight Plan logs (LVNL)",
                 "QNH logs (LVNL)",

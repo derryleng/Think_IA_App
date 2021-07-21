@@ -18,6 +18,56 @@ calc_landing_adjustment <- function(landing_type, headwind) {
   )
 }
 
+calc_landing_adjustment_vect <- function(dat) {
+  
+  # Not sure why this isnt happy with vectors
+  
+  # test <- dat %>% mutate(landing_adjustment = if (landing_stabilisation_speed_type %in% c(0, 10, 11, 12)) {
+  #                                               ifelse(Surface_Headwind/2 < 5, 5, ifelse(Surface_Headwind/2 > 20, 20, Surface_Headwind/2))
+  #                                             } else if (landing_stabilisation_speed_type %in% c(1, 2, 3, 4, 5)) {
+  #                                               ifelse(Surface_Headwind/3 < 5, 5, ifelse(Surface_Headwind/3 > 15, 15, Surface_Headwind/3))
+  #                                             } else if (landing_stabilisation_speed_type == 6) {
+  #                                               ifelse(Surface_Headwind/2 < 0, 0, ifelse(Surface_Headwind/2 > 20, 20, Surface_Headwind/2))
+  #                                             } else if (landing_stabilisation_speed_type == 7) {
+  #                                               10
+  #                                             } else if (landing_stabilisation_speed_type == 8) {
+  #                                               0
+  #                                             } else if (landing_stabilisation_speed_type == 9) {
+  #                                               ifelse(Surface_Headwind > 20, 15, ifelse(Surface_Headwind > 10, 10, 5))
+  #                                             }
+  # )
+  
+  
+  
+  dat_0_10_11_12 <- dat %>% filter(landing_stabilisation_speed_type %in% c(0, 10, 11, 12))
+  dat_1_2_3_4_5 <- dat %>% filter(landing_stabilisation_speed_type %in% c(1, 2, 3, 4, 5))
+  dat_6 <- dat %>% filter(landing_stabilisation_speed_type == 6)
+  dat_7 <- dat %>% filter(landing_stabilisation_speed_type == 7)
+  dat_8 <- dat %>% filter(landing_stabilisation_speed_type == 8)
+  dat_9 <- dat %>% filter(landing_stabilisation_speed_type == 9)
+  
+  
+  dat_0_10_11_12 <- mutate(dat_0_10_11_12,
+                           landing_adjustment = ifelse(Surface_Headwind/2 < 5, 5, ifelse(Surface_Headwind/2 > 20, 20, Surface_Headwind/2)))
+  dat_1_2_3_4_5 <- mutate(dat_1_2_3_4_5,
+                          landing_adjustment = ifelse(Surface_Headwind/3 < 5, 5, ifelse(Surface_Headwind/3 > 15, 15, Surface_Headwind/3)))
+  dat_6 <- mutate(dat_6,
+                  landing_adjustment = ifelse(Surface_Headwind/2 < 0, 0, ifelse(Surface_Headwind/2 > 20, 20, Surface_Headwind/2)))
+  dat_7 <- mutate(dat_7,
+                  landing_adjustment = 10)
+  dat_8 <- mutate(dat_8,
+                  landing_adjustment = 0)
+  dat_9 <- mutate(dat_9,
+                  landing_adjustment = ifelse(Surface_Headwind > 20, 15, ifelse(Surface_Headwind > 10, 10, 5)))
+  
+  dat_com <- rbind(dat_0_10_11_12, dat_1_2_3_4_5, dat_6, dat_7, dat_8, dat_9) %>% 
+    arrange(Follower_Flight_Plan_ID) %>%
+    mutate(landing_adjustment_boeing = ifelse(Surface_Headwind/2 < 5, 5, ifelse(Surface_Headwind/2 > 20, 20, Surface_Headwind/2)))
+  
+  return(dat_com)
+  
+}
+
 airspeed_model_break <- function(x, a, a1, b, n1, n2) {
   if (n1 < 1) n1 <- 1
   if (n2 < n1 | abs(n2 - n1) < 0.1) n2 <- n1

@@ -26,7 +26,7 @@ library(getPass)
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
-# version <- "2021-05-04 V1.0 (AH)"
+version <- "2021-07-16 V1.0 (AH)"
 
 use_same_input_version <- T
 
@@ -43,10 +43,10 @@ if (Server == "Maverick") {ip <- "192.168.1.23"}
 if (Server == "Goose") {ip <- "192.168.1.39"}
 
 #Set the database name for SQL connection
-database <- "NavCan_TBS_V3"
+database <- "EGLL_PWS"
 
 #Airport Code
-Airport_Code <- "CYYZ"
+Airport_Code <- "EGLL"
 
 #Operation type, Currently only set up for "PWS" anything else will use a Legacy
 #operation, set to "PWS" or "Legacy"
@@ -222,48 +222,117 @@ d_min <- 0
 d_max <- 50
 
 # Initialising output tables and set parameters
+# type_adaptation_input_table <- data.table(
+#   Aircraft_Type = "ALL",
+#   Compression_Commencement_Threshold = 10,
+#   Landing_Stabilisation_Speed_Type_Lead = NA,
+#   Landing_Stabilisation_Speed_Type_Follower = NA,
+#   Min_Safe_Landing_Speed_Lead = NA,
+#   Min_Safe_Landing_Speed_Follower = NA,
+#   Apply_Gusting_Lead = 1,
+#   Apply_Gusting_Follower = 1,
+#   Local_Stabilisation_Distance_Lead = 4.5,
+#   Local_Stabilisation_Distance_Follower = 4.5,
+#   Steady_Procedural_Speed_Lead = 170,
+#   Steady_Procedural_Speed_Follower = 172,
+#   Final_Deceleration_Lead = NA,
+#   Final_Deceleration_Follower = NA,
+#   End_Initial_Deceleration_Distance_Lead = 12,
+#   End_Initial_Deceleration_Distance_Follower = 12,
+#   Initial_Procedural_Speed_Lead = 170,
+#   Initial_Procedural_Speed_Follower = 172,
+#   Initial_Deceleration_Lead = 10,
+#   Initial_Deceleration_Follower = 10
+# )
+# 
+# wake_adaptation_input_table <- data.table(
+#   Wake_Cat = "ALL",
+#   Compression_Commencement_Threshold = 10,
+#   Landing_Stabilisation_Speed_Type_Lead = 0,
+#   Landing_Stabilisation_Speed_Type_Follower = 0,
+#   Min_Safe_Landing_Speed_Lead = NA,
+#   Min_Safe_Landing_Speed_Follower = NA,
+#   Apply_Gusting_Lead = 1,
+#   Apply_Gusting_Follower = 1,
+#   Local_Stabilisation_Distance_Lead = 4.5,
+#   Local_Stabilisation_Distance_Follower = 4.5,
+#   Steady_Procedural_Speed_Lead = 170,
+#   Steady_Procedural_Speed_Follower = 172,
+#   Final_Deceleration_Lead = NA,
+#   Final_Deceleration_Follower = NA,
+#   End_Initial_Deceleration_Distance_Lead = 12,
+#   End_Initial_Deceleration_Distance_Follower = 12,
+#   Initial_Procedural_Speed_Lead = 170,
+#   Initial_Procedural_Speed_Follower = 172,
+#   Initial_Deceleration_Lead = 10,
+#   Initial_Deceleration_Follower = 10
+# )
+# 
+# 
+# dbs_adaptation_input_table <- data.table(
+#   DBS_Distance = "ALL",
+#   Compression_Commencement_Threshold = 10,
+#   Landing_Stabilisation_Speed_Type_Lead = 0,
+#   Landing_Stabilisation_Speed_Type_Follower = 0,
+#   Min_Safe_Landing_Speed_Lead = NA,
+#   Min_Safe_Landing_Speed_Follower = NA,
+#   Apply_Gusting_Lead = 1,
+#   Apply_Gusting_Follower = 1,
+#   Local_Stabilisation_Distance_Lead = 4.5,
+#   Local_Stabilisation_Distance_Follower = 4.5,
+#   Steady_Procedural_Speed_Lead = 170,
+#   Steady_Procedural_Speed_Follower = 172,
+#   Final_Deceleration_Lead = NA,
+#   Final_Deceleration_Follower = NA,
+#   End_Initial_Deceleration_Distance_Lead = 12,
+#   End_Initial_Deceleration_Distance_Follower = 12,
+#   Initial_Procedural_Speed_Lead = 170,
+#   Initial_Procedural_Speed_Follower = 172,
+#   Initial_Deceleration_Lead = 10,
+#   Initial_Deceleration_Follower = 10
+# )
 type_adaptation_input_table <- data.table(
   Aircraft_Type = "ALL",
-  Compression_Commencement_Threshold = 10,
+  Compression_Commencement_Threshold = 4,
   Landing_Stabilisation_Speed_Type_Lead = NA,
   Landing_Stabilisation_Speed_Type_Follower = NA,
   Min_Safe_Landing_Speed_Lead = NA,
   Min_Safe_Landing_Speed_Follower = NA,
   Apply_Gusting_Lead = 1,
   Apply_Gusting_Follower = 1,
-  Local_Stabilisation_Distance_Lead = 4.5,
-  Local_Stabilisation_Distance_Follower = 4.5,
-  Steady_Procedural_Speed_Lead = 170,
-  Steady_Procedural_Speed_Follower = 172,
+  Local_Stabilisation_Distance_Lead = 4,
+  Local_Stabilisation_Distance_Follower = 4,
+  Steady_Procedural_Speed_Lead = 160,
+  Steady_Procedural_Speed_Follower = 162,
   Final_Deceleration_Lead = NA,
   Final_Deceleration_Follower = NA,
   End_Initial_Deceleration_Distance_Lead = 12,
   End_Initial_Deceleration_Distance_Follower = 12,
-  Initial_Procedural_Speed_Lead = 170,
-  Initial_Procedural_Speed_Follower = 172,
+  Initial_Procedural_Speed_Lead = 160,
+  Initial_Procedural_Speed_Follower = 162,
   Initial_Deceleration_Lead = 10,
   Initial_Deceleration_Follower = 10
 )
 
 wake_adaptation_input_table <- data.table(
   Wake_Cat = "ALL",
-  Compression_Commencement_Threshold = 10,
+  Compression_Commencement_Threshold = 4,
   Landing_Stabilisation_Speed_Type_Lead = 0,
   Landing_Stabilisation_Speed_Type_Follower = 0,
   Min_Safe_Landing_Speed_Lead = NA,
   Min_Safe_Landing_Speed_Follower = NA,
   Apply_Gusting_Lead = 1,
   Apply_Gusting_Follower = 1,
-  Local_Stabilisation_Distance_Lead = 4.5,
-  Local_Stabilisation_Distance_Follower = 4.5,
-  Steady_Procedural_Speed_Lead = 170,
-  Steady_Procedural_Speed_Follower = 172,
+  Local_Stabilisation_Distance_Lead = 4,
+  Local_Stabilisation_Distance_Follower = 4,
+  Steady_Procedural_Speed_Lead = 160,
+  Steady_Procedural_Speed_Follower = 162,
   Final_Deceleration_Lead = NA,
   Final_Deceleration_Follower = NA,
   End_Initial_Deceleration_Distance_Lead = 12,
   End_Initial_Deceleration_Distance_Follower = 12,
-  Initial_Procedural_Speed_Lead = 170,
-  Initial_Procedural_Speed_Follower = 172,
+  Initial_Procedural_Speed_Lead = 160,
+  Initial_Procedural_Speed_Follower = 162,
   Initial_Deceleration_Lead = 10,
   Initial_Deceleration_Follower = 10
 )
@@ -271,28 +340,29 @@ wake_adaptation_input_table <- data.table(
 
 dbs_adaptation_input_table <- data.table(
   DBS_Distance = "ALL",
-  Compression_Commencement_Threshold = 10,
+  Compression_Commencement_Threshold = 4,
   Landing_Stabilisation_Speed_Type_Lead = 0,
   Landing_Stabilisation_Speed_Type_Follower = 0,
   Min_Safe_Landing_Speed_Lead = NA,
   Min_Safe_Landing_Speed_Follower = NA,
   Apply_Gusting_Lead = 1,
   Apply_Gusting_Follower = 1,
-  Local_Stabilisation_Distance_Lead = 4.5,
-  Local_Stabilisation_Distance_Follower = 4.5,
-  Steady_Procedural_Speed_Lead = 170,
-  Steady_Procedural_Speed_Follower = 172,
+  Local_Stabilisation_Distance_Lead = 4,
+  Local_Stabilisation_Distance_Follower = 4,
+  Steady_Procedural_Speed_Lead = 160,
+  Steady_Procedural_Speed_Follower = 162,
   Final_Deceleration_Lead = NA,
   Final_Deceleration_Follower = NA,
   End_Initial_Deceleration_Distance_Lead = 12,
   End_Initial_Deceleration_Distance_Follower = 12,
-  Initial_Procedural_Speed_Lead = 170,
-  Initial_Procedural_Speed_Follower = 172,
+  Initial_Procedural_Speed_Lead = 160,
+  Initial_Procedural_Speed_Follower = 162,
   Initial_Deceleration_Lead = 10,
   Initial_Deceleration_Follower = 10
 )
 
-additional_aircraft_to_output <- c("A388", "A339")
+# additional_aircraft_to_output <- c("A388", "A339")
+additional_aircraft_to_output <- c()
 
 thousand_ft_gate <- 5321.9/1852
 reference_wind <- 5
