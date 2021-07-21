@@ -28,6 +28,58 @@ simple_map_labels <- function(data) {
   return(labs)
 }
 
+# This processing should be re-run after PLT adaptation data changes to
+#  re-generate PLT data and comparison tables.
+#
+# Assumes the relevant initialisation scripts have been run
+#  and the surveillance and flight data loaded
+#  and the baseline processing has been run for the calendar date specified.
+#
+# For running PLT analysis for specified variants
+plt_analysis_run <- function(variants) {
+  # Set the processing date (Eg dd/mm/yy or null for all dates).
+  query_str <- "
+    DECLARE @Log_Date varchar(50)
+    SET @Log_Date = null
+  "
+  # For each variant below, reset path leg values and clear PLT analysis output
+  #  and re-generate the PLT path legs and generate
+  #  search results for PLT Abnormal Transition Search and Analysis
+  query_v1 <- "
+    UPDATE tbl_Radar_Track_Point_Derived
+    SET Path_Leg = null
+    DELETE FROM tbl_PLT_Analysis_Report
+    EXEC usp_DF_Derive_RTP_Path_Leg @Log_Date
+    EXEC usp_PLT_Generate_Analysis_Report @Log_Date
+  "
+  query_v2 <- "
+    UPDATE tbl_Radar_Track_Point_Derived
+    SET Path_Leg_2 = null
+    DELETE FROM tbl_PLT_Analysis_Report_2
+    EXEC usp_DF_Derive_RTP_Path_Leg_2 @Log_Date
+    EXEC usp_PLT_Generate_Analysis_Report_2 @Log_Date
+  "
+  query_v3 <- "
+    UPDATE tbl_Radar_Track_Point_Derived
+    SET Path_Leg_3 = null
+    DELETE FROM tbl_PLT_Analysis_Report_3
+    EXEC usp_DF_Derive_RTP_Path_Leg_3 @Log_Date
+    EXEC usp_PLT_Generate_Analysis_Report_3 @Log_Date
+  "
+  if (1 %in% variants) {
+    query_str <- paste0(query_str, query_v1)
+  }
+  if (2 %in% variants) {
+    query_str <- paste0(query_str, query_v2)
+  }
+  if (3 %in% variants) {
+    query_str <- paste0(query_str, query_v3)
+  }
+  message("Executing PLT analysis run for variants ", paste(variants, collapse = ", "), "...")
+  dbSendQuery(dbi_con, query_str)
+  message("Finished executing PLT analysis.")
+}
+
 # Template ----------------------------------------------------------------
 
 tbl_template <- list(
@@ -791,12 +843,8 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }
     
     if (all_tables_populated) {
-      message("Executing UTMA_PLT_Validation_Run_Variant_k.sql for k = ", paste(variants, collapse = ", "))
-      dbSendQuery(dbi_con, read_SQL_File(c(
-        "modules/plt_tools/UTMA_PLT_Validation_Run_Variant_1.sql",
-        "modules/plt_tools/UTMA_PLT_Validation_Run_Variant_2.sql",
-        "modules/plt_tools/UTMA_PLT_Validation_Run_Variant_3.sql"
-      )))
+      plt_analysis_run(variants)
+      removeModal()
     }
     
   })
