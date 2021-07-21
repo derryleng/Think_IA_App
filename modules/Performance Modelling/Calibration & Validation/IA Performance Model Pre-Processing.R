@@ -36,6 +36,17 @@
 # Add Low Wind Flag
 Performance_Model <- Performance_Model %>% mutate(Low_Wind_Flag = ifelse(abs(Observed_AGI_Surface_Headwind) < 5, 1, 0))
 
+# Calculate Surface Crosswind 
+RW <- Load_Adaptation_Table(con, "tbl_Runway") %>% select(Runway_Name, Heading)
+Performance_Model <- Performance_Model %>% 
+  left_join(RW, by = c("Landing_Runway" = "Runway_Name")) %>%
+  mutate(Observed_AGI_Surface_Crosswind = Observed_AGI_Surface_Wind_SPD * sin(abs((Observed_AGI_Surface_Wind_HDG*deg_to_rad) - Heading)))
+
+# Calculate Observed Final Approach Speed (Set to 2NM)
+FA_Distance <- 2
+FA_Speeds <- Segments %>% filter(DME_Seg <= (FA_Distance - 1)) %>% group_by(Landing_Pair_ID) %>% summarise(Observed_Follower_FA_IAS = mean(Follower_Average_IAS, na.rm = T)) %>% ungroup()
+Performance_Model <- left_join(Performance_Model, FA_Speeds, by = c("Landing_Pair_ID"))
+
 # Initialise Filter Table Columns
 Filter <- c("Original")
 OldRows <- c(NA)

@@ -1314,6 +1314,8 @@ Get_2D_Scalar_Product <- function(amp1, ang1, amp2, ang2){
   return(prod)
 }
 
+
+
 # ----------------------------------------------- #
 
 # The Rolling Join function now compatible with dplyr formulation!

@@ -33,8 +33,11 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # GENERATE: Landing_Pair
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
+# Generate_Landing_Pair: Takes Flight Plan Data. Generates Not-in-trail pairs using Runway "Indexes" that currently consist of the Runway Direction.
+# For each flight joins on the next flight and assigns a landing pair. If runways are different, not in trail, if the same, in trail. Does a second
+# pass with Runway (Not runway index) and all non-existent in-trail pairs are classified as in-trail-non-sequential. Works well for Heathrow, but
+# in-trail/not-in-trail defintions are incorrect. Has no concept of wake dependent runways. Assumes all differing runway pairs behave the same.
+# Creates table with the Landing pair type (as above) and the leader/follower flight plan IDs. This is used as the basis of all TBS related calculations.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 Generate_Landing_Pair <- function(FP){
@@ -96,19 +99,78 @@ Generate_Landing_Pair <- function(FP){
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-# COMPARE/SUMMARISE: Landing_Pair
+# GENERATE: Landing_Pair (Updated - IN PROGRESS!)
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Updated version of Generate_Landing_Pair (NOT CURRENTLY OPERATIONAL!). Instead of using a Runway "Index" that assumes dependent runways must
+# have same runway name (e.g. 27L and 27R has Index 27) This version uses the Runway_Pair_Rule table to assign pairs based on runway pairings
+# allowed via adaptation. For example, for Toronto Pearson airport, Runways 23 and 24L are "Dependent" but are not picked up as a not-in-trail 
+# pair at the moment. The function first uses Bolster_Runway_Pair_Rule to get the information for every possible runway pair with constraints 
+# including the same runway twice for all runways (in-trail). The outer loop loops across each leader runway, and the inner loop across all follower
+# runways that have constraints. All Flights landing at both runways are grabbed and joined together with a rolling join on a given Time argument
+# (prev Time_At_4DME) such that each flight on the leader runway corresponds to a single flight on the follower runway. The output table
+# is the same as before but with two extra columns: Runway Pair Index, an integer representing the index value of the runway pair 
+# (each pair of identical runways has it's own index too, and swapping of leader and follower runways correspond to different indexes) and 
+# the pair dependence (i.e. in-trail, wake dependent, runway dependent)
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
-
-# ------------------------------------------------------------------------------------------------------------------------------------------ #
-
+Generate_Landing_Pair_New <- function(FP, Runway, Runway_Pair_Rule, Time_Used, Max_Time_Diff){
+  
+  # This adds the reverse Runway Pairs and also the Single Runways as a double Pair
+  Runway_Pair_Rule <- Bolster_Runway_Pair_Rule(Runway_Pair_Rule, Runway_Rule)
+  
+  # Get Relevant Flight Plan Data
+  FP <- FP %>%
+    select(Flight_Plan_ID, FP_Date, Landing_Runway, !!sym(Time_Used))
+  
+  # Remove all Void Observations and arrange by Date and Time
+  FP <- filter(FP, !is.na(Landing_Runway) & !is.na(!!sym(Time_Used))) %>%
+    arrange(FP_Date, !!sym(Time_Used))
+  
+  # Loop 1: By Runway
+  for (Runway in unique(Runway_Rule$Runway_Name)){
+    
+    # Filter for Aircraft on this Runway
+    FP_Runway <- filter(FP, Landing_Runway == Runway)
+    
+    # Rename Flight Plan ID to Leader
+    FP_Runway <- rename(FP_Runway, Leader_Flight_Plan_ID = Flight_Plan_ID, Leader_Landing_Runway = Landing_Runway)
+    
+    # Filter Runway Pair Rule for Rules with this Runway as Runway 1
+    RPR_Runway <- filter(Runway_Pair_Rule, Runway_1 == Runway)
+    
+    # Loop 2: Loop across all Runway 2 Values to get the different allowed Landing Pairs
+    for (Runway2 in RPR_Runway$Runway_2){
+      
+      # Filter FP for Aircraft with the second Landing Runway. 
+      FP_Runway2 <- filter(FP, Landing_Runway == Runway2)
+      
+      # Rename Flight Plan ID to Leader
+      FP_Runway2 <- rename(FP_Runway2, Follower_Flight_Plan_ID = Flight_Plan_ID, Follower_Landing_Runway = Landing_Runway)
+      
+      # Remove 0.0001 seconds to the Time value to stop aircraft matching with themselves
+      FP_Runway2 <- mutate(FP_Runway2, !!sym(Time_Used) := !!sym(Time_Used) - 0.0001)
+      
+      # Do a rolling join on the Times
+      FP_Runways <- rolling_join(FP_Runway, FP_Runway2, c("FP_Date", Time_Used), c("FP_Date", Time_Used), Roll = Max_Time_Diff)
+      
+      # Bind to new LP Dataset
+      if (!exists("LP")){LP <- FP_Runways} else {LP <- rbind(LP, FP_Runways)}
+      
+    }
+    
+  }
+  
+  return(LP)
+  
+}
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # CLEAR: Landing_Pair
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
+# This is an SQL Script constructor that deletes entries from tbl_Landing_Pair based on the Processing Period (Day, Month) and its value.
+# This is a cascade delete operation: Any tables with a Landing_Pair_ID foreign key have their corresponding entries removed too. Note that
+# if All Landing Pair Data is deleted (not a single day or month) then the Landing_Pair_ID primary key seed is reset back to 1.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
@@ -134,11 +196,11 @@ Clear_Landing_Pair <- function(con, PROC_Period, PROC_Criteria){
 
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-# GENERATE: All Pair Reference Data
+# GENERATE: All Pair Reference Data (DEGENERATE)
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-
+# This is a table with a collection of landing pair reference data that has traditionally been used to provide extra data for ORD 
+# calibration. In IAC TBS v0.0 this has been recycled as a basis for all preceding ORD/TBS Processing, gathering the necessary reference data
+# for new/old operations for performance modelling and ORD Predictions. THIS FUNCTION WILL BECOME OBSOLETE IN IAC TBS v1.0.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
@@ -175,7 +237,7 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   AC_To_Wake_Reduced <- select(AC_To_Wake, Aircraft_Type, Wake) %>% unique()
   AC_To_Wake_Legacy_Reduced <- select(AC_To_Wake_Legacy, Aircraft_Type, Wake) %>% unique()
 
-  # Get Reference Parameters for Leader and Follower Aircraft (NEED TO ADD 20Cat/14Cat)
+  # Get Reference Parameters for Leader and Follower Aircraft
   Landing_Pair <- Get_LF_Ref_Parameters(Landing_Pair, Flight_Plan, Runway, AC_To_Wake_Reduced, AC_To_Wake_Legacy_Reduced, "Leader")
   Landing_Pair <- Get_LF_Ref_Parameters(Landing_Pair, Flight_Plan, Runway, AC_To_Wake_Reduced, AC_To_Wake_Legacy_Reduced, "Follower")
   
@@ -183,15 +245,6 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
   Landing_Pair <- Landing_Pair %>%
     mutate(Leader_Operator = substr(Leader_Callsign, 1, 3),
            Follower_Operator = substr(Follower_Callsign, 1, 3))
-
-  # Get Reference SASAI Parameters by Runway (Runway Rules)
-  #Landing_Pair <- Get_Runway_Rule_Parameters(Landing_Pair, Runway_Rule)
-
-  # Get Wake Separation Min
-  #Landing_Pair <- Get_Wake_Separation_Minimums(Landing_Pair, Wake_Separation_Min)
-
-  # Get Reference SASAI Parameters by Runway Pair (Runway Pair Rules)
-  #Landing_Pair <- Get_Runway_Pair_Rule_Parameters(Landing_Pair, Runway_Pair_Rule)
 
   # - RECAT (IA PWS Update) ### NOTE: Does not distinguish between nit pairs - but does remove nit ROT contraints.
   Landing_Pair <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, Landing_Pair, Use = "Wake", Adaptation_Levels, Level_Switches_Wake, Param_Type = "Distance", TBSCBuffers, "Recat")
@@ -284,11 +337,12 @@ Generate_All_Pair_Reference_Data <- function(con, LP_Primary_Key, Landing_Pair, 
 }
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-# COMPARE: All Pair Reference Data
+# COMPARE: All Pair Reference Data (DEGENERATE)
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-
+# This function was created in IAC TBS v0.0 to compare the outputs of tbl_All_Pair_Reference_Data created in IAC TBS v0.0 to the UTMA Validation
+# Database. The SQL table is called and the relevant fields in IAC TBS gathered and the values of these fields are compared with "Difference" 
+# variables for each field and "Flag" variables signifiying if the two systems have equal values to an agreed tolerance.
+# Thorough verification for non-core IA alogirthm componenets has been ruled unecessary so this function is now obsolete.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 Compare_All_Pair_Reference_Data <- function(con, LP_Primary_Key, PROC_Period, PROC_Criteria, Landing_Pair){
@@ -357,11 +411,10 @@ Compare_All_Pair_Reference_Data <- function(con, LP_Primary_Key, PROC_Period, PR
 }
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-# SUMMARY: All Pair Reference Data
+# SUMMARY: All Pair Reference Data (DEGENERATE)
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-
+# a companion to Compare_All_Pair_Reference_Data. This summarises the number of discrpeancies per field per day to see where differences 
+# originate. Thorough verification for non-core IA alogirthm componenets has been ruled unecessary so this function is now obsolete.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
@@ -382,11 +435,11 @@ Summary_All_Pair_Reference_Data <- function(LP_Primary_Key, ZCOMP_All_Pair_Refer
 }
 
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-# CONSTRUCT: All Pair Reference Data
+# CONSTRUCT: All Pair Reference Data (DEGENERATE)
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
-
-
-
+# This is the constructor function for tbl_All_Pair_Reference_Data. This selects the relevant Landing Pair fields generated in IAC TBS v0.0
+# and arranges them in the format of the UTMA Validation Database table. IAC TBS v1.0 creates these fields differently so this will soon
+# become obsolete.
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 

@@ -86,9 +86,9 @@ Script_Version <- "1.0"
 Operation <- "IA" # Want this to be in DB
 
 # Data/Output Versions (Move Adap to DB?)
-Output_Version <- "1.5"
-Input_Collection <- "PM 15-06-21"
-GWCS_Input_Version <- "2021-05-04 V1.0 (AH)"
+Output_Version <- "1.6"
+Input_Collection <- "PM 06-07-21"
+GWCS_Input_Version <- "2021-06-20 V2.0 (AH)"
 
 # Database Choice
 IP <- c("192.168.1.23", "192.168.1.39")[1]
@@ -262,11 +262,13 @@ GWCS_Data <- mutate(GWCS_Data, QC_Flag = 0)
 # Select relevant fields.
 GWCS_Data <- select(GWCS_Data, FP_Date, Time_At_4DME, Callsign, Forecast_Wind_Effect_IAS, Sep_Dist)
 LP_Times <- dbGetQuery(con, "SELECT lp.Landing_Pair_ID, lp.Leader_Flight_Plan_ID, lp.Follower_Flight_Plan_ID, FPDL.Time_At_4DME AS Leader_Time_At_4DME,
-              FPDF.Time_At_4DME AS Follower_Time_At_4DME FROM tbl_Landing_Pair lp 
+              FPDF.Time_At_4DME AS Follower_Time_At_4DME, FPL.Landing_Runway FROM tbl_Landing_Pair lp 
               LEFT JOIN tbl_Flight_Plan_Derived FPDL 
               ON lp.Leader_Flight_Plan_ID = FPDL.Flight_Plan_ID
               LEFT JOIN tbl_Flight_Plan_Derived FPDF
-              ON lp.Follower_Flight_Plan_ID = FPDF.Flight_Plan_ID")
+              ON lp.Follower_Flight_Plan_ID = FPDF.Flight_Plan_ID
+              LEFT JOIN tbl_Flight_Plan FPL
+              ON lp.Leader_Flight_Plan_ID = FPL.Flight_Plan_ID")
 Performance_Model <- left_join(Performance_Model, LP_Times, by = c("Landing_Pair_ID"))
 rm(LP_Times)
 

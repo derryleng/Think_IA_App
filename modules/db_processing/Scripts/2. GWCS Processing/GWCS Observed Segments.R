@@ -84,47 +84,29 @@ GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
 
 ## Global Flag procedure (Stage 1 filtering)
 
-Generate_GWCS_Stage_1_Filters <- function(con, Radar, Operation, Activity){
+
+Generate_RTPD_Glideslope_Altitude <- function(RTPD, Runway, ValorVer){
   
-  # Get number of columns in Radar. To generalise Global Flag.
-  Radar_Col_Before <- ncol(Radar)
+  # Get the Name of Apprach Path Variable (Dependent on VAL/VER)
+  Approach_Path_Var <- Get_Name_Approach_Path(ValorVer)
   
-  # -- Operation/Activity Dependent -- #
-  # Firstly, load the GWCS adaptation table
-  GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
-  Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+  # Select the Glideslope Angle and Touchdown Offsets
+  Runway <- select(Runway, Runway_Name, Glideslope_Angle, Touchdown_Offset)
   
-  # Get the Max Mode S Data Age
-  Max_Age <- as.numeric(Adaptation$Max_Mode_S_Data_Age)
-  # ---------------------------------- # 
+  # Join on the Runway Data
+  RTPD <- left_join(RTPD, Runway, by = setNames(Approach_Path_Var, "Runway_Name"))
   
-  # Get flags for Stage 1 Filtering Criteria
-  Radar <- Check_Stage_1_Filter_Mode_S_GSPD(Radar, GWCS_Adaptation, Operation, Activity)
-  Radar <- Check_Stage_1_Filter_Mode_S_IAS(Radar, GWCS_Adaptation, Operation, Activity)
-  Radar <- Check_Stage_1_Filter_Mode_S_TAS(Radar, GWCS_Adaptation, Operation, Activity)
-  Radar <- Check_Stage_1_Filter_Mode_S_Roll_Angle(Radar, GWCS_Adaptation, Operation, Activity)
-  Radar <- Check_Stage_1_Filter_Altitude_Difference(Radar, GWCS_Adaptation, Operation, Activity)
+  # Get the Glideslope Altitude
+  RTPD <- RTPD %>% 
+    mutate(Glideslope_Alt = (Range_To_Threshold + Touchdown_Offset) * tan(Glideslope_Angle))
   
-  # If necessary, get flags for Age criteria (Currently done in the Loading process for Validation)
-  Radar <- Check_Mode_S_Data_Age(Radar, Max_Age, "Mode_S_GSPD", Operation, Activity)
-  Radar <- Check_Mode_S_Data_Age(Radar, Max_Age, "Mode_S_IAS", Operation, Activity)
-  Radar <- Check_Mode_S_Data_Age(Radar, Max_Age, "Mode_S_TAS", Operation, Activity)
-  Radar <- Check_Mode_S_Data_Age(Radar, Max_Age, "Mode_S_Roll_Angle", Operation, Activity)
-  Radar <- Check_Mode_S_Data_Age(Radar, Max_Age, "Mode_S_BPS", Operation, Activity)
+  # Select the Glideslope Altitude
+  RTPD <- RTPD %>%
+    select(Radar_Track_Point_ID, Glideslope_Alt)
   
-  # Get number of columns in Radar after adding flags.
-  Radar_Col_After <- ncol(Radar)
-  
-  # Add the Global Flag by checking if the sum of each flag is greater than 1 across each observation.
-  Radar <- mutate(Radar, Global_Flag = ifelse(rowSums((Radar_Col_Before+1):Radar_Col_After) >= 1, 1, 0))
-  
-  return(Radar)
+  return(RTPD)
   
 }
-
-Summarise_GWCS_Stage_1_Filters <- function(){}
-
-
 
 Check_Mode_S_Data_Age <- function(Radar, Max_Age, Parameter, Operation, Activity){
   
@@ -144,110 +126,14 @@ Check_Mode_S_Data_Age <- function(Radar, Max_Age, Parameter, Operation, Activity
   
 }
 
-Check_Stage_1_Filter_Two_Bound <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter, Min, Max){
-  
-  # Get Min & Max Values
-  Min <- as.numeric(select(GWCS_Adaptation, !!sym(Min)))
-  Max <- as.numeric(select(GWCS_Adaptation, !!sym(Max)))
-  
-  # Get Flag Variable name
-  Flag_Var <- paste0(Parameter, "_Flag")
-  
-  # Add the Flag based on being between these criteria
-  Radar <- mutate(Radar, !!sym(Flag_Var) := ifelse((!!sym(Parameter) <= Max & !!sym(Parameter) >= Min) | is.na(Parameter), 0, 1))
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Min_Bound <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter, Min){
-  
-  # Get Min Value
-  Min <- as.numeric(select(GWCS_Adaptation, !!sym(Min)))
-  
-  # Get Flag Variable name
-  Flag_Var <- paste0(Parameter, "_Flag")
-  
-  # Add the Flag based on being above criteria
-  Radar <- mutate(Radar, !!sym(Flag_Var) := ifelse(!!sym(Parameter) >= Min | is.na(Parameter), 0, 1))
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Max_Bound <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter, Max){
-  
-  # Get Max Value
-  Max <- as.numeric(select(GWCS_Adaptation, !!sym(Min)))
-  
-  # Get Flag Variable name
-  Flag_Var <- paste0(Parameter, "_Flag")
-  
-  # Add the Flag based on being below this criteria
-  Radar <- mutate(Radar, !!sym(Flag_Var) := ifelse(!!sym(Parameter) <= Max | is.na(Parameter), 0, 1))
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Mode_S_GSPD <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter){
-  
-  # Currently No bounds by Operation/Activity
-  Radar <- Check_Stage_1_Filter_Two_Bound(Radar, Operation, Activity, Parameter = "Mode_S_GSPD", Min = "Mode_S_GSPD_Min", Max = "Mode_S_GSPD_Max")
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Mode_S_IAS <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter){
-  
-  # Currently No bounds by Operation/Activity
-  Radar <- Check_Stage_1_Filter_Two_Bound(Radar, Operation, Activity, Parameter = "Mode_S_IAS", Min = "Mode_S_IAS_Min", Max = "Mode_S_IAS_Max")
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Mode_S_TAS <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter){
-  
-  # Currently No bounds by Operation/Activity
-  Radar <- Check_Stage_1_Filter_Two_Bound(Radar, Operation, Activity, Parameter = "Mode_S_TAS", Min = "Mode_S_TAS_Min", Max = "Mode_S_TAS_Max")
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Mode_S_Roll_Angle <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter){
-  
-  # Currently No bounds by Operation/Activity
-  Radar <- Check_Stage_1_Filter_Max_Bound(Radar, Operation, Activity, Parameter = "Mode_S_Roll_Angle", Max = "Mode_S_Roll_Angle_Max")
-  
-  return(Radar)
-  
-}
-
-Check_Stage_1_Filter_Altitude_Difference <- function(Radar, GWCS_Adaptation, Operation, Activity, Parameter){
-  
-  # Get the Altitude Difference
-  Radar <- mutate(Radar, Absolute_Altitude_Difference = abs(Corrected_Mode_C - Glideslope_Altitude))
-  
-  # Currently No bounds by Operation/Activity
-  Radar <- Check_Stage_1_Filter_Max_Bound(Radar, Operation, Activity, Parameter = "Altitude_Tolerance", Max = "Altitude_Tolerance")
-  
-  # Remove the absolute difference to retain column number
-  Radar <- select(Radar, -Absolute_Altitude_Difference)
-  
-  # Get the Max RTT NULL Derived QNH
-  Max_NULL_QNH_RTT <- as.numeric(GWCS_Adaptation$Max_RTT_Null_Derived_QNH) 
-  
-  # Check Altitude Tolerance Flag again
-  Radar <- mutate(Radar, Altitude_Tolerance_Flag = ifelse(is.na(Derived_QNH) & Range_To_Threshold > Max_NULL_QNH_RTT, 1, Altitude_Tolerance_Flag))
-  
-  return(Radar)
-  
-}
-
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
+
+Get_Name_Approach_Path <- function(ValorVer){
+  
+  if (ValorVer == "Val"){return("Mode_S_Wind_Localiser_Capture")}
+  else {return("Approach_Volume")}
+  
+}
 
 # Assume Global Flag, Is Assosciated Flag and Intention have been populated.
 Generate_GWCS_Observed_Segments <- function(con, Radar, Operation, Activity){
@@ -267,6 +153,7 @@ Generate_GWCS_Observed_Segments <- function(con, Radar, Operation, Activity){
   
   # Get the Seg Size
   Seg_Size <- as.numeric(GWCS_Adaptation$DME_Seg_Size)
+  Stale_Time <- as.numeric(GWCS_Adaptation$Forecast_Stale_Time)
   
   # Get the Buffer time to mitigate as many rounding errors as possible (VER only)
   Buffer <- ifelse(Activity == "Verification", 0.000426 * Seg_Size, 0)
@@ -280,7 +167,12 @@ Generate_GWCS_Observed_Segments <- function(con, Radar, Operation, Activity){
   ###############################################################################
   
   # Filter for no Global Flag - This doesn't include Desequences or Approach Path Deviations - just invalid points
-  Radar <- filter(Radar, Global_Flag == 0 | is.na(Global_Flag)) %>% select(-Global_Flag)
+  Radar <- filter(Radar, GlobalFlag == 0 | is.na(GlobalFlag)) %>% select(-GlobalFlag)
+  
+  # To enable consistency with Validation and Verification, add the VER only fields - assuming all remaining radar is valid.
+  RadarCols <- names(Radar)
+  if (Intention %!in% RadarCols){Radar <- mutate(Radar, Intention = Required_Intention)}
+  if (Is_Assosciated_Flag %!in% RadarCols){Radar <- mutate(Radar, Is_Assosciated_Flag = 0)}
   
   # Get the Segment Range to Threshold (DME_Seg, Seg_Size dependent)
   Radar <- mutate(Radar, Seg_Range_To_Threshold = floor((Range_To_Threshold + Buffer) / Seg_Size) * Seg_Size)
@@ -293,7 +185,7 @@ Generate_GWCS_Observed_Segments <- function(con, Radar, Operation, Activity){
   Radar_All <- Radar_All %>% group_by(Flight_Plan_ID) %>% mutate(Track_ID = row_number()) %>% ungroup()
   
   # Use this Track ID to create a dataset with the NEXT Radar Track point from this one. (New Track ID -> Track ID - 1)
-  Radar_All_Next <- Radar2 %>% mutate(Track_ID = Track_ID - 1) %>% 
+  Radar_All_Next <- Radar_All %>% mutate(Track_ID = Track_ID - 1) %>% 
     rename(Next_Radar_Track_Point_ID = Radar_Track_Point_ID,
            Next_Track_Time = Track_Time,
            Next_Seg_Range_To_Threshold = Seg_Range_To_Threshold,
@@ -304,12 +196,9 @@ Generate_GWCS_Observed_Segments <- function(con, Radar, Operation, Activity){
   # Join on Radar_All_Next to Radar_All to begin the comparison of successive radar points. NOTE: Assumes Flight Plan ID generated.
   Radar_Compare <- left_join(Radar_All, Radar_All_Next, by = setNames(FPID_Var, Radar_Date_Var, "Track_ID"))
   
-  # Get the Number of Columns for Radar_Compare (Will use for a Publish Flag)
-  Radar_Compare_Cols_Before <- ncol(Radar_Compare)
-  
   # Add Flags for Radar Points that signify a Segment to Publish (Flight Plan Desequence, Left Approach Path, Intention Change, Segment Change)
   Radar_Compare <- Radar_Compare %>%
-    mutate(Desequence = ifelse(Is_Assosciated_Flag == 1 & Next_IA_Flag == 0, 1, 0)) %>%
+    mutate(Desequence = ifelse(Is_Assosciated_Flag == 1 & Next_Is_Assosciated_Flag == 0, 1, 0)) %>%
     mutate(Intention_Change = ifelse(Intention == Airfield & Next_Intention != Intention, 1, 0)) %>%
     mutate(Last_Track = ifelse(!is.na(Seg_Range_To_Threshold) & is.na(Next_Seg_Range_To_Threshold) & is.na(Next_Radar_Track_Point_ID), 1, 0)) %>%
     mutate(Left_Approach = ifelse(Approach_Path != Next_Approach_Path | (!is.na(Approach_Path) & is.na(Next_Approach_Path)), 1, 0)) %>%
@@ -317,27 +206,27 @@ Generate_GWCS_Observed_Segments <- function(con, Radar, Operation, Activity){
     mutate(Segment_Change = ifelse(Seg_Range_To_Threshold != Next_Seg_Range_To_Threshold, 1, 0)) %>%
     mutate(Segment_Change = ifelse(is.na(Segment_Change), 0, Segment_Change))
   
-  # Get the Number of Columns for Radar_Compare After Flags.
-  Radar_Compare_Cols_After <- ncol(Radar_Compare)
+  # Create list of columns that affect the publishing of a segment
+  PublishCols <- c("Desequence", "Intention_Change", "Last_Track", "Left_Approach", "Segment_Change")
   
   # Create a Global Publish Flag that is positive if any publishing criteria is met.
   Radar_Compare <- Radar_Compare %>%
-    mutate(Publish_Flag = ifelse(rowSums((Radar_Compare_Cols_Before+1):Radar_Compare_Cols_After) >= 1, 1, 0))
+    mutate(Publish_Flag = ifelse(psum(!!!syms(PublishCols)) >= 1, 1, 0))
   
   # Filter for Radar track point pairs that lead to a published segment.
   Published_Segments <- filter(Radar_Compare, Publish_Flag == 1)
   
-  # Assign a Publish Time (or Update_Time) to each of these segments, based on their publush conditions.(Either next valid radar point or 9041 desequence time, temp left to NA)==
-  Published_Segments <- mutate(Published_Segments, Update_Time = ifelse(Desequence == 1 | Intention_Change == 1 | Last_Track == 1, NA, Next_Track_Time))====
+  # Assign a Publish Time (or Update_Time) to each of these segments, based on their publush conditions.(Either next valid radar point or 9041 desequence time, temp left to NA)
+  Published_Segments <- mutate(Published_Segments, Update_Time = ifelse(Desequence == 1 | Intention_Change == 1 | Last_Track == 1, NA, Next_Track_Time))
   
   # Generate a Segment Identifier variable which will then be matched by closest time to Radar_Agg
   Published_Segments <- mutate(Published_Segments, !!sym(Seg_ID_Var) := row_number())
   
   # Select the relevant required fields to link the Update Time/Seg ID to Radar_Agg
-  Published_Segments <- select(Published_Segments, !!sym(FPID_Var), Seg_Range_To_Threshold, Update_Time, Seg_ID)
+  Published_Segments <- select(Published_Segments, !!sym(FPID_Var), Seg_Range_To_Threshold, Update_Time, !!sym(Seg_ID_Var))
   
-  # Perform a rolling join using the Identifier variables and The Update Time
-  Radar_Agg <- rolling_join(Radar_Agg, Published_Segments, ID_Vars = c(!!sym(FPID_Var), "Seg_Range_To_Threshold"), Rolling_Var = c("Update_Time"="Track_Time"))
+  # Perform a rolling join using the Identifier variables and The Update Time to assign each valid radar point a segment ID
+  Radar_Agg <- rolling_join(Radar_Agg, Published_Segments, c(FPID_Var, "Seg_Range_To_Threshold", "Update_Time"), c(FPID_Var, "Seg_Range_To_Threshold", "Track_Time"), Roll = +Inf)
   
   # Perform the necessary field aggregation using the Segment Identification to group variables
   Observed_Segments <- Aggregate_GWCS_Segment_Radar(Radar_Agg, GWCS_Adaptation, Operation, Activity)
@@ -404,5 +293,98 @@ Aggregate_GWCS_Segment_Radar <- function(Radar, Segments, GWCS_Adaptation, Opera
   
               
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# Testing ----
+
+Database <- "PWS_Prototyping"
+con <- Get_DBI_Connection(IP, Database)
+Date_List_Query <- "SELECT DISTINCT(Track_Date) FROM tbl_Radar_Track_Point"
+Dates <- dbGetQuery(con, Date_List_Query)
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+Date <- Dates$Track_Date[1]
+RTP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Radar_Track_Point WHERE Track_Date = '", Date, "'"))
+
+StatsColumns <- c("Mode_S_GSPD_Missing", "Mode_S_GSPD_Unrealistic", "Mode_S_IAS_Missing", "Mode_S_IAS_Unrealistic", "Mode_S_TAS_Missing", "Mode_S_TAS_Unrealistic",
+                  "Mode_S_Roll_Angle_Missing", "!Mode_S_Roll_Angle_Reject", "Mode_S_HDG_Missing", "Mode_S_Track_HDG_Missing", "Glideslope_Error")
+
+AllColumns <- append(StatsColumns, c("Wind_Effect_Missing", "Wind_HDG_Missing", "Wind_SPD_Missing"))
+
+RTP <- RTP %>%
+  Generate_RTPD_Glideslope_Altitude(RTP, Runways, ValorVer = "Val")
+
+RTP <- RTP %>%
+  mutate(Mode_S_GSPD_Missing = ifelse(is.na(Mode_S_GSPD), 1, 0),
+         Mode_S_GSPD_Unrealistic = ifelse(Mode_S_GSPD_Missing == 0 & (Mode_S_GSPD > Mode_S_GSPD_Max | Mode_S_GSPD < Mode_S_GSPD_Min), 1, 0), 
+         Mode_S_IAS_Missing = ifelse(is.na(Mode_S_IAS), 1, 0),
+         Mode_S_IAS_Unrealistic = ifelse(Mode_S_IAS_Missing == 0 & (Mode_S_IAS > Mode_S_IAS_Max | Mode_S_IAS < Mode_S_IAS_Min), 1, 0), 
+         Mode_S_TAS_Missing = ifelse(is.na(Mode_S_TAS), 1, 0),
+         Mode_S_TAS_Unrealistic = ifelse(Mode_S_TAS_Missing == 0 & (Mode_S_TAS > Mode_S_TAS_Max | Mode_S_TAS < Mode_S_TAS_Min), 1, 0),
+         Mode_S_Roll_Angle_Missing = ifelse(is.na(Mode_S_Roll_Angle), 1, 0),
+         Mode_S_Roll_Angle_Reject = ifelse(Mode_S_Roll_Angle_Missing == 0 & abs(Mode_S_Roll_Angle) > Mode_S_Roll_Angle_Max, 1, 0),
+         Mode_S_HDG_Missing = ifelse(is.na(Mode_S_HDG), 1, 0),
+         Mode_S_Track_HDG_Missing = ifelse(is.na(Mode_S_Track_HDG), 1, 0),
+         Glideslope_Error = ifelse(abs(Corrected_Mode_C - Glideslope_Altitude) > Altitude_Tolerance, 1, 0),
+         Wind_Effect_Missing = ifelse(is.na(Wind_Effect_IAS), 1, 0),
+         Wind_SPD_Missing = ifelse(is.na(Wind_SPD), 1, 0),
+         Wind_HDG_Missing = ifelse(is.na(Wind_HDG), 1, 0),
+         GlobalFlag = ifelse(psum(!!!syms(AllColumns)) > 0, 1, 0))
+
+FilterStats <- RTP %>%
+  group_by(Flight_Plan_ID) %>%
+  summarise(Mode_S_GSPD_Missing = sum(Mode_S_GSPD_Missing),
+            Mode_S_GSPD_Unrealistic = sum(Mode_S_GSPD_Unrealistic),
+            Mode_S_IAS_Missing = sum(Mode_S_IAS_Missing),
+            Mode_S_IAS_Unrealistic = sum(Mode_S_IAS_Unrealistic),
+            Mode_S_TAS_Missing = sum(Mode_S_TAS_Missing),
+            Mode_S_TAS_Unrealistic = sum(Mode_S_TAS_Unrealistic),
+            Mode_S_Roll_Angle_Missing = sum(Mode_S_Roll_Angle_Missing),
+            Mode_S_Roll_Angle_Reject = sum(Mode_S_Roll_Angle_Reject),
+            Mode_S_HDG_Missing = sum(Mode_S_HDG_Missing),
+            Mode_S_Track_HDG_Missing = sum(Mode_S_Track_HDG_Missing),
+            Glideslope_Error = sum(Glideslope_Error),
+            Obs_Count = n()) %>% ungroup()
+
+# Filter for flags
+RTP <- filter(RTP, GlobalFlag == 0)
+
+# Validation Only.
+RTP <- filter(RTP, !is.na(Mode_S_Wind_Localiser_Capture))
+RTP <- filter(RTP, !is.na(Range_To_Threshold))
+
+
+
+
+
+
+
 
 

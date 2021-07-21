@@ -47,7 +47,7 @@ Generate_Full_ORD_GWCS_Forecast <- function(con, LP_Primary_Key, Forecast_Seg, L
 
   # Load Adaptation Tables
   GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
-  MAIN_Adaptation <- ADAP_Config
+  MAIN_Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
   Default_Wind <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Default_Wind_Effect_Segments")
 
   # Load Adaptation Values
@@ -60,7 +60,7 @@ Generate_Full_ORD_GWCS_Forecast <- function(con, LP_Primary_Key, Forecast_Seg, L
   GWCS_Wind_Selection <- MAIN_Adaptation$GWCS_Wind_Selection
 
   # Prepare the Segment Data
-  ORD_Segment_Forecast <- Prepare_Segment_Data("ORD", Landing_Pair, Seg_Size, Forecast_Seg_Max, 0)
+  ORD_Segment_Forecast <- Prepare_Segment_Data("ORD", Landing_Pair, Seg_Size, Forecast_Seg_Max, 0, LP_Primary_Key)
 
   # Get the Non-Stale Segments
   ORD_Segment_Forecast <- Get_Non_Stale_Segments(ORD_Segment_Forecast, Forecast_Seg, Stale_Time)

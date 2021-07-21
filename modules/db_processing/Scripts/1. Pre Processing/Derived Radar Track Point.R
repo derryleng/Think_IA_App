@@ -343,7 +343,8 @@ Generate_RTPD_Wind_Parameters <- function(RTP, Adaptation){
   # Calculate the Wind Speed, Heading, and Headwind
   RTP <- RTP %>% 
     mutate(Wind_SPD = Get_2D_Amplitude(Wind_X, Wind_Y),
-           Wind_HDG = Get_2D_Angle(Wind_X, Wind_Y),
+           Wind_HDG = Get_2D_Angle(Wind_Y, Wind_X),
+           Wind_HDG = ifelse(Wind_HDG < 0, Wind_HDG + (2*pi), Wind_HDG),
            Headwind_SPD = Get_2D_Scalar_Product(Wind_SPD, Wind_HDG, 1, Ground_Track_Heading))
   
   # Calculate the Wind Effect 
@@ -397,7 +398,7 @@ Generate_RTPD_Corrected_Mode_C <- function(RTP, Baro){
   Exponent <- (g * M) / (R * T0)
   
   # Join on the Baro Pressure with a rolling join.
-  RTP <- rolling_join(RTP, Baro, c("Track_Date", "Track_Time"), c("Baro_Date", "Baro_Time"), Roll = Inf)
+  RTP <- rolling_join(RTP, Baro, c("Track_Date", "Track_Time"), c("Baro_Date", "Baro_Time"), Roll = "nearest")
   
   # Current SQL Solution - Set Pressure to SLS if NULL.
   RTP <- RTP %>%
@@ -418,7 +419,7 @@ Generate_RTPD_Corrected_Mode_C <- function(RTP, Baro){
 Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
   
   # Get the Diff_Mode_S_To_Radar_Track_Max for Ground_Track_Heading
-  Max_Heading_Diff <- as.numeric(GWCS_Adaptation$Diff_Mode_S_To_Radar_Track_Max)
+  Max_Heading_Diff <- 25 * deg_to_rad
   
   # Get the Relevant Fields from Flight Plan
   FP <- select(FP, Flight_Plan_ID, Landing_Runway)
@@ -477,14 +478,19 @@ Generate_RTPD_ILS_Relative_Fields <- function(RTP, FP, Runway, GWCS_Adaptation){
 Generate_RTPD_Min_Sustained_RoCD <- function(RTP, Adaptation){
   
   # Are we using the Vertical_Rate parameter?
-  Use_Vertical_Rate <- F
-  #Use_Vertical_Rate <- Adaptation$Use_Vertical_Rate
+  #Use_Vertical_Rate <- T
+  Use_Vertical_Rate <- Adaptation$Use_Vertical_Rate
+  if (is.null(Use_Vertical_Rate)){
+    Use_Vertical_Rate <- F
+  } else {
+    if (is.na(Use_Vertical_Rate)){Use_Vertical_Rate <- F} else {Use_Vertical_Rate <- as.logical(Use_Vertical_Rate)}
+  }
   
   Minimum_Period <- 20
   
   # Get the Radar Update Period
   Update_Period <- Adaptation$Radar_Update_Period
-  Update_Period <- 6
+  #Update_Period <- 6
   
   # Arrange by Flight Plan ID and Track Time
   RTP <- arrange(RTP, Flight_Plan_ID, Track_Time)
@@ -519,27 +525,20 @@ Generate_RTPD_Min_Sustained_RoCD <- function(RTP, Adaptation){
   
   return(RTP)
 }
-  
 
 Generate_RTPD_Localiser_Capture <- function(RTP, Runways, Localisers, Volumes, Polygons, Adaptation){
-  
-  # RTPO <- RTP
-  # 
-  # 
-  # RTP <- RTPO
   
   Max_Heading_Diff <- Adaptation$Diff_Mode_S_To_Radar_Track_Max
   
   # Iinitialize The Mode S Localiser Capture as NA
   RTP <- RTP %>%
     mutate(Mode_S_Wind_Localiser_Capture = NA) %>%
-    Generate_RTPD_Ground_Track_Heading(Max_Heading_Diff)
+    #Generate_RTPD_Ground_Track_Heading(Max_Heading_Diff)
+    mutate(Ground_Track_Heading = ifelse(is.na(Track_HDG), NA, Track_HDG))
   
   # Loop across all Runways in alphabetical order
   # NOTE: Only returns the first localiser in capture region.
   for (i in 1:nrow(Runways)){
-    
-    #i <- 1
     
     # Get the ith Runway
     Runway <- Runways$Runway_Name[i]
@@ -547,34 +546,39 @@ Generate_RTPD_Localiser_Capture <- function(RTP, Runways, Localisers, Volumes, P
     
     # Get the Headings for this Runway
     RunwayHdgs <- filter(Localisers, Runway_Name == Runway)
-    Min_HDG <- RunwayHdgs$Min_Heading
-    Max_HDG <- RunwayHdgs$Max_Heading
-    VolName <- RunwayHdgs$Volume_Name
     
-    # Get the Polygon Points
-    Pols <- filter(Polygons, Point_Sequence <= 4) %>%
-      filter(Volume_Name == VolName)
-    
-    PolX <- Pols$Point_X
-    PolY <- Pols$Point_Y
-    
-    # Get the Altitudes for this Runway
-    RunwayAlts <- filter(Volumes, Volume_Name == VolName)
-    Min_Alt <- RunwayAlts$Min_Alt
-    Max_Alt <- RunwayAlts$Max_Alt
-    
-    # Calculate In_Volume
-    RTP <-RTP %>% Is_Inside_Single_Polygon(PolX, PolY) %>% mutate(Min_Heading = Min_HDG, Max_Heading = Max_HDG) %>%
-      Is_In_Heading_Range("Ground_Track_Heading", "Min_Heading", "Max_Heading") %>%
-      select(-Min_Heading, -Max_Heading)
-    
-    # Generate a flag based on all criteria, update localiser if not already done so and all criteria met.
-    RTP <- RTP %>%
-      mutate(Flag = ifelse(Corrected_Mode_C >= Min_Alt & Corrected_Mode_C <= Max_Alt, 1, 0),
-             Flag = ifelse(Is_Inside == 1, Flag, 0),
-             Flag = ifelse(InHeadingRange == 1, Flag, 0),
-             Mode_S_Wind_Localiser_Capture = ifelse(is.na(Mode_S_Wind_Localiser_Capture) & Flag == 1, Runway, Mode_S_Wind_Localiser_Capture)) %>%
-      select(-Flag, -Is_Inside, -InHeadingRange)
+    if (nrow(RunwayHdgs) == 1){
+      
+      Min_HDG <- RunwayHdgs$Min_Heading
+      Max_HDG <- RunwayHdgs$Max_Heading
+      VolName <- RunwayHdgs$Volume_Name
+      
+      # Get the Polygon Points
+      Pols <- filter(Polygons, Point_Sequence <= 4) %>%
+        filter(Volume_Name == VolName)
+      
+      PolX <- Pols$Point_X
+      PolY <- Pols$Point_Y
+      
+      # Get the Altitudes for this Runway
+      RunwayAlts <- filter(Volumes, Volume_Name == VolName)
+      Min_Alt <- RunwayAlts$Min_Alt
+      Max_Alt <- RunwayAlts$Max_Alt
+      
+      # Calculate In_Volume
+      RTP <-RTP %>% Is_Inside_Single_Polygon(PolX, PolY) %>% mutate(Min_Heading = Min_HDG, Max_Heading = Max_HDG) %>%
+        Is_In_Heading_Range("Ground_Track_Heading", "Min_Heading", "Max_Heading") %>%
+        select(-Min_Heading, -Max_Heading)
+      
+      # Generate a flag based on all criteria, update localiser if not already done so and all criteria met.
+      RTP <- RTP %>%
+        mutate(Flag = ifelse(Mode_C >= Min_Alt & Mode_C <= Max_Alt, 1, 0),
+               Flag = ifelse(Is_Inside == 1, Flag, 0),
+               Flag = ifelse(InHeadingRange == 1, Flag, 0),
+               Mode_S_Wind_Localiser_Capture = ifelse(is.na(Mode_S_Wind_Localiser_Capture) & Flag == 1, Runway, Mode_S_Wind_Localiser_Capture)) %>%
+        select(-Flag, -Is_Inside, -InHeadingRange)
+      
+    }
     
   }
   
@@ -615,7 +619,8 @@ Generate_RTPD_Path_Leg <- function(RTP, FP, Runway, Path_Legs, Path_Leg_Transiti
   RTP <- RTP %>%
     group_by(Flight_Plan_ID) %>%
     mutate(Track_ID = row_number()) %>%
-    ungroup()
+    ungroup() %>%
+    mutate(Track_ID = ifelse(is.na(Flight_Plan_ID), NA, Track_ID))
   
   # Get the Full Path Leg Transition Data
   PLT <- Generate_RTPD_Full_Path_Leg_Transition_Table(Path_Leg_Transitions, Volumes, Polygons)
@@ -626,7 +631,7 @@ Generate_RTPD_Path_Leg <- function(RTP, FP, Runway, Path_Legs, Path_Leg_Transiti
   for (i in 1:Max_Points){
     
     #i <- 1
-    message(paste0("Generating Path Leg ", i, " for all flights."))
+    message(paste0("Generating Path Leg ", i, " out of ", Max_Points, " for all flights."))
     
     RTPi <- filter(RTP, Track_ID == i)
     if (i != 1){
@@ -744,10 +749,14 @@ Generate_FPD <- function(FP, Radar, Runways){
 
 # ------------------------------------------------------------------------------------ #
 
+Database <- "EGLL_PWS"
+con <- Get_DBI_Connection(IP, Database)
+
+Date <- "01/06/2019"
 time_start <- Sys.time()
 message("Loading Data...")
-RTP <- sqlQuery(con, "SELECT * FROM tbl_Radar_Track_Point", stringsAsFactors = F)
-FP <- sqlQuery(con, "SELECT * FROM tbl_Flight_Plan", stringsAsFactors = F)
+RTP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Radar_Track_Point WHERE Track_Date = '", Date, "'"))
+FP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Flight_Plan WHERE FP_Date = '", Date, "'"))
 Runways <- Load_Adaptation_Table(con, "tbl_Runway")
 Path_Legs <- Load_Adaptation_Table(con, "tbl_Path_Leg")
 Path_Leg_Transitions <- Load_Adaptation_Table(con, "tbl_Path_Leg_Transition")
@@ -756,8 +765,10 @@ Polygons <- Load_Adaptation_Table(con, "tbl_Polygon")
 Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
 Localisers <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Localiser_Capture")
 GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
-Baro <- sqlQuery(con, "SELECT * FROM tbl_Baro", stringsAsFactors = F)
+Baro <- dbGetQuery(con, paste0("SELECT * FROM tbl_Baro WHERE Baro_Date = '", Date, "'"))
 
+RTP_SQL <- dbGetQuery(con, paste0("SELECT RTP.Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, X_Pos, Y_Pos, Track_HDG, Mode_S_Track_HDG, Corrected_Mode_C, 
+                                    Min_Sustained_RoCD FROM tbl_Radar_Track_Point RTP LEFT JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID"))
 
 # ------------------------------------------------------------------------------------ #
 
@@ -774,10 +785,94 @@ message(paste0("Generated FPD with: ", time_fp-time_proc))
 # Begin Radar Track Point Derived
 message("Generating Radar Track Point Derived...")
 Corrected_Mode_C <- Generate_RTPD_Corrected_Mode_C(RTP, Baro)
+
 Wind_Parameters <- Generate_RTPD_Wind_Parameters(RTP, Adaptation)
 RTP <- left_join(RTP, Corrected_Mode_C,by = c("Radar_Track_Point_ID"))
 RoCD <- Generate_RTPD_Min_Sustained_RoCD(RTP, Adaptation)
+#LocaliserCaptures <- Generate_RTPD_Localiser_Capture(RTP, Runways, Localisers, Volumes, Polygons, Adaptation)
+RTP <- left_join(RTP, LocaliserCaptures, by =c("Radar_Track_Point_ID"))
+RTT <- Generate_RTPD_Range_To_Threshold(RTP, Runways, Method=1, ValorVer = "Val")
+RTP <- left_join(RTP, RoCD, by = c("Radar_Track_Point_ID"))
+#PLs <- Generate_RTPD_Path_Leg(RTP, FP, Runway, Path_Legs, Path_Leg_Transitions, Volumes, Polygons, Adaptation, 1)
+ILS <- Generate_RTPD_ILS_Relative_Fields(RTP, FP, Runways, GWCS_Adaptation)
+RTPD <- select(RTP, Radar_Track_Point_ID) %>%
+  left_join(Corrected_Mode_C, by = c("Radar_Track_Point_ID")) %>%
+  left_join(Wind_Parameters, by = c("Radar_Track_Point_ID")) %>%
+  left_join(RoCD, by = c("Radar_Track_Point_ID")) %>%
+  #left_join(LocaliserCaptures, by = c("Radar_Track_Point_ID")) %>%
+  #left_join(RTT, by = c("Radar_Track_Point_ID")) %>%
+  #left_join(PLs, by = c("Radar_Track_Point_ID")) %>%
+  left_join(ILS, by = c("Radar_Track_Point_ID"))
+#RTPD <- mutate(RTPD, Path_Leg = ifelse(Path_Leg == "NULL", NA, Path_Leg))
+
+time_rtt <- Sys.time()
+message(paste0("Generated RTPD with: ", time_rtt-time_fp))
+message(paste0("Completed Derived Fields with: ", time_rtt-time_start))
+
+rm(PLs, ILS, RTT, LocaliserCaptures, RoCD, Wind_Parameters, Corrected_Mode_C)
+
+################################################
+RTPD_SQL <- dbGetQuery(con, paste0("SELECT * FROM tbl_Radar_Track_Point_Derived"))
+################################################
+
+RTP_Test1 <- select(RTP_Test, Radar_Track_Point_ID, Corrected_Mode_C) 
+RTPD_SQL <- rename(RTPD_SQL, Corrected_Mode_C_SQL = Corrected_Mode_C)
+RTP_Test1 <- left_join(RTP_Test1, select(RTPD_SQL, Radar_Track_Point_ID, Corrected_Mode_C_SQL), by = c("Radar_Track_Point_ID"))
+
+
+Corrected_Mode_C <- left_join(Corrected_Mode_C, select(RTP, Radar_Track_Point_ID, Flight_Plan_ID), by = c("Radar_Track_Point_ID"))
+RTPTEST <- left_join(Corrected_Mode_C, RTPD_SQL, by = c("Radar_Track_Point_ID")) %>% mutate(Flag = ifelse(abs(Corrected_Mode_C - Corrected_Mode_C_SQL) > 1, 1, 0))
+
+RTPTEST1 <- RTPTEST %>% filter(Flag == 1)
+IDS <- unique(RTPTEST1$Flight_Plan_ID)
+RTPTEST <- filter(RTPTEST, Flight_Plan_ID %in% IDS) %>% arrange(Flight_Plan_ID)
+#return(select(RTP_Comp, Radar_Track_Point_ID, !!sym(Var)))
+
+#}
+
+
+
+
+## Path Leg Testing
+Database <- "PWS_Prototyping"
+con <- Get_DBI_Connection(IP, Database)
+Runways <- Load_Adaptation_Table(con, "tbl_Runway")
+Path_Legs <- Load_Adaptation_Table(con, "tbl_Path_Leg")
+Path_Leg_Transitions <- Load_Adaptation_Table(con, "tbl_Path_Leg_Transition")
+Volumes <- Load_Adaptation_Table(con, "tbl_Volume")
+Polygons <- Load_Adaptation_Table(con, "tbl_Polygon")
+Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+Localisers <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Localiser_Capture")
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+RTP <- dbGetQuery(con, paste0("SELECT RTP.Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, X_Pos, Y_Pos, Track_HDG, Mode_S_Track_HDG, Corrected_Mode_C, 
+                                    Min_Sustained_RoCD FROM tbl_Radar_Track_Point RTP LEFT JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID"))
+LocaliserCaptures_SQL <- dbGetQuery(con, "SELECT Radar_Track_Point_ID, Mode_S_Wind_Localiser_Capture AS Mode_S_Wind_Localiser_Capture_SQL FROM tbl_Radar_Track_Point_Derived")
+
 LocaliserCaptures <- Generate_RTPD_Localiser_Capture(RTP, Runways, Localisers, Volumes, Polygons, Adaptation)
+
+
+PLs <- Generate_RTPD_Path_Leg(RTP, FP, Runways, Path_Legs, Path_Leg_Transitions, Volumes, Polygons, Adaptation, 1)
+
+Test <- left_join(PLs, PL_SQL, by = c("Radar_Track_Point_ID")) %>% 
+  left_join(select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, Track_Time), by = c("Radar_Track_Point_ID")) %>%
+  mutate(Path_Leg = ifelse(Path_Leg == "NULL", NA, Path_Leg)) %>%
+  mutate(Flag = ifelse(Path_Leg != Path_Leg_SQL, 1, 0)) %>%
+  mutate(Flag = ifelse(!is.na(Path_Leg) & is.na(Path_Leg_SQL), 1, Flag)) %>%
+  mutate(Flag = ifelse(is.na(Path_Leg) & !is.na(Path_Leg_SQL), 1, Flag)) %>%
+  mutate(Flag = ifelse(is.na(Flag), 0, Flag))
+
+
+T1 <- filter(Test, Flag == 1) %>% arrange(Flight_Plan_ID, Track_Time)
+ids <- unique(T1$Flight_Plan_ID)
+T1 <- filter(Test, Flight_Plan_ID %in% ids) %>% arrange(Flight_Plan_ID, Track_Time)
+
+# Begin Radar Track Point Derived
+message("Generating Radar Track Point Derived...")
+# Corrected_Mode_C <- Generate_RTPD_Corrected_Mode_C(RTP, Baro)
+# Wind_Parameters <- Generate_RTPD_Wind_Parameters(RTP, Adaptation)
+# RTP <- left_join(RTP, Corrected_Mode_C,by = c("Radar_Track_Point_ID"))
+# RoCD <- Generate_RTPD_Min_Sustained_RoCD(RTP, Adaptation)
+#LocaliserCaptures <- Generate_RTPD_Localiser_Capture(RTP, Runways, Localisers, Volumes, Polygons, Adaptation)
 RTP <- left_join(RTP, LocaliserCaptures, by =c("Radar_Track_Point_ID"))
 RTT <- Generate_RTPD_Range_To_Threshold(RTP, Runways, Method=1, ValorVer = "Val")
 RTP <- left_join(RTP, RoCD, by = c("Radar_Track_Point_ID"))
@@ -787,41 +882,220 @@ RTPD <- select(RTP, Radar_Track_Point_ID) %>%
   left_join(Corrected_Mode_C, by = c("Radar_Track_Point_ID")) %>%
   left_join(Wind_Parameters, by = c("Radar_Track_Point_ID")) %>%
   left_join(RoCD, by = c("Radar_Track_Point_ID")) %>%
-  left_join(LocaliserCaptures, by = c("Radar_Track_Point_ID")) %>%
-  left_join(RTT, by = c("Radar_Track_Point_ID")) %>%
-  left_join(PLs, by = c("Radar_Track_Point_ID")) %>%
+  #left_join(LocaliserCaptures, by = c("Radar_Track_Point_ID")) %>%
+  #left_join(RTT, by = c("Radar_Track_Point_ID")) %>%
+  #left_join(PLs, by = c("Radar_Track_Point_ID")) %>%
   left_join(ILS, by = c("Radar_Track_Point_ID"))
-RTPD <- mutate(RTPD, Path_Leg = ifelse(Path_Leg == "NULL", NA, Path_Leg))
-
-time_rtt <- Sys.time()
-message(paste0("Generated RTPD with: ", time_rtt-time_fp))
-message(paste0("Completed Derived Fields with: ", time_rtt-time_start))
-
-rm(PLs, ILS, RTT, LocaliserCaptures, RoCD, Wind_Parameters, Corrected_Mode_C)
-
-################################################
-RTPD_SQL <- sqlQuery(con, "SELECT * FROM tbl_Radar_Track_Point_Derived", stringsAsFactors = F)
-FPD_SQL <- sqlQuery(con, "SELECT * FROM tbl_Flight_Plan_Derived", stringsAsFactors = F)
-################################################
-
-
-FP <- sqlQuery(con, "SELECT * FROM tbl_Flight_Plan", stringsAsFactors = F)
-FPD_SQL <- sqlQuery(con, "SELECT * FROM tbl_Flight_Plan_Derived", stringsAsFactors = F)
-LP_SQL <- sqlQuery(con, "SELECT * FROM tbl_Landing_Pair", stringsAsFactors = F)
-
-LP <- Generate_Landing_Pair(FP, FPD_SQL)
-
-LPTest <- full_join(LP, LP_SQL, by = c("Leader_Flight_Plan_ID", "Follower_Flight_Plan_ID")) %>%
-  filter(is.na(Landing_Pair_Type.y))
-
-LPTest1 <- full_join(LP, LP_SQL, by = c("Leader_Flight_Plan_ID", "Follower_Flight_Plan_ID")) %>%
-  filter(Landing_Pair_ID.x %in% c(8393, 8394, 8395, 8396, 8397, 14531, 14532, 14533, 14534, 14535, 15666, 15667, 15668, 15669, 15770))
+#RTPD <- mutate(RTPD, Path_Leg = ifelse(Path_Leg == "NULL", NA, Path_Leg))
 
 
 
-#return(select(RTP_Comp, Radar_Track_Point_ID, !!sym(Var)))
 
-#}
+
+
+## RoCD Testing
+Database <- "NODE_Replacement_eTBS"
+con <- Get_DBI_Connection(IP, Database)
+Runways <- Load_Adaptation_Table(con, "tbl_Runway")
+Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+RTP <- dbGetQuery(con, "SELECT Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, Mode_C, Vertical_Rate FROM tbl_Radar_Track_Point")
+RoCD_SQL <- dbGetQuery(con, "SELECT Radar_Track_Point_ID, RoCD AS RoCD_SQL, Min_Sustained_RoCD AS Min_Sustained_RoCD_SQL FROM tbl_Radar_Track_Point_Derived")
+FP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Flight_Plan"))
+
+RoCD <- Generate_RTPD_Min_Sustained_RoCD(RTP, Adaptation)
+
+Test <- left_join(RoCD, RoCD_SQL, by = c("Radar_Track_Point_ID")) %>%
+  left_join(select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, Track_Time), by = c("Radar_Track_Point_ID")) %>%
+  arrange(Flight_Plan_ID, Track_Time) %>%
+  mutate(Min_Flag = ifelse(abs(Min_Sustained_RoCD - Min_Sustained_RoCD_SQL) > 0.001, 1, 0)) %>%
+  filter(Min_Flag == 1)
+
+
+## Mode S Wind Localiser Capture Testing
+Database <- "PWS_Prototyping"
+con <- Get_DBI_Connection(IP, Database)
+Runways <- Load_Adaptation_Table(con, "tbl_Runway")
+Volumes <- Load_Adaptation_Table(con, "tbl_Volume")
+Polygons <- Load_Adaptation_Table(con, "tbl_Polygon")
+Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+Localisers <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Localiser_Capture")
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+RTP <- dbGetQuery(con, paste0("SELECT RTP.Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, X_Pos, Y_Pos, Track_HDG, Mode_S_Track_HDG, Corrected_Mode_C, 
+                                    Min_Sustained_RoCD FROM tbl_Radar_Track_Point RTP LEFT JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID"))
+Localisers <- dbGetQuery(con, "SELECT Radar_Track_Point_ID, Path_Leg AS Path_Leg_SQL FROM tbl_Radar_Track_Point_Derived")
+FP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Flight_Plan"))
+
+LocaliserCaptures <- Generate_RTPD_Localiser_Capture(RTP, Runways, Localisers, Volumes, Polygons, Adaptation)
+
+Test <- left_join(LocaliserCaptures, LocaliserCaptures_SQL, by = c("Radar_Track_Point_ID")) %>% 
+  left_join(select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, Track_Time), by = c("Radar_Track_Point_ID")) %>%
+  arrange(Flight_Plan_ID, Track_Time) %>%
+  mutate(Flag = ifelse(Mode_S_Wind_Localiser_Capture != Mode_S_Wind_Localiser_Capture_SQL, 1, 0)) %>%
+  mutate(Flag = ifelse(!is.na(Mode_S_Wind_Localiser_Capture) & is.na(Mode_S_Wind_Localiser_Capture_SQL), 1, Flag)) %>%
+  mutate(Flag = ifelse(is.na(Mode_S_Wind_Localiser_Capture) & !is.na(Mode_S_Wind_Localiser_Capture_SQL), 1, Flag)) %>%
+  mutate(Flag = ifelse(is.na(Flag), 0, Flag)) %>% filter(Flag == 1)
+
+
+## Range to Threshold Testing
+Database <- "PWS_Prototyping"
+con <- Get_DBI_Connection(IP, Database)
+Runways <- Load_Adaptation_Table(con, "tbl_Runway")
+Volumes <- Load_Adaptation_Table(con, "tbl_Volume")
+Polygons <- Load_Adaptation_Table(con, "tbl_Polygon")
+Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+Localisers <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Localiser_Capture")
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+RTP <- dbGetQuery(con, paste0("SELECT RTP.Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, X_Pos, Y_Pos, Track_HDG, Mode_S_Track_HDG, Corrected_Mode_C, 
+                                    Min_Sustained_RoCD FROM tbl_Radar_Track_Point RTP LEFT JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID"))
+
+RTT_SQL <- dbGetQuery(con, "SELECT Radar_Track_Point_ID, Range_To_Threshold AS Range_To_Threshold_SQL FROM tbl_Radar_Track_Point_Derived")
+
+RTP <- left_join(RTP, LocaliserCaptures, by =c("Radar_Track_Point_ID"))
+RTT <- Generate_RTPD_Range_To_Threshold(RTP, Runways, Method=1, ValorVer = "Val")
+
+
+Test <- left_join(RTT, RTT_SQL, by = c("Radar_Track_Point_ID")) %>% 
+  left_join(select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, Track_Time), by = c("Radar_Track_Point_ID")) %>%
+  arrange(Flight_Plan_ID, Track_Time) %>%
+  mutate(Flag = ifelse(abs(Range_To_Threshold - Range_To_Threshold_SQL) > 0.1, 1, 0)) %>%
+  mutate(Flag = ifelse(!is.na(Range_To_Threshold) & is.na(Range_To_Threshold_SQL), 1, Flag)) %>%
+  mutate(Flag = ifelse(is.na(Range_To_Threshold) & !is.na(Range_To_Threshold_SQL), 1, Flag)) %>%
+  mutate(Flag = ifelse(is.na(Flag), 0, Flag)) %>% filter(Flag == 1)
+
+## Wind Parameter Testing
+Database <- "PWS_Prototyping"
+con <- Get_DBI_Connection(IP, Database)
+RTP <- dbGetQuery(con, paste0("SELECT RTP.Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, Track_HDG, Mode_S_Track_HDG, Mode_S_HDG, Mode_S_GSPD, Mode_S_TAS, Mode_S_IAS
+                              FROM tbl_Radar_Track_Point RTP LEFT JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID"))
+Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+Wind_SQL <- dbGetQuery(con, "SELECT Radar_Track_Point_ID, Wind_SPD AS Wind_SPD_SQL, Wind_HDG AS Wind_HDG_SQL, Headwind_SPD AS Headwind_SPD_SQL, Wind_Effect_IAS AS Wind_Effect_IAS_SQL FROM tbl_Radar_Track_Point_Derived")
+
+Wind_Parameters <- Generate_RTPD_Wind_Parameters(RTP, Adaptation)
+
+Test <- left_join(Wind_Parameters, Wind_SQL, by = c("Radar_Track_Point_ID")) %>% 
+  left_join(select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, Track_Time), by = c("Radar_Track_Point_ID")) %>%
+  arrange(Flight_Plan_ID, Track_Time) %>%
+  mutate(Flag1 = ifelse(abs(Wind_HDG - Wind_HDG_SQL) > 0.01, 1, 0)) %>%
+  mutate(Flag1 = ifelse(!is.na(Wind_HDG) & is.na(Wind_HDG_SQL), 1, Flag1)) %>%
+  mutate(Flag1 = ifelse(is.na(Wind_HDG) & !is.na(Wind_HDG_SQL), 1, Flag1)) %>%
+  mutate(Flag1 = ifelse(is.na(Flag1), 0, Flag1)) %>% filter(Flag1 == 1)
+
+
+## ILS Relative Fields Testing
+Database <- "PWS_Prototyping"
+con <- Get_DBI_Connection(IP, Database)
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+Runways <- Load_Adaptation_Table(con, "tbl_Runway")
+RTP <- dbGetQuery(con, paste0("SELECT RTP.Radar_Track_Point_ID, Flight_Plan_ID, Track_Time, X_Pos, Y_Pos, Mode_S_Track_HDG, Track_HDG
+                              FROM tbl_Radar_Track_Point RTP LEFT JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID"))
+FP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Flight_Plan"))
+ILS_SQL <- dbGetQuery(con, paste0("SELECT Radar_Track_Point_ID, Intercept_X AS Intercept_X_SQL, Intercept_Y AS Intercept_Y_SQL, Direction_From_ILS AS Direction_From_ILS_SQL, 
+                                  Direction_From_4DME AS Direction_From_4DME_SQL, Range_To_ILS AS Range_To_ILS_SQL, Intercept_Dir_From_4DME AS Intercept_Dir_From_4DME_SQL, 
+                                  ILS_Locus_RTT AS ILS_Locus_RTT_SQL FROM tbl_Radar_Track_Point_Derived"))
+
+ILS <- Generate_RTPD_ILS_Relative_Fields(RTP, FP, Runways, GWCS_Adaptation)
+
+Variables <- c("Intercept_X", "Intercept_Y", "Direction_From_ILS", "Direction_From_4DME", "Range_To_ILS", "Intercept_Dir_From_4DME", "ILS_Locus_RTT")
+SQLVars <- paste0(Variables, "_SQL")
+VarNo <- 5
+Var <- Variables[VarNo]
+SQLVar <- SQLVars[VarNo]
+
+Test <- left_join(ILS, ILS_SQL, by = c("Radar_Track_Point_ID")) %>% 
+  left_join(select(RTP, Radar_Track_Point_ID, Flight_Plan_ID, Track_Time), by = c("Radar_Track_Point_ID")) %>%
+  arrange(Flight_Plan_ID, Track_Time) %>%
+  mutate(Flag1 = ifelse(abs(!!sym(Var) - !!sym(SQLVar)) > 0.1, 1, 0)) %>%
+  #mutate(Flag1 = ifelse(!!sym(Var) != !!sym(SQLVar), 1, 0)) %>%
+  mutate(Flag1 = ifelse(!is.na(!!sym(Var)) & is.na(!!sym(SQLVar)), 1, Flag1)) %>%
+  mutate(Flag1 = ifelse(is.na(!!sym(Var)) & !is.na(!!sym(SQLVar)), 1, Flag1)) %>%
+  mutate(Flag1 = ifelse(is.na(Flag1), 0, Flag1)) %>% filter(Flag1 == 1)
+  
+
+
+# Loading Data.
+Database <- "EGLL_PWS"
+con <- Get_DBI_Connection(IP, Database)
+Date_List_Query <- "SELECT DISTINCT(Track_Date) FROM tbl_Radar_Track_Point"
+Dates <- dbGetQuery(con, Date_List_Query)
+
+Runways <- Load_Adaptation_Table(con, "tbl_Runway")
+Path_Legs <- Load_Adaptation_Table(con, "tbl_Path_Leg")
+Path_Leg_Transitions <- Load_Adaptation_Table(con, "tbl_Path_Leg_Transition")
+Volumes <- Load_Adaptation_Table(con, "tbl_Volume")
+Polygons <- Load_Adaptation_Table(con, "tbl_Polygon")
+Adaptation <- Load_Adaptation_Table(con, "tbl_Adaptation_Data")
+Localisers <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Localiser_Capture")
+GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
+
+Begin_Time <- Sys.time()
+
+for (i in 1:nrow(Dates)){
+  
+  message("Completing Pre-Proc for Day ", i, " of ", nrow(Dates), "...")
+  Date <- Dates$Track_Date[i]
+  
+  RTP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Radar_Track_Point WHERE Track_Date = '", Date, "'"))
+  Baro <- dbGetQuery(con, paste0("SELECT * FROM tbl_Baro WHERE Baro_Date = '", Date, "'"))
+  FP <- dbGetQuery(con, paste0("SELECT * FROM tbl_Flight_Plan WHERE FP_Date = '", Date, "'"))
+  
+  # ---------------- Flight Plan Derived --------------------- #
+  message("Generating Flight Plan Derived...")
+  FPD <- Generate_FPD(FP, RTP, Runways)
+  
+  dbExecute(con, paste0("DELETE FPD
+                         FROM tbl_Flight_Plan_Derived As FPD
+                         INNER JOIN tbl_Flight_Plan As FP
+                         ON FPD.Flight_Plan_ID = FP.Flight_Plan_ID
+                         WHERE FP.FP_Date = '", Date, "'"))
+  
+  PopulateSQLTable(con, "tbl_Flight_Plan_Derived", FPD)
+  
+  # ---------------- Radar Track Derived --------------------- #
+  message("Generating Radar Track Point Derived...")
+  CMC <- Generate_RTPD_Corrected_Mode_C(RTP, Baro)
+  Wind <- Generate_RTPD_Wind_Parameters(RTP, Adaptation)
+  RoCD <- Generate_RTPD_Min_Sustained_RoCD(RTP, Adaptation)
+  LocaliserCaptures <- Generate_RTPD_Localiser_Capture(RTP, Runways, Localisers, Volumes, Polygons, Adaptation)
+  ILS <- Generate_RTPD_ILS_Relative_Fields(RTP, FP, Runways, GWCS_Adaptation)
+  
+  RTP <- RTP %>%
+    left_join(CMC, by = c("Radar_Track_Point_ID")) %>%
+    left_join(Wind, by = c("Radar_Track_Point_ID")) %>%
+    left_join(RoCD, by = c("Radar_Track_Point_ID")) %>%
+    left_join(LocaliserCaptures, by = c("Radar_Track_Point_ID")) %>%
+    left_join(ILS, by = c("Radar_Track_Point_ID"))
+  
+  RTT <- Generate_RTPD_Range_To_Threshold(RTP, Runways, Method=1, ValorVer = "Val")
+  PLs <- Generate_RTPD_Path_Leg(RTP, FP, Runway, Path_Legs, Path_Leg_Transitions, Volumes, Polygons, Adaptation, 1) %>%
+    mutate(Path_Leg = ifelse(Path_Leg == "NULL", NA, Path_Leg))
+  
+  RTP <- mutate(RTP, Turn_State = NA, Dep_Leg = NA, Dep_Track_Distance = NA)
+  RTP <- Get_Heading_Difference(RTP, "Mode_S_Track_HDG", "Track_HDG") %>% rename(Diff_Mode_S_To_Radar_Track_HDG = HeadingDifference)
+  
+  RTP <- RTP %>%
+    left_join(RTT, by = c("Radar_Track_Point_ID")) %>%
+    left_join(PLs, by = c("Radar_Track_Point_ID"))
+  
+  RTPD <- RTP %>%
+    select(Radar_Track_Point_ID, Wind_SPD, Wind_HDG, Headwind_SPD, Wind_Effect_IAS, Corrected_Mode_C, RoCD, Min_Sustained_RoCD, Turn_State,
+           Range_To_Threshold, Mode_S_Wind_Localiser_Capture, Dep_Leg, Dep_Track_Distance, Intercept_X, Intercept_Y, Direction_From_ILS, Direction_From_4DME,
+           Range_To_ILS, Intercept_Dir_From_4DME, ILS_Locus_RTT, Path_Leg, Diff_Mode_S_To_Radar_Track_HDG)
+  
+  dbExecute(con, paste0("DELETE RTPD
+                         FROM tbl_Radar_Track_Point_Derived As RTPD
+                         INNER JOIN tbl_Radar_Track_Point As RTP
+                         ON RTPD.Radar_Track_Point_ID = RTP.Radar_Track_Point_ID
+                         WHERE RTP.Track_Date = '", Date, "'"))
+  
+  PopulateSQLTable(con, "tbl_Radar_Track_Point_Derived", RTPD)
+  
+}
+
+
+End_Time <- Sys.time()
+End_Time - Begin_Time
+
 
 
 

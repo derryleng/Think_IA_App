@@ -66,12 +66,7 @@
 Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Profile, GWCS_Forecast, Radar, Constraints, TTB_Type, Forecast_Compression_Type, Observed_Compression_Type,
                                     Use_EFDD, Use_ORD_Operator, LegacyorRecat){
 
-  # Landing_Pair <- INT_Landing_Pairs
-  # TBSCBuffers <- F
-  # GWCS_Forecast <- INT_Full_GWCS_Forecast
-  # Constraints <- c("Wake", "ROT", "Non_Wake")
-  # TTB_Type <- "Original"
-  # ORD_GS_Profile <- INT_GSPD_Profile
+
   #
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
@@ -132,7 +127,8 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
       Landing_Pair <- Landing_Pair %>% 
         mutate(!!sym(Thresh_Max_Constraint_Var) := ifelse(!is.na(!!sym(Dist_Name_Var)) & abs(!!sym(Dist_Name_Var) - !!sym(All_Sep_Var)) < 0.01, Constraints[c], !!sym(Thresh_Max_Constraint_Var)))
     }
-  }
+  } 
+  
   rm(Dist_Name_Var)
   
   # Get the "Winning" Assumed IAS and Forecast WE
@@ -154,7 +150,7 @@ Generate_ORD_Prediction <- function(con, LP_Primary_Key, Landing_Pair, ORD_GS_Pr
                                                 Sep_Dist_Var = ORD_Sep_Var,
                                               Forecast_Compression_Type,
                                               LegacyorRecat)
-
+  
   # Recalculate Observed Compression Metrics if necessary
   if (Observed_Compression_Type != 1){
     Landing_Pair <- Generate_Observed_Compression(Landing_Pair, Radar, Metric = Observed_Compression_Type)

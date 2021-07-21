@@ -1,7 +1,7 @@
 
 Get_TBS_Service_Level <- function(con, LPR, ID_Var){
   
-  if (ID_Var == Get_LP_Primary_Key("Validation")){
+  if (ID_Var != Get_LP_Primary_Key("Verification")){
     if (Load_Adaptation_Table(con, "tbl_Adaptation_Data")$ORD_Profile_Selection == "TBS_Table"){
       LPR <- mutate(LPR, TBS_Service_Level = "DBS")
     } else {LPR <- mutate(LPR, TBS_Service_Level = "TBS")}
@@ -22,8 +22,8 @@ Get_RNAV_Flag <- function(LPR){
 Get_Non_Wake_Spacing <- function(LPR){
   
   LPR <- mutate(LPR, 
-                Non_Wake_RNAV_Separation_Distance = (3*1852),
-                Non_Wake_Separation_Distance = (3*1852))
+                Non_Wake_RNAV_Separation_Distance = (2.5*1852),
+                Non_Wake_Separation_Distance = (2.5*1852))
   return(LPR)
   
 }
@@ -65,10 +65,10 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_ORD_Operator, LegacyorRecat){
+Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator, LegacyorRecat)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat)}
   if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(Full_Wind_Forecast)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
@@ -165,13 +165,13 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_ORD_Operator, LegacyorRecat){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat){
   
   # ID_Var <- LP_Primary_Key
   # LPR <- INT_Landing_Pairs
   # Full_Wind_Forecast <- INT_Full_GWCS_Forecast
   # Build an Aircraft Profile without ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Use_ORD_Operator, LegacyorRecat)
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)
@@ -231,7 +231,7 @@ Get_Constraint_Service_Level <- function(Constraint_Type, IA_Service_Level){
 Get_Minimum_Constraint_Distances <- function(LPR, Constraint_Type, Delivery, Runway_Rule, Runway_Pair_Rule, Wake_Sep_Min){
   
   # TEMP: Set Minimum to 2.5
-  LPR <- LPR %>% mutate(Minimum_Constraint_Distance = (2.5)*1852)
+  LPR <- LPR %>% mutate(Minimum_Constraint_Distance = (2)*1852)
   
   return(LPR)
 }
@@ -324,6 +324,18 @@ Generate_Constraint_Spacing <- function(con, LPR, TBSC_Profile, TTB_Type, Constr
       Thresh_Var <- paste0(Get_Constraint_Prefix(Constraint_Type, Constraint_Delivery, Service_Level, LegacyorRecat), "_Distance")
       LPR <- LPR %>%
         mutate(!!sym(paste0(Out_Prefix, "_Distance")) := !!sym(Thresh_Var) + !!sym(Compression_Var))
+    }
+    
+    # Remove Wake/ROT Constraints for Not in Trail Pairs (TEMP!!!!)
+    if (Constraint_Type %in% c("Wake", "ROT")){
+      LPR <- LPR %>% mutate(!!sym(paste0(Out_Prefix, "_Distance")) := ifelse(Landing_Pair_Type == "Not_In_Trail", NA, !!sym(paste0(Out_Prefix, "_Distance"))))
+      if (paste0(Out_Prefix, "_IAS") %in% names(LPR)){LPR <- LPR %>% mutate(!!sym(paste0(Out_Prefix, "_IAS")) := ifelse(Landing_Pair_Type == "Not_In_Trail", NA, !!sym(paste0(Out_Prefix, "_IAS"))))}
+      if (paste0(Out_Prefix, "_Wind_Effect") %in% names(LPR)){LPR <- LPR %>% mutate(!!sym(paste0(Out_Prefix, "_Wind_Effect")) := ifelse(Landing_Pair_Type == "Not_In_Trail", NA, !!sym(paste0(Out_Prefix, "_Wind_Effect"))))}
+    }
+    
+    # Remove Runway Dep Constraints for In Trail Pairs
+    if (Constraint_Type %in% c("Runway_Dependent")){
+      LPR <- LPR %>% mutate(!!sym(paste0(Out_Prefix, "_Distance")) := ifelse(Landing_Pair_Type != "Not_In_Trail", NA, !!sym(paste0(Out_Prefix, "_Distance"))))
     }
     
     if (Constraint_Type == "Non_Wake"){Remove_NA = T} else{Remove_NA = F}

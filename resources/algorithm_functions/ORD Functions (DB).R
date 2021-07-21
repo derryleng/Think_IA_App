@@ -1,6 +1,42 @@
-library(dplyr)
-library(data.table)
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+#
+# Think IA Validation/Verification Tool
+#
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# TBS Functions - General
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
+# Summary
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Version: v0.0
+#
+# Authors: George Clark
+#
+# Description: Storage for IAC TBS functions uncategorised by other means. 
+#
+# Use: for holding routines for IAC TBS v0.0, Soon to be v1.0.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Version History
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+#
+# v0.0:
+#
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Database Related Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in database data population and acquisition. 
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Generic wrapper function for DBIs dbAppendTable that converts NaN values to NA to enable loading.
 PopulateSQLTable <- function(con, SQLTable, Table){
   
   # Message to populate Table.
@@ -18,7 +54,23 @@ PopulateSQLTable <- function(con, SQLTable, Table){
   
 }
 
+# Function to obtain the Landing Pair Primary Key dependent on database Type.
+Get_LP_Primary_Key <- function(Database_Type){
+  
+  # Name of Landing Pair Primary Key for Validation/Verification
+  if(Database_Type == "Validation"){return("Landing_Pair_ID")}
+  if(Database_Type == "Verification"){return("ORD_Tool_Calculation_ID")}
+}
 
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Logical Data Frame Functions (Min, Max, Equal) ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that create new fields based on the minimum, maximum or equality of other fields. Most are to be made redundant due to 
+# inclusion of the pmin, pmax and psum functions.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# For each observation, gets the maximum of two fields, ignoring NA Values. Will soon be obsolete due to pmax.
 Get_Max_Valid_Value_2Var <- function(Data, New_Var, Var_1, Var_2){
   Data <- mutate(Data,
                  !!sym(New_Var) := ifelse(!!sym(Var_1) > !!sym(Var_2), !!sym(Var_1), !!sym(Var_2)),
@@ -27,6 +79,7 @@ Get_Max_Valid_Value_2Var <- function(Data, New_Var, Var_1, Var_2){
   return(Data)
 }
 
+# For each observation, gets the minimum of two fields, ignoring NA Values. Will soon be obsolete due to pmin.
 Get_Min_Valid_Value_2Var <- function(Data, New_Var, Var_1, Var_2){
   Data <- mutate(Data,
                  !!sym(New_Var) := ifelse(!!sym(Var_1) < !!sym(Var_2), !!sym(Var_1), !!sym(Var_2)),
@@ -35,10 +88,12 @@ Get_Min_Valid_Value_2Var <- function(Data, New_Var, Var_1, Var_2){
   return(Data)
 }
 
+# For each observation, gets the maximum of a provided field and a constant value ignoring NA Values. May soon be obsolete due to pmax.
 Get_Max_Valid_Value_Const <- function(Data, New_Var, Var_1, Constant){
   Data <- mutate(Data, !!sym(New_Var) := ifelse(is.na(!!sym(Var_1)) | !!sym(Var_1) < Constant, Constant, !!sym(Var_1)))
   return(Data)
 }
+
 
 Get_Value_If_Equal_2Var <- function(Data, New_Var, Dep_Var, Check_Var_1, Check_Var_2, Set_Var_1, Set_Var_2){
 
@@ -50,6 +105,407 @@ Get_Value_If_Equal_2Var <- function(Data, New_Var, Dep_Var, Check_Var_1, Check_V
 
 }
 
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Debugging Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in Code/Field Debugging.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+Add_Test_Variable <- function(Data, Type, Parameter, Tolerance){
+  
+  # Get SQL Parameter Name
+  SQL_Param <- paste0("SQL_", Parameter)
+  FLAG_Param <- paste0("FLAG_", Parameter)
+  DIFF_Param <- paste0("DIFF_", Parameter)
+  
+  # Add DIFF and FLAG Parameters
+  if (Type == "Numeric"){
+    Data <- mutate(Data,
+                   !!sym(DIFF_Param) := abs(!!sym(SQL_Param) - !!sym(Parameter)),
+                   !!sym(FLAG_Param) := ifelse(!!sym(DIFF_Param) > Tolerance, 1, 0))
+  }
+  
+  if (Type != "Numeric"){
+    Data <- mutate(Data, !!sym(FLAG_Param) := ifelse(!!sym(SQL_Param) != !!sym(Parameter), 1, 0))
+  }
+  
+  Data <- mutate(Data,
+                 !!sym(FLAG_Param) := ifelse(is.na(!!sym(Parameter)) & !is.na(!!sym(SQL_Param)), 1, !!sym(FLAG_Param)),
+                 !!sym(FLAG_Param) := ifelse(!is.na(!!sym(Parameter)) & is.na(!!sym(SQL_Param)), 1, !!sym(FLAG_Param)))
+  
+  return(Data)
+}
+
+Debug_Test_Variable <- function(Data, ID_Var, Type, Parameter){
+  
+  # Get Parameters
+  SQL_Param <- paste0("SQL_", Parameter)
+  DIFF_Param <- paste0("DIFF_", Parameter)
+  FLAG_Param <- paste0("FLAG_", Parameter)
+  
+  # Filter for Flagged Observations
+  Data <- filter(Data, !!sym(FLAG_Param) == 1)
+  
+  # Select Relevant Parameters (Numeric)
+  if(Type == "Numeric"){Data <- select(Data,
+                                       !!sym(ID_Var),
+                                       !!sym(Parameter),
+                                       !!sym(SQL_Param),
+                                       !!sym(DIFF_Param),
+                                       !!sym(FLAG_Param))}
+  
+  return(Data)
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# GWCS Wind Forecast Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in Generating a GWCS Wind Forecast.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Segment Data Preparation. This converts ORD Validation, GWCS Validation and GWCS Verification data into
+# common format for universal processing. ORD Verification does not require this algorithm.
+Prepare_Segment_Data <- function(Type, Data, Seg_Size, Forecast_Seg_Max, Lookahead_Time, LP_Primary_Key){
+  
+  # ORD Validation. Uses Landing Pair Reference Table - IDs are Landing Pair IDs. Uses Leader Landing Runway.
+  if (Type == "ORD"){
+    Segment_Forecast <- select(Data, ID := !!sym(LP_Primary_Key), Date = Landing_Pair_Date, Runway = Leader_Landing_Runway, Runway_Group, Forecast_Time = Prediction_Time)
+  }
+  
+  # GWCS Validation. Uses Flight Plan/Derived. IDs are Flight Plan IDs and Forecast Times are Time at 4DME - Lookahead Time.
+  # Requires Runway Group to be joined on beforehand.
+  if (Type == "GWCS Validation"){
+    Segment_Forecast <- select(Data, c("Flight_Plan_ID", "FP_Date", "Landing_Runway", "Runway_Group", "Time_At_4DME"))
+    Segment_Forecast <- rename(Segment_Forecast, c("ID" = "Flight_Plan_ID", "Forecast_Time" = "Time_At_4DME",
+                                                   "Runway" = "Landing_Runway", "Date" = "FP_Date"))
+  }
+  
+  # GWCS Verification. Leave alone for now.
+  if (Type == "GWCS Verification"){}
+  
+  # Adjust the Forecast Times by subtracting the Lookahead Time. (For ORD this will be 0)
+  Segment_Forecast <- mutate(Segment_Forecast, Forecast_Time = Forecast_Time - Lookahead_Time)
+  
+  # Make a Data Frame for all segments up to Forecast_Seg_Max. (Incorporate Seg Size here?)
+  Total_Segments <- data.frame(DME_Seg = 0:(Forecast_Seg_Max / NM_to_m))
+  
+  # Merge the two Dataframes Together.
+  Segment_Forecast <- merge(Segment_Forecast, Total_Segments)
+  
+  # Convert the DME Segments to SI units.
+  Segment_Forecast <- mutate(Segment_Forecast, DME_Seg = DME_Seg * NM_to_m)
+  
+  return(Segment_Forecast)
+  
+}
+
+
+Get_Non_Stale_Segments <- function(Segment_Forecast, Forecast_Seg, Stale_Time){
+  
+  # -- Add duplicates of the join parameters to not lose anything.
+  
+  # For our Segment Forecast Table. Add a minor offset as to match segments correctly.
+  Segment_Forecast <- mutate(Segment_Forecast,
+                             Join_Date = Date,
+                             Join_Runway = Runway_Group,
+                             Join_Time = Forecast_Time + 0.00001)
+  
+  # For tbl_Mode_S_Wind_Seg_Forecast.
+  Forecast_Seg <- mutate(Forecast_Seg,
+                         Join_Date = Forecast_Date,
+                         Join_Runway = Runway_Group,
+                         Join_Time = Forecast_Time)
+  
+  # -- Perform a Rolling Join
+  
+  # Convert data to data.tables to allow rolling joins.
+  Segment_Forecast <- as.data.table(Segment_Forecast)
+  Forecast_Seg <- as.data.table(Forecast_Seg)
+  
+  # Set Keys for Rolling Join. Join_Time will be the roll.
+  setkey(Segment_Forecast, Join_Date, Join_Runway, DME_Seg, Join_Time)
+  setkey(Forecast_Seg, Join_Date, Join_Runway, DME_Seg, Join_Time)
+  
+  # Perform the Rolling Join, with the max roll being the Stale Time.
+  Segment_Forecast <- Forecast_Seg[Segment_Forecast, roll = Stale_Time]
+  
+  # Return to data.frame format and select relevant fields.
+  Segment_Forecast <- as.data.frame(Segment_Forecast) %>% select(ID, Date, Join_Runway, DME_Seg, Join_Time, Segment_Time = Forecast_Time,
+                                                                 Forecast_Wind_Effect_IAS, Forecast_Wind_SPD, Forecast_Wind_HDG,
+                                                                 Forecast_Aircraft_Type) %>% rename(Runway_Group = Join_Runway,
+                                                                                                    Forecast_Time = Join_Time)
+  # Order data by ID and DME_Seg.
+  Segment_Forecast <- Segment_Forecast[order(Segment_Forecast$ID, Segment_Forecast$DME_Seg),]
+  
+  return(Segment_Forecast)
+}
+
+# Function for Transferring Extrpolated Data to updated segment table. Extrapolation_Type = ("ORD", "TBS")
+Transfer_Extrapolated_Segment_Data <- function(Segment_Forecast, Extrapolation_Type){
+  
+  if (Extrapolation_Type == "TBS"){
+    Segment_Forecast <- mutate(Segment_Forecast,
+                               TBS_Interpolated_Seg.x = ifelse(!is.na(Forecast_Wind_Effect_IAS.y), DME_Seg.y, TBS_Interpolated_Seg.x),
+                               Forecast_Time.x = Forecast_Time.y,
+                               Forecast_Wind_Effect_IAS.x = Forecast_Wind_Effect_IAS.y,
+                               Forecast_Wind_SPD.x = Forecast_Wind_SPD.y,
+                               Forecast_Wind_HDG.x = Forecast_Wind_HDG.y,
+                               Forecast_Aircraft_Type.x = Forecast_Aircraft_Type.y) %>%
+      select(ID, Date = Date.x, Runway_Group = Runway_Group.x, DME_Seg = DME_Seg.x, Segment_Time = Segment_Time.x,
+             Forecast_Time = Forecast_Time.x, Forecast_Wind_Effect_IAS = Forecast_Wind_Effect_IAS.x, Forecast_Wind_SPD = Forecast_Wind_SPD.x,
+             Forecast_Wind_HDG = Forecast_Wind_HDG.x, Forecast_Aircraft_Type = Forecast_Aircraft_Type.x, TBS_Interpolated_Seg = TBS_Interpolated_Seg.x)
+  }
+  
+  if (Extrapolation_Type == "ORD"){
+    Segment_Forecast <- mutate(Segment_Forecast,
+                               ORD_Extrapolated_Seg.x = ifelse(!is.na(Forecast_Wind_Effect_IAS.y), DME_Seg.y, ORD_Extrapolated_Seg.x),
+                               TBS_Interpolated_Seg.x = ifelse(!is.na(Forecast_Wind_Effect_IAS.y), TBS_Interpolated_Seg.y, TBS_Interpolated_Seg.x),
+                               Forecast_Time.x = Forecast_Time.y,
+                               Forecast_Wind_Effect_IAS.x = Forecast_Wind_Effect_IAS.y,
+                               Forecast_Wind_SPD.x = Forecast_Wind_SPD.y,
+                               Forecast_Wind_HDG.x = Forecast_Wind_HDG.y,
+                               Forecast_Aircraft_Type.x = Forecast_Aircraft_Type.y) %>%
+      select(ID, Date = Date.x, Runway_Group = Runway_Group.x, DME_Seg = DME_Seg.x, Segment_Time = Segment_Time.x,
+             Forecast_Time = Forecast_Time.x, Forecast_Wind_Effect_IAS = Forecast_Wind_Effect_IAS.x, Forecast_Wind_SPD = Forecast_Wind_SPD.x,
+             Forecast_Wind_HDG = Forecast_Wind_HDG.x, Forecast_Aircraft_Type = Forecast_Aircraft_Type.x, TBS_Interpolated_Seg = TBS_Interpolated_Seg.x,
+             ORD_Extrapolated_Seg = ORD_Extrapolated_Seg.x)
+  }
+  
+  return(Segment_Forecast)
+  
+}
+
+
+TBS_Extrapolate_Segments <- function(Segment_Forecast, Max_Seg_Extrapolation, Extrapolation_Seg_Min, Separation_Forecast_Seg_Max){
+  
+  # Make a variable for the origin of TBS Interpolated Segment
+  Segment_Forecast <- mutate(Segment_Forecast, TBS_Interpolated_Seg = NA)
+  
+  # Keep the Segs that do not allow extrapolation separately
+  Unextrapolated_Forecast <- filter(Segment_Forecast, DME_Seg < Extrapolation_Seg_Min)
+  
+  # TBS Segs are between Forecast Seg Min and Separation Forecast Seg Max. We Want these + maximum Seg Extrapolation range
+  TBS_Segment_Forecast <- filter(Segment_Forecast, DME_Seg >= Extrapolation_Seg_Min & DME_Seg <= (Separation_Forecast_Seg_Max + (Max_Seg_Extrapolation * NM_to_m)))
+  
+  # Loop through each segment number. Should be updated to reflect segment size.
+  for (i in (Extrapolation_Seg_Min / NM_to_m) : (Separation_Forecast_Seg_Max / NM_to_m)){
+    
+    # Filter for DME Seg in loop, separate raw segments from ones to be interpolated
+    TBS_Segments_This_Seg <- filter(TBS_Segment_Forecast, DME_Seg == i * NM_to_m)
+    TBS_Segments_This_Seg_Valid <- filter(TBS_Segments_This_Seg, !is.na(Forecast_Wind_Effect_IAS))
+    TBS_Segments_This_Seg_Null <- filter(TBS_Segments_This_Seg, is.na(Forecast_Wind_Effect_IAS))
+    
+    # Bind the raw segments for this DME to the complete processed segments
+    if (i == (Extrapolation_Seg_Min / NM_to_m)){TBS_Segs_Complete <- TBS_Segments_This_Seg_Valid} else {
+      TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Valid)}
+    
+    # Create new loop for extrapolation search. Go outward from 1 to Max_Seg_Extrapolation in either direction
+    for (j in 1 : Max_Seg_Extrapolation){
+      
+      # -- Prioritise lower RTT values, but only do if segment within allowed interpolating range.
+      if ((i - j) * NM_to_m >= Extrapolation_Seg_Min){
+        
+        # Filter for the Segment (i - j). e.g. For Segment 5, will start at Segment 4.
+        TBS_Segments_Extrapolate <- filter(TBS_Segment_Forecast, DME_Seg == (i - j) * NM_to_m)
+        
+        # Join the Invalid segments to attempt to extrapolate with this segment
+        TBS_Segments_Compare <- inner_join(TBS_Segments_This_Seg_Null, TBS_Segments_Extrapolate, by = c("ID")) # and all extra manipulation
+        
+        # Perform the TBS Extrapolation data transfer.
+        TBS_Segments_Compare <- Transfer_Extrapolated_Segment_Data(TBS_Segments_Compare, "TBS")
+        
+        # Isolate remaining NULL segments.
+        TBS_Segments_This_Seg_Null <- filter(TBS_Segments_Compare, is.na(Forecast_Wind_Effect_IAS))
+        
+        # Isolate successfully extrapolated segments
+        TBS_Segments_This_Seg_Valid <- filter(TBS_Segments_Compare, !is.na(Forecast_Wind_Effect_IAS))
+        
+        # Add extrapolated segments to complete segment list.
+        TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Valid)
+      }
+      
+      # -- Then do higher values
+      
+      # Filter for segment (i + j).
+      TBS_Segments_Extrapolate <- filter(TBS_Segment_Forecast, DME_Seg == (i + j) * NM_to_m)
+      
+      # Join the Invalid segments to attempt to extrapolate with this segment
+      TBS_Segments_Compare <- inner_join(TBS_Segments_This_Seg_Null, TBS_Segments_Extrapolate, by = c("ID"))
+      
+      # Perform the TBS Extrapolation data transfer.
+      TBS_Segments_Compare <- Transfer_Extrapolated_Segment_Data(TBS_Segments_Compare, "TBS")
+      
+      # Isolate remaining NULL segments.
+      TBS_Segments_This_Seg_Null <- filter(TBS_Segments_Compare, is.na(Forecast_Wind_Effect_IAS))
+      
+      # Isolate successfully extrapolated segments
+      TBS_Segments_This_Seg_Valid <- filter(TBS_Segments_Compare, !is.na(Forecast_Wind_Effect_IAS))
+      
+      # Add extrapolated segments to complete segment list.
+      TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Valid)
+      
+      # If final attempt at extrapolation for ths segment, bind on the remaining NULL forecasts.
+      if (j == Max_Seg_Extrapolation){TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Null)}
+      
+    }
+    
+  }
+  
+  # Remove Old segments in the TBS Extrapolation range
+  Segment_Forecast <- filter(Segment_Forecast, DME_Seg > Separation_Forecast_Seg_Max)
+  
+  # Add on thenew TBS Extrapolated Segments, as well as the Untouched segments
+  Segment_Forecast <- rbind(Segment_Forecast, Unextrapolated_Forecast) %>% rbind(TBS_Segs_Complete)
+  
+  # Order Segments as before
+  Segment_Forecast <- Segment_Forecast[order(Segment_Forecast$ID, Segment_Forecast$DME_Seg),]
+  
+  return(Segment_Forecast)
+}
+
+
+
+ORD_Extrapolate_Segments <- function(Segment_Forecast, Forecast_Seg_Max, Separation_Forecast_Seg_Max){
+  
+  # Add a new parameter to signify which segment was used for ORD Extrapolation.
+  Segment_Forecast <- mutate(Segment_Forecast, ORD_Extrapolated_Seg = NA)
+  
+  # ORD Segs are between Separation Forecast Seg Max - Extrap range and Forecast_Valid_Seg_Max.
+  ORD_Segs <- filter(Segment_Forecast, DME_Seg <= Forecast_Seg_Max & DME_Seg >= (Separation_Forecast_Seg_Max))
+  
+  # We want to loop through all segments, starting with Separation_Forecast_Seg_Max + 1
+  for (i in ((Separation_Forecast_Seg_Max / NM_to_m) + 1) : (Forecast_Seg_Max / NM_to_m)){
+    
+    # Select Data for this segment and the previous segment separately.
+    ORD_Segs_This_Seg <- filter(ORD_Segs, DME_Seg == (i * NM_to_m))
+    ORD_Segs_Prev_Seg <- filter(ORD_Segs, DME_Seg == ((i - 1) * NM_to_m))
+    
+    # Select Populated and Non-Populated data from This Segment separately.
+    ORD_Segs_This_Seg_Valid <- filter(ORD_Segs_This_Seg, !is.na(Forecast_Wind_Effect_IAS))
+    ORD_Segs_This_Seg_Null <- filter(ORD_Segs_This_Seg, is.na(Forecast_Wind_Effect_IAS))
+    
+    # Join on the Invalid This Segment Data to the Previous Segment Data.
+    ORD_Segs_This_Seg_Compare <- inner_join(ORD_Segs_This_Seg_Null, ORD_Segs_Prev_Seg, by=c("ID"))
+    
+    # Perform the ORD Extrapolation data transfer.
+    ORD_Segs_This_Seg_Compare <- Transfer_Extrapolated_Segment_Data(ORD_Segs_This_Seg_Compare, "ORD")
+    
+    # Bind the previously valid segs with those attempted to be extrapolated.
+    ORD_Segs_This_Seg <- rbind(ORD_Segs_This_Seg_Valid, ORD_Segs_This_Seg_Compare)
+    
+    # Filter out this DME Segment from ORD_Segs.
+    ORD_Segs <- filter(ORD_Segs, DME_Seg != (i * NM_to_m))
+    
+    # Add in the extrapolated data for this segment.
+    ORD_Segs <- rbind(ORD_Segs, ORD_Segs_This_Seg)
+  }
+  
+  # Remove the old ORD Segs
+  Segment_Forecast <- filter(Segment_Forecast, DME_Seg < Separation_Forecast_Seg_Max)
+  
+  # Add new ORD Segs
+  Segment_Forecast <- rbind(Segment_Forecast, ORD_Segs)
+  
+  # Order as before
+  Segment_Forecast <- Segment_Forecast[order(Segment_Forecast$ID, Segment_Forecast$DME_Seg),]
+  
+  return(Segment_Forecast)
+}
+
+
+# Function that changes the Wind entries depending on GWCS Wind Selection. Requires Extrapolation Complete.
+# !!! Do we need to change Wind Speed, HDG and Aircraft Type? See for GWCS.
+Treat_Default_Wind_Segments <- function(Segment_Forecast, Default_Wind, GWCS_Wind_Selection){
+  
+  # Join on the Default Wind
+  Segment_Forecast <- left_join(Segment_Forecast, Default_Wind, by = c("DME_Seg" = "Wind_Segment_Start"))
+  
+  # If GWCS_Wind_Selection is Always_Default, replace ALL Wind Effect values with Default
+  if (GWCS_Wind_Selection == "Always_Default"){Segment_Forecast <- mutate(Segment_Forecast, Forecast_Wind_Effect_IAS = Wind_Effect)}
+  
+  # If GWCS_Wind_Selection is Always_Zero, replace ALL Wind Effect values with 0.
+  if (GWCS_Wind_Selection == "Always_Zero"){Segment_Forecast <- mutate(Segment_Forecast, Forecast_Wind_Effect_IAS = 0)}
+  
+  # If GWCS_Wind_Selection is Auto_Default, replace NA Wind Effect values with Default. (After Extrapolation)
+  if (GWCS_Wind_Selection == "Auto_Default"){
+    Segment_Forecast <- mutate(Segment_Forecast,
+                               Forecast_Wind_Effect_IAS = ifelse(is.na(Forecast_Wind_Effect_IAS), Wind_Effect, Forecast_Wind_Effect_IAS))
+  }
+  
+  # Remove Default Parameters.
+  Segment_Forecast <- select(Segment_Forecast, -c("Wind_Effect", "Wind_Segment_End"))
+  
+  return(Segment_Forecast)
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Surface Wind & QNH Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that enable rolling joins of QNH and Surface Wind values. Soon to be obsolete with rolling join function.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Calculate Surface Wind Parameters. Join_Time, Join_Date, Join_Runway need to
+# be specified before function application, and variables output should be renamed.
+Get_Surface_Wind <- function(Data, SW, Runways, Prefix, ID_Var, Date_Var, Time_Var, Runway_Var){
+  
+  # Get Variable Names
+  Wind_SPD_Var <- paste0(Prefix, "_Surface_Wind_SPD")
+  Wind_HDG_Var <- paste0(Prefix, "_Surface_Wind_HDG")
+  Headwind_Var <- paste0(Prefix, "_Surface_Headwind")
+  Crosswind_Var <- paste0(Prefix, "_Surface_Crosswind")
+  
+  # Get the Required Join Parameters (LP)
+  Data <- mutate(Data,
+                 Join_Time := !!sym(Time_Var),
+                 Join_Date := !!sym(Date_Var),
+                 Join_Runway := !!sym(Runway_Var))
+  
+  # Get the Required Join Parameters (SW)
+  SW <- mutate(SW,
+               Join_Time = Anemo_Time,
+               Join_Date = Anemo_Date,
+               Join_Runway = Landing_Runway)
+  
+  # Convert to Data Tables and Set Keys for Rolling Join
+  SW <- as.data.table(SW)
+  Data <- as.data.table(Data)
+  setkey(SW, Join_Runway, Join_Date, Join_Time)
+  setkey(Data, Join_Runway, Join_Date, Join_Time)
+  
+  # Do Rolling Join and convert back to data frame
+  Data <- SW[Data, roll = Inf]
+  Data <- as.data.frame(Data)
+  
+  # Get Surface Headwind Parameter
+  Runways2 <- select(Runways, Runway_Name, Heading)
+  Data <- left_join(Data, Runways2, by = c("Join_Runway" = "Runway_Name"))
+  Data <- mutate(Data, Anemo_HW = Get_2D_Scalar_Product(Anemo_SPD, Anemo_HDG, 1, Heading))
+  Data <- mutate(Data, Anemo_CW = Anemo_SPD * sin(abs(Anemo_HDG - Heading)))
+  
+  # Select appropriate parameters and rename
+  Wind_Parameters <- select(Data, !!sym(ID_Var), Anemo_SPD, Anemo_HDG, Anemo_HW, Anemo_CW) %>%
+    rename(!!sym(Wind_SPD_Var) := "Anemo_SPD",
+           !!sym(Wind_HDG_Var) := "Anemo_HDG",
+           !!sym(Headwind_Var) := "Anemo_HW",
+           !!sym(Crosswind_Var) := "Anemo_CW")
+  
+  # Join values back onto Data.
+  Data <- left_join(Data, Wind_Parameters, by = setNames(ID_Var, ID_Var)) %>%
+    select(-c("Join_Time", "Join_Date", "Join_Runway", "Heading", "Anemo_HW",
+              "Landing_Runway", "Anemo_SPD", "Anemo_HDG", "Anemo_Date", "Anemo_Time"))
+  
+  return(Data)
+}
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Basic Filtering Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that filter certain data formats for trivial conditions such as Trail Types or Leader of Follower aircraft.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 Get_Not_In_Trail <- function(Landing_Pair){
   Landing_Pair <- filter(Landing_Pair, Landing_Pair_Type == "Not_In_Trail")
@@ -60,6 +516,20 @@ Get_In_Trail <- function(Landing_Pair){
   Landing_Pair <- filter(Landing_Pair, Landing_Pair_Type != "Not_In_Trail")
   return(Landing_Pair)
 }
+
+Split_Leader_Follower <- function(Data, LorF){
+  LorF <- substr(LorF, 1, 1)
+  Data <- filter(Data, This_Pair_Role == LorF)
+  return(Data)
+}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Ordering Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that order specific data formats such as Radar, Segments and Landing Pairs.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
 
 Order_Radar_Range <- function(Radar){
   Radar <- Radar[order(Radar$Flight_Plan_ID, Radar$Range_To_Threshold),]
@@ -95,85 +565,750 @@ Order_Landing_Pairs <- function(LPR, LPID_Var){
   return(LPR)
 }
 
-# Function to join the correct ORD adaptation
-Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORD_OP, ORD_AC, ORD_W, ORD_DBS){
-  #LP <- left_join(LP, ORD_Runway_Reduced, by=c("Landing_Runway"="Runway_Name"))
 
-  # Operator level added for PWS
-  if (ORD_Profile_Selection == "Operator"){
-    LP <- mutate(LP, AC_Operator_Pair = paste0(Aircraft_Type, "-", Operator))
-    ORD_OP <- mutate(ORD_OP, AC_Operator_Pair = paste0(Aircraft_Type, "-", Operator)) %>% select-c("Aircraft_Type", "Operator")
-    LP0 <- inner_join(LP, ORD_OP, by = c("AC_Operator_Pair"))
-    LP1 <- filter(LP, AC_Operator_Pair %!in% ORD_AC$AC_Operator_Pair)
-    LP1 <- inner_join(LP1, ORD_AC, by=c("Aircraft_Type"))
-    LP2 <- filter(LP1, Aircraft_Type %!in% ORD_AC$Aircraft_Type)
-    LP2 <- inner_join(LP2, ORD_W, by=c("Wake_Cat"))
-    LP <- rbind(LP0, LP1, LP2) %>% select(-AC_Operator_Pair)
-  }
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Quality Control Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that generate flags for different scenarios to allow for data quality control. 
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
+# Function that uses Radar Path Legs to signify if a flight is a go-around.
+Flag_PLT_Go_Arounds <- function(Landing_Pair, Radar, Path_Legs){
+  
+  # Make reduced path leg table
+  Path_Leg_Types <- select(Path_Legs, Path_Leg_Name, Path_Leg_Type)
+  
+  # Join on Path Leg Type from tbl_Path_Leg
+  Radar1 <- left_join(Radar, Path_Leg_Types, by=c("Path_Leg" = "Path_Leg_Name"))
+  
+  # Make flag for Go-Around
+  Radar1 <- mutate(Radar1, Is_Go_Around = ifelse(Path_Leg_Type == "Go_Around", 1, 0))
+  
+  # Find the number of Go-Around path legs
+  Radar1 <- group_by(Radar1, Flight_Plan_ID) %>% summarise(Go_Around_Count = sum(Is_Go_Around, na.rm=T)) %>% ungroup()
+  
+  # Create flag for those with >=1 Go_Around path Leg
+  Radar1 <- mutate(Radar1, Goes_Around = ifelse(Go_Around_Count >= 1, 1, 0))
+  
+  # Reduce Datasets: Get Go-Around Flag to Join
+  Radar1 <- select(Radar1, Flight_Plan_ID, Goes_Around)
+  
+  # Join onto Landing Pair and Rename: Leader
+  Landing_Pair <- left_join(Landing_Pair, Radar1, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
+    rename(Goes_Around_Leader = Goes_Around)
+  
+  # Join onto Landing Pair and Rename: Follower
+  Landing_Pair <- left_join(Landing_Pair, Radar1, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
+    rename(Goes_Around_Follower = Goes_Around)
+  
+  # Get Final Pair Go-Around Flag
+  Landing_Pair <- mutate(Landing_Pair, Go_Around_Flag = ifelse(Goes_Around_Leader + Goes_Around_Follower >= 1, 1, 0))
+  
+  # Remove intermediary variables
+  Landing_Pair <- select(Landing_Pair, -c("Goes_Around_Leader", "Goes_Around_Follower"))
+  
+  return(Landing_Pair)
+}
+
+# Function that creates a flag that corresponds to the QC criteria of the original UTMA Validation Database's tbl_All_PAir_Reference_Data.
+Create_Filter_Flag_Reference <- function(Landing_Pair, Radar, Path_Legs){
+  
+  # Get Go-Around Flag
+  Landing_Pair <- Flag_PLT_Go_Arounds(Landing_Pair, Radar, Path_Legs)
+  
+  # Create New Reference Flag
+  Landing_Pair <- mutate(Landing_Pair, Reference_Flag = Go_Around_Flag)
+  
+  # Add to Reference Flag if Missing Aircraft Types
+  Landing_Pair <- mutate(Landing_Pair, Reference_Flag = ifelse(is.na(Leader_Aircraft_Type) | is.na(Follower_Aircraft_Type), 1, Reference_Flag))
+  
+  return(Landing_Pair)
+  
+}
+
+# Function that creates a flag that corresponds to the QC criteria of the original UTMA Validation Database's tbl_ORD_Observation/tbl_WAD_Observation.
+Create_Filter_Flag_Observation <- function(Landing_Pair, ORD_Aircraft, ORD_Profile_Selection, Wake_Pairs_Only, In_Trail_Only){
+  
+  # Initialise Observation Flag equal to Reference Flag - All Criteria is included in Observation
+  Landing_Pair <- mutate(Landing_Pair, Observation_Flag = Reference_Flag)
+  
+  # If Aircraft Type Only Validation: Only consider pairs where at least one Aircraft Type has specific parameters.
   if (ORD_Profile_Selection == "Aircraft_Type"){
-    LP1 <- inner_join(LP, ORD_AC, by=c("Aircraft_Type"))
-    LP2 <- filter(LP, Aircraft_Type %!in% ORD_AC$Aircraft_Type)
-    LP2 <- inner_join(LP2, ORD_W, by=c("Wake_Cat"))
-    LP <- rbind(LP1, LP2)
-  }
-
-  if (ORD_Profile_Selection == "Wake"){
-    LP <- inner_join(LP, ORD_W, by=c("Wake_Cat"))
-  }
-
-  if (ORD_Profile_Selection == "TBS_Table"){
-    LP <- inner_join(LP, ORD_DBS, by=c("DBS_All_Sep_Distance"="DBS_Distance"))
-  }
-
-  return(LP)
-}
-
-
-
-
-
-
-# Function to Get Correct Compression Distances (LST/CCT) For ORD Observation. This
-# means ORD Aircraft Profile can be run in correct order for Prediction.
-Get_Compression_Distances <- function(LP, ORD_Operator, ORD_Aircraft, ORD_Wake, ORD_DBS, ORD_Profile_Selection, Distance){
-
-  ORD_Aircraft_1 <- select(ORD_Aircraft, Aircraft_Type,
-                           Local_Stabilisation_Distance = Local_Stabilisation_Distance_Lead,
-                           Compression_Commencement_Threshold)
-  ORD_Wake_1 <- select(ORD_Wake, Wake_Cat,
-                       Local_Stabilisation_Distance = Local_Stabilisation_Distance_Lead,
-                       Compression_Commencement_Threshold)
-  ORD_DBS_1 <- select(ORD_DBS, DBS_Distance,
-                      Local_Stabilisation_Distance = Local_Stabilisation_Distance_Lead,
-                      Compression_Commencement_Threshold)
-  LP <- select(LP, Landing_Pair_ID,
-               Leader_Flight_Plan_ID,
-               Aircraft_Type = Leader_Aircraft_Type,
-               Wake_Cat = Leader_Recat_Wake_Cat,
-               DBS_All_Sep_Distance)
-  LP <- Join_ORD_Adaptation(LP, ORD_Profile_Selection, ORD_Operator, ORD_Aircraft_1, ORD_Wake_1, ORD_DBS_1)
-  if (Distance == "LST"){LP <- select(LP, Landing_Pair_ID, Leader_Flight_Plan_ID, Local_Stabilisation_Distance)}
-  if (Distance == "CCT"){LP <- select(LP, Landing_Pair_ID, Leader_Flight_Plan_ID, Compression_Commencement_Threshold)}
-
-  return(LP)
-}
-
-
-
-Get_Compression_Distances <- function(LP, Precedences, ORD_Levels, ORD_Profile_Selection, Distance){
+    Landing_Pair <- mutate(Landing_Pair, Observation_Flag = ifelse(
+      Leader_Aircraft_Type %!in% ORD_Aircraft$Aircraft_Type &
+        Follower_Aircraft_Type %!in% ORD_Aircraft$Aircraft_Type,
+      1, Observation_Flag))}
   
-  if (Distance == "LST"){Dist_Var <- "Local_Stabilisation_Distance"}
-  if (Distance == "CCT"){Dist_Var <- "Compression_Commencement_Threshold"}
+  # Add to Flag if only Wake Pairs being Considered - Note this actually includes ROT Pairs too
+  if (Wake_Pairs_Only){Landing_Pair <- mutate(Landing_Pair, Observation_Flag =
+                                                ifelse(is.na(Reference_Recat_Wake_Separation_Distance) &
+                                                         is.na(Reference_Recat_ROT_Spacing_Distance), 1, Observation_Flag))}
   
-  LP <- Join_ORD_Adaptation(LP, ORD_Profile_Selection, ORDBuffers = F, Precedences, ORD_Levels, LorF = "Leader", Use_EFDD = F, LegacyorRecat = "Recat") %>%
-    select(Landing_Pair_ID, !!sym(Dist_Var))
+  # Add to Flag if only In Trail Pairs being Considered
+  if (In_Trail_Only){Landing_Pair <- mutate(Landing_Pair, Observation_Flag = ifelse(Landing_Pair_Type == "Not_In_Trail", 1, Observation_Flag))}
   
-  return(LP)
+  return(Landing_Pair)
   
 }
 
+# Function that creates a flag that corresponds to the QC criteria of the original UTMA Validation Database's tbl_ORD_Prediction/tbl_WAD_Prediction.
+Create_Filter_Flag_Prediction <- function(Landing_Pair, ORDorWAD){
+  
+  # Get Variable Names
+  Flag_Var <- paste0(ORDorWAD, "_Prediction_Flag")
+  Comp_Var <- paste0("Observed_", ORDorWAD, "_Compression")
+  
+  # Initialise Prediction Flag equal to Observation Flag as Prediction only Uses Observation Values
+  Landing_Pair <- mutate(Landing_Pair, !!sym(Flag_Var) := Observation_Flag)
+  
+  # Add to Flag if No Observed Compression Values.
+  Landing_Pair <- mutate(Landing_Pair, !!sym(Flag_Var) := ifelse(is.na(!!sym(Comp_Var)), 1, !!sym(Flag_Var)))
+  
+  return(Landing_Pair)
+  
+}
 
+# Function that creates a flag that corresponds to the QC criteria of the original UTMA Validation Database's tbl_eTBS_Performance_Model.
+Create_Filter_Flag_Performance <- function(Landing_Pair, Wake_Pairs_Only, In_Trail_Only){
+  
+  # Initialise Performance Flag equal to Reference Flag - All Criteria is included in Performance Model
+  Landing_Pair <- mutate(Landing_Pair, Performance_Flag = Reference_Flag)
+  
+  # Add to Flag if only Wake Pairs being Considered - Note this actually includes ROT Pairs too
+  if (Wake_Pairs_Only){Landing_Pair <- mutate(Landing_Pair, Performance_Flag =
+                                                ifelse(is.na(Reference_Recat_Wake_Separation_Distance) &
+                                                         is.na(Reference_Recat_ROT_Spacing_Distance), 1, Performance_Flag))}
+  
+  # Add to Flag if only In Trail Pairs being Considered
+  if (In_Trail_Only){Landing_Pair <- mutate(Landing_Pair, Performance_Flag = ifelse(Landing_Pair_Type == "Not_In_Trail", 1, Performance_Flag))}
+  
+  return(Landing_Pair)
+  
+}
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Data Loading Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that Load Specific data formats for use in IAC TBS.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+Load_Radar_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading Radar data for ORD Validation for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Radar Data Query
+  Radar_Query <- "SELECT
+                    rtp.Flight_Plan_ID,
+                    rtp.Track_Time,
+                    rtpd.Range_To_Threshold,
+                    rtpd.Mode_S_Wind_Localiser_Capture,
+                    rtp.Mode_S_IAS,
+                    rtpd.Wind_Effect_IAS,
+                    rtpd.ILS_Locus_RTT,
+                    rtpd.Range_To_ILS,
+                    rtpd.Path_Leg
+                  FROM tbl_Radar_Track_Point rtp
+                  LEFT JOIN tbl_Radar_Track_Point_Derived rtpd
+                  ON rtp.Radar_Track_Point_ID = rtpd.Radar_Track_Point_ID "
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Radar_Query <- paste0(Radar_Query, " WHERE Track_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Radar_Query <- paste0(Radar_Query, " WHERE Track_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Radar <- dbGetQuery(con, Radar_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed ORD Validation Radar Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Radar)
+  
+}
+
+Load_Surface_Wind_Data <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading Surface Wind data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Surface Wind Query
+  Surface_Wind_Query <- "SELECT
+                         Landing_Runway,
+                         Anemo_Date,
+                         Anemo_Time,
+                         Anemo_SPD,
+                         Anemo_HDG
+                       FROM tbl_Anemometer"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Anemo_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Anemo_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Surface_Wind <- dbGetQuery(con, Surface_Wind_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed Surface Wind Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Surface_Wind)
+  
+}
+
+Load_Flight_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading ORD Validation Flight Plan data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Flight Plan Query
+  Flight_Plan_Query <- "SELECT
+                         FP.Flight_Plan_ID,
+                         FP_Date,
+                         FP_Time,
+                         Aircraft_Type,
+                         Callsign,
+                         FP.Landing_Runway,
+                         Time_At_4DME
+                       FROM tbl_Flight_Plan FP
+                       LEFT JOIN tbl_Flight_Plan_Derived FPD
+                       ON FP.Flight_Plan_ID = FPD.Flight_Plan_ID"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Flight_Plan_Query <- paste0(Flight_Plan_Query, " WHERE FP_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Flight_Plan_Query <- paste0(Flight_Plan_Query, " WHERE FP_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Flight_Plan <- dbGetQuery(con, Flight_Plan_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed ORD Validation Flight Plan data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Flight_Plan)
+  
+}
+
+Load_Landing_Pair_Data <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading Landing Pair data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Landing Pair Query
+  Landing_Pair_Query <- "SELECT
+                         *
+                       FROM tbl_Landing_Pair"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Landing_Pair_Query <- paste0(Landing_Pair_Query, " WHERE Landing_Pair_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Landing_Pair_Query <- paste0(Landing_Pair_Query, " WHERE Landing_Pair_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Landing_Pair <- dbGetQuery(con, Landing_Pair_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed Landing Pair data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Landing_Pair)
+  
+}
+
+Load_Stage_2_Segment_Data <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading Stage 2 Segment data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Stage 2 Segment Query
+  Forecast_Segs_Query <- "SELECT
+                         *
+                        FROM tbl_Mode_S_Wind_Seg_Forecast"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Forecast_Segs_Query <- paste0(Forecast_Segs_Query, " WHERE Forecast_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Forecast_Segs_Query <- paste0(Forecast_Segs_Query, " WHERE Forecast_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Segments <- dbGetQuery(con, Forecast_Segs_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed Stage 2 Segment data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Segments)
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Adaptation Joining Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that join sets of adaptation based on different criteria. 
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+Get_LF_Ref_Parameters <- function(Landing_Pair, Flight_Plan, Runways, ACTW, ACTWL, LorF){
+  
+  # Get the Variable Names
+  FPID <- paste0(LorF, "_Flight_Plan_ID")
+  Runway_Var <- paste0(LorF, "_Landing_Runway")
+  FP_Time_Var <- paste0(LorF, "_FP_Time")
+  AC_Type_Var <- paste0(LorF, "_Aircraft_Type")
+  Csn_Var <- paste0(LorF, "_Callsign")
+  New_Wake_Var <- paste0(LorF, "_Recat_Wake_Cat")
+  Old_Wake_Var <- paste0(LorF, "_Legacy_Wake_Cat")
+  Time_4DME_Var <- paste0(LorF, "_Time_At_4DME")
+  
+  # Join L/F ID to Flight Plan and Rename Variables
+  Landing_Pair <- left_join(Landing_Pair, Flight_Plan, by = setNames("Flight_Plan_ID", FPID)) %>%
+    rename(!!sym(Runway_Var) := "Landing_Runway",
+           !!sym(FP_Time_Var) := "FP_Time",
+           !!sym(AC_Type_Var) := "Aircraft_Type",
+           !!sym(Csn_Var) := "Callsign",
+           !!sym(Time_4DME_Var) := "Time_At_4DME")
+  
+  # Join L/F ID to AC to Wake and Rename
+  Landing_Pair <- left_join(Landing_Pair, ACTW, by = setNames("Aircraft_Type", AC_Type_Var)) %>%
+    rename(!!sym(New_Wake_Var) := "Wake")
+  Landing_Pair <- left_join(Landing_Pair, ACTWL, by = setNames("Aircraft_Type", AC_Type_Var)) %>%
+    rename(!!sym(Old_Wake_Var) := "Wake")
+  
+  # Join on Runway Group/MRS (NEED TO ADD MRS TO SQL TBL_RUNWAY - 3NM FOR NOW)
+  Runway_Reduced <- select(Runways, Runway_Name, Runway_Group) %>%
+    mutate(Min_Radar_Separation = 3 * NM_to_m)
+  
+  # Do for Followers (Doesn't matter which)
+  if(LorF == "Follower"){Landing_Pair <- left_join(Landing_Pair, Runway_Reduced, by = c("Follower_Landing_Runway" = "Runway_Name"))}
+  
+  return(Landing_Pair)
+  
+}
+
+# Selects the correct Adaptation from ORD Tables based on Level
+Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD){
+  
+  # Change "Leader" to "Lead" For Variable Compatibility
+  if(LorF == "Leader"){LorF <- "Lead"}
+  
+  # Get Other Variable Names
+  LSS_Type_Var <- paste0("Landing_Stabilisation_Speed_Type_", LorF)
+  VRef_Var <- paste0("Min_Safe_Landing_Speed_", LorF)
+  Gusting_Var <- paste0("Apply_Gusting_", LorF)
+  LSD_Var <- paste0("Local_Stabilisation_Distance_", LorF)
+  End_Fin_Decel_Var <- paste0("End_Final_Deceleration_Distance_", LorF) ## Added for PWS
+  SPS_Var <- paste0("Steady_Procedural_Speed_", LorF)
+  Fin_Decel_Var <- paste0("Final_Deceleration_", LorF)
+  End_Init_Decel_Var <- paste0("End_Initial_Deceleration_Distance_", LorF)
+  IPS_Var <- paste0("Initial_Procedural_Speed_", LorF)
+  Init_Decel_Var <- paste0("Initial_Deceleration_", LorF)
+  
+  ## Temporary Fix for Discrepancy in Init_Decel_Var Names across Files ---------------------------- #
+  # if (Level == "DBS" & LorF == "Lead"){Init_Decel_Var <- "Initial_Deceleration_Lead"}
+  # if (Level == "DBS" & LorF == "Follower"){Init_Decel_Var <- "Initial_Deceleration_Follower"}
+  # if (Level == "Wake" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
+  # if (Level == "Wake" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_Follower"}
+  # if (Level == "Aircraft" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
+  # if (Level == "Aircraft" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_follower"}
+  # -------------------------------------------------------------------------------------------------- #
+  
+  # Set by default inclusion of CCT and End Final Decel Distance to False
+  Use_CCT <- T
+  
+  # Find the Unique Variable names for the Aircraft Profile and names from Adaptation
+  if (Level == "DBS"){Unique_Vars <- c("DBS_Distance")}
+  if (Level %in% c("Wake", "14Cat", "20Cat")){Unique_Vars <- c("Wake_Cat")}
+  if (Level == "Aircraft"){Unique_Vars <- c("Aircraft_Type")}
+  if (Level == "Operator"){Unique_Vars <- c("Aircraft_Type", "Operator")}
+  
+  # Initialise a list of input (2) and Output (1) variable names
+  All_Vars_1 <- Unique_Vars
+  All_Vars_2 <- Unique_Vars
+  
+  # If Using CCT, add this to list of input and output variable names
+  if (Use_CCT){
+    All_Vars_1 <- append(All_Vars_1, "Compression_Commencement_Threshold")
+    All_Vars_2 <- append(All_Vars_2, "Compression_Commencement_Threshold")
+  }
+  
+  # Initialise the first set of variables present in all cases (Input - 2, Output - 1)
+  Inter_Vars_1 <- c("Landing_Stabilisation_Speed_Type", "VRef", "Apply_Gusting", "Local_Stabilisation_Distance")
+  Inter_Vars_2 <- c(LSS_Type_Var, VRef_Var, Gusting_Var, LSD_Var)
+  
+  # Add these variable names to the total selections
+  All_Vars_1 <- append(All_Vars_1, Inter_Vars_1)
+  All_Vars_2 <- append(All_Vars_2, Inter_Vars_2)
+  
+  # If using End Final Deceleration Distance, add it to the list
+  if (Use_EFDD){
+    All_Vars_1 <- append(All_Vars_1, "End_Final_Deceleration_Distance")
+    All_Vars_2 <- append(All_Vars_2, End_Fin_Decel_Var)
+  }
+  
+  # Initialise the final set of variables present in all cases
+  Inter_Vars_1 <- c("Steady_Procedural_Speed", "Final_Deceleration", "End_Initial_Deceleration_Distance", "Initial_Procedural_Speed", "Initial_Deceleration")
+  Inter_Vars_2 <- c(SPS_Var, Fin_Decel_Var, End_Init_Decel_Var, IPS_Var, Init_Decel_Var)
+  
+  # Build the final variable lists
+  All_Vars_1 <- append(All_Vars_1, Inter_Vars_1)
+  All_Vars_2 <- append(All_Vars_2, Inter_Vars_2)
+  
+  # Lay out the Parameter names to add buffers to (Originals), the Output buffer names (1) and the Input buffer names (2)
+  Buffer_Originals <- c("VRef", "Steady_Procedural_Speed", "Initial_Procedural_Speed")
+  Buffer_Vars_1 <- c("VRef_Buffer", "SPS_Buffer", "IPS_Buffer")
+  Buffer_Vars_2 <- c(paste0("Min_Safe_Landing_Speed_Buffer", LorF), paste0("Steady_Procedural_Speed_Buffer", LorF), paste0("Initial_Procedural_Speed_Buffer", LorF))
+  
+  # If The input buffer parameter exists, add the input and corresponding outp[ut parameter to final selection
+  if (ORDBuffers){
+    for (i in 1:length(Buffer_Vars_2)){
+      if (Buffer_Vars_2[i] %in% names(Ref_Data)){
+        All_Vars_1 <- append(All_Vars_1, Buffer_Vars_1[i])
+        All_Vars_2 <- append(All_Vars_2, Buffer_Vars_2[i])
+      }
+    }
+  }
+  
+  # Initialise a string to evaluate the select statement
+  Language_String <- paste0("Ref_Data_New <- select(Ref_Data")
+  
+  # Build the string by selecting the output vars as the input vars
+  for (j in 1: length(All_Vars_1)){
+    Language_String <- paste0(Language_String, ", ", All_Vars_1[j], " = ", All_Vars_2[j])
+    if (j == length(All_Vars_1)){Language_String <- paste0(Language_String, ")")}
+  }
+  
+  # evaluate this string as "language" -> executes the string as code
+  eval(str2lang(Language_String))
+  
+  # If any buffer variables exist, add them to their "original" and dispose of the buffer parameter
+  for (k in 1:length(Buffer_Originals)){
+    if (Buffer_Vars_1[k] %in% names(Ref_Data_New)){
+      Ref_Data_New <- mutate(Ref_Data_New, !!sym(Buffer_Originals[k]) := !!sym(Buffer_Originals[k]) + !!sym(Buffer_Vars_1[k])) %>%
+        select(-!!sym(Buffer_Vars_1[k]))
+    }
+  }
+  
+  return(Ref_Data_New)
+  
+}
+
+# Function to join the correct ORD adaptation. Current version for IAC TBS v1.0. Need to add connection as an argument.
+Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat){
+  
+  # If ORD_Profile_Selection is TBS_Table, skip the Precedence checks and just join 
+  if (ORD_Profile_Selection == "TBS_Table" & LegacyorRecat == "Recat"){
+    Precedences = c("DBS")
+    ORD_Levels <- c(T)
+  }
+  
+  # Create the Precedence Table
+  Precedence_Table <- data.frame(Scheme = as.character(Precedences), Switch = ORD_Levels) %>%
+    mutate(ID = row_number()) %>% select(ID, everything())
+  
+  # Initialise Copy of LP for the "remmaining" unmatched data.
+  LPRem <- LP
+  
+  # Initialise a counter: counts how many tables have been matched.
+  Counter <- 0
+  
+  # Unlike SASAI, we are joining multiple parameters. These are all required to be non-NA thugh so we can check just one.
+  Param_Name <- "Steady_Procedural_Speed"
+  
+  # Loop across all level precedences.
+  for (i in 1:nrow(Precedence_Table)){
+    
+    
+    # Get the parameter name, the "level" and its activity status.
+    Constr <- filter(Precedence_Table, ID == i)
+    Level = Constr$Scheme
+    Active = Constr$Switch
+    
+    # If this level is to be considered...
+    if (Active){
+      
+      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
+      message(paste0("Attempting to Join ORD type ", Level, " level Adaptation..."))
+      Table_Name <- Get_Reference_ORD_Parameter_Table_Name(Level, LegacyorRecat, ORD_Profile_Selection)
+      
+      # If the desired table exists in the database, load table and increment counter.
+      if (dbExistsTable(con, Table_Name)){
+        message(paste0("Joining ORD type ", Level, " level ", LegacyorRecat, " adaptation."))
+        Counter <- Counter + 1
+        Adaptation <- Load_Adaptation_Table(con, Table_Name)
+        
+        # Find/isolate the relevant columns from the data and the adaptation.
+        Join_Names_Adaptation <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Ref", LorF)
+        Join_Names_LP <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Data", LorF)
+        Adaptation <- Select_ORD_LF_Adaptation(Adaptation, Level, LorF, ORDBuffers, Use_EFDD)
+        Select_Names_Adaptation <- setdiff(names(Adaptation), Join_Names_Adaptation)
+        
+        # If Parameters already joined to non usccessful data, remove and rejoin based on new level.
+        if (Param_Name %in% names(LPRem)){
+          LPRem <- LPRem %>% select(-all_of(Select_Names_Adaptation))
+        }
+        
+        # Join on the adaptation and split into "successful" and "not successful" joins (non-NA and NA)
+        LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+        LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
+        LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
+        
+        # Bind the data together. If first valid table, data must be initalised.
+        if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
+        
+        # If Adaptation table doesn't exist: display message.
+      } else {message(paste0("Cannot join ORD type ", Level, " level ", LegacyorRecat, " adaptation. The table ", Table_Name, " does not exist."))}
+      
+      message("---------------------------------------")
+    }
+    
+    # If the final "level" has been checked and at least one table was valid, bind on the final "not successful" data.
+    if (i == nrow(Precedence_Table) & Counter != 0){LP <- rbind(LP, LPRem)}
+    
+  }
+  
+  # If no adaptation values were valid and/or no "level" switches were active, add required parameter(s) as NA.
+  if (Counter == 0){
+    message(paste0("No Valid ORD type ", LegacyorRecat, " adaptation available. Defaulting values to NA."))
+    message("---------------------------------------")
+    #   for (j in 1:length(Select_Names_Adaptation)){
+    #     LP <- LP %>% mutate(!!sym(Select_Names_Adaptation[j]) := NA)}
+  }
+  
+  return(LP)
+}
+
+# Function that provides the correct ORD Adaptation table name based on it's "Level".
+Get_Reference_ORD_Parameter_Table_Name <- function(Level, LegacyorRecat, ORD_Profile_Selection){
+  
+  if (Level == "Operator"){Middle <- "AC_Operator"} else {Middle <- Level}
+  String <- paste0("tbl_ORD_", Middle, "_Adaptation")
+  if (ORD_Profile_Selection == "TBS_Table"){String <- "tbl_ORD_DBS_Adaptation"}
+  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
+  message(paste0("Returning Table name ", String))
+  
+  return(String)
+  
+}
+
+# Function that returns the Identifiers of a given ORD Adaptation level.
+Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, LegacyorRecat, ReforData, LorF){
+  
+  if (ReforData == "Ref"){
+    if (ORD_Profile_Selection == "TBS_Table"){return(c("DBS_Distance"))}
+    else if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
+    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
+    else {return(c("Wake_Cat"))}
+  } else {
+    if (ORD_Profile_Selection == "TBS_Table"){return(c("DBS_All_Sep_Distance"))}
+    else if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
+    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
+    else {return(c("Wake_Cat"))}
+  }
+  
+}
+
+
+Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type, TBSCBuffers, LegacyorRecat){
+  
+  # Create the Precedence Table
+  Precedence_Table <- data.frame(Scheme = Precedences, Switch = Values) %>%
+    mutate(ID = row_number()) %>% select(ID, everything())
+  
+  # Initialise Copy of LP for the "remmaining" unmatched data.
+  LPRem <- LP
+  
+  # Initialise a counter: counts how many tables have been matched.
+  Counter <- 0
+  
+  # Loop across all level precedences.
+  for (i in 1:nrow(Precedence_Table)){
+    
+    # Get the parameter name, the "level" and its activity status.
+    Param_Name <- Get_Reference_SASAI_Parameter_Name(Use, Param_Type)
+    Constr <- filter(Precedence_Table, ID == i)
+    Level = Constr$Scheme
+    Active = Constr$Switch
+    
+    # If this level is to be considered...
+    if (Active){
+      
+      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
+      message(paste0("Attempting to Join ", Use, " type ", Level, " level ", Param_Type, " Adaptation..."))
+      Table_Name <- Get_Reference_SASAI_Parameter_Table_Name(Use, Level, Param_Type, LegacyorRecat)
+      
+      # If the desired table exists in the database, load table and increment counter.
+      if (dbExistsTable(con, Table_Name)){
+        message(paste0("Joining ", Use, " type ", Level, " level ", Param_Type, " ", LegacyorRecat, " adaptation."))
+        Counter <- Counter + 1
+        Adaptation <- Load_Adaptation_Table(con, Table_Name)
+        
+        # If finding a time parameter, apply the time buffer if TBSCBuffers is active (Add the buffer to original value and select original)
+        if (TBSCBuffers & Param_Type == "Time" & "Buffer" %in% names(Adaptation)){Adaptation <- Adaptation %>% mutate(!!sym(Param_Name) := !!sym(Param_Name) + Buffer)}
+        
+        # Find/isolate the relevant columns from the data and the adaptation.
+        Join_Names_Adaptation <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Ref", LegacyorRecat)
+        Join_Names_LP <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Data", LegacyorRecat)
+        Select_Names_Adaptation <- append(Join_Names_Adaptation, Param_Name)
+        Adaptation <- select(Adaptation, all_of(Select_Names_Adaptation))
+        
+        # If the column already exists in the "not successful" data, remove it to avoid column join duplicates.
+        if (Param_Name %in% names(LPRem)){LPRem <- LPRem %>% select(-!!sym(Param_Name))}
+        
+        # Join on the adaptation and split into "successful" and "not successful" joins (non-NA and NA)
+        LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+        LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
+        LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
+        
+        # Bind the data together. If first valid table, data must be initalised.
+        if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
+        
+        # If Adaptation table doesn't exist: display message.
+      } else {message(paste0("Cannot join ", Use, " type ", Level, " level ", Param_Type, " ", LegacyorRecat, " adaptation. The table ", Table_Name, " does not exist."))}
+      
+      message("---------------------------------------")
+    }
+    
+    # If the final "level" has been checked and at least one table was valid, bind on the final "not successful" data.
+    if (i == nrow(Precedence_Table) & Counter != 0){LP <- rbind(LP, LPRem)}
+    
+  }
+  
+  # If no adaptation values were valid and/or no "level" switches were active, add required parameter as NA.
+  if (Counter == 0){
+    message(paste0("No Valid ", Use, " type ", Param_Type, " ", LegacyorRecat, " adaptation available. Defaulting values to NA."))
+    message("---------------------------------------")
+    LP <- LP %>% mutate(!!sym(Param_Name) := NA)}
+  
+  # Rename the parameter in accordance with the tool requirements. Indicates Recat or Legacy.
+  Param_Name_Old <- Param_Name
+  if (Param_Type == "Speed"){Param_Type <- "IAS"}
+  if (Use == "ROT"){Use <- "ROT_Spacing"} else if (Use == "Wake"){Use <- "Wake_Separation"}
+  Param_Name <- paste0("Reference_", LegacyorRecat, "_", Use, "_", Param_Type)
+  LP <- rename(LP, !!sym(Param_Name) := !!sym(Param_Name_Old))
+  
+  # Temp fix: If finding ROT value where leader/follower have different runways, set value to NA. ## NOTE: Will need to incorporate Runway Pair Rule!
+  LP <- arrange(LP, !!sym(LP_Primary_Key)) %>%
+    mutate(!!sym(Param_Name) := ifelse(Use == "ROT_Spacing" & Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Param_Name))) ## Remove ROT Constraints for not-in-trail runways.
+  
+  # Not started: If Runways different - only keep wake separation parameters if a runway pair and Wake Dependent. TEMP FOR HEATHROW AS ALL NIT ARE RUNWAY DEP
+  LP <- arrange(LP, !!sym(LP_Primary_Key)) %>%
+    mutate(!!sym(Param_Name) := ifelse(Use == "Wake_Separation" & Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Param_Name))) ## Remove ROT Constraints for not-in-trail runways.
+  
+  
+  return(LP)
+  
+}
+
+Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, LegacyorRecat){
+  
+  String <- "tbl"
+  
+  if (Param_Type == "Speed"){
+    Prefix <- "Assumed"
+    Suffix <- "IAS"
+  }
+  
+  if (Param_Type == "Time"){
+    Prefix <- "Reference"
+    Suffix <- "Time"
+  }
+  
+  if (Param_Type == "Distance"){
+    Prefix <- "Reference"
+    Suffix <- "Dist"
+  }
+  
+  S2 <- ""
+  if (Level == "Operator"){S2 <- "AC_Operator_"}
+  if (Level == "Aircraft"){S2 <- "ACTP_"}
+  if (Level %in% c("14Cat", "20Cat")){S2 <- paste0(Level, "_")}
+  
+  if (Use == "Wake"){
+    if (Level == "Wake" & LegacyorRecat == "Recat"){Middle <- "Recat_Separation"} else {Middle <- "Wake_Separation"}
+  }
+  
+  if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  
+  if (LegacyorRecat == "Legacy"){Suffix <- paste0(Suffix, "_Legacy")}
+  
+  String <- paste0(String, "_", Prefix, "_", S2, Middle, "_", Suffix)
+  
+  return(String)
+  
+}
+
+Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
+  
+  if (Param_Type == "Speed"){
+    Prefix <- "Assumed"
+    Suffix <- "IAS"
+  }
+  
+  if (Param_Type == "Time"){
+    Prefix <- "Reference"
+    Suffix <- "Time"
+  }
+  
+  if (Param_Type == "Distance"){
+    Prefix <- "Reference"
+    Suffix <- "Distance"
+  }
+  
+  if (Use == "Wake"){Middle <- "Wake_Separation"}
+  if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  
+  String <- paste0(Prefix, "_", Middle, "_", Suffix)
+  return(String)
+  
+}
+
+Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData, LegacyorRecat){
+  
+  Vars <- c()
+  
+  if (ReforData == "Ref"){
+    if (Use == "ROT"){Vars <- append(Vars, "Runway")}
+    if (Level %in% c("Wake", "14Cat", "20Cat")){Vars <- append(Vars, c("Leader_WTC", "Follower_WTC"))}
+    if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}
+    if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
+  } else if (ReforData == "Data"){
+    if (Use == "ROT"){Vars <- append(Vars, "Leader_Landing_Runway")} # Use Leader's: This won't be done for Not-In-Trail Pairs. (Separate procedure!)
+    if (Level == "Wake"){Vars <- append(Vars, c(paste0("Leader_", LegacyorRecat, "_Wake_Cat"), paste0("Follower_", LegacyorRecat, "_Wake_Cat")))}
+    if (Level == "20Cat"){Vars <- append(Vars, c("Leader_20Cat_Wake_Cat", "Follower_20Cat_Wake_Cat"))}
+    if (Level == "14Cat"){Vars <- append(Vars, c("Leader_14Cat_Wake_Cat", "Follower_14Cat_Wake_Cat"))}
+    if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}
+    if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
+  }
+  
+  return(Vars)
+  
+}
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Observed Data Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that manipulate Radar data to calculate observed values/metrics. 
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Generic function that groups ordered data by an identifier and selects the Nth record for each group.
 Select_Nth_Observation <- function(Data, Group_Var, N){
 
   Data <- group_by(Data, !!sym(Group_Var)) %>% mutate(ID = row_number()) %>%
@@ -182,6 +1317,7 @@ Select_Nth_Observation <- function(Data, Group_Var, N){
   return(Data)
 }
 
+# 
 Extract_Nth_Radar_Time_RTT <- function(Data, Radar, N, Time_Var, RTT_Var, FPID){
 
   # Filter results above delivery point
@@ -198,6 +1334,7 @@ Extract_Nth_Radar_Time_RTT <- function(Data, Radar, N, Time_Var, RTT_Var, FPID){
   return(Data)
 }
 
+# OBSOLETE: Function to get the Max RTT.
 Get_Follower_ILS_Join_Time <- function(Data, Radar, Path_Legs, PLTorGWCS){
 
   # Order Radar in Ascending Time Order
@@ -219,11 +1356,11 @@ Get_Follower_ILS_Join_Time <- function(Data, Radar, Path_Legs, PLTorGWCS){
 
 }
 
-# Calculate ORD Prediction Time: Do we want radar inside or outside?
+# Calculate ORD Prediction Time. 
 Get_ORD_Prediction_Time <- function(Data, Radar, Path_Legs){
 
   # Order Radar Time Ascending
-  Radar <- Order_Radar(INP_Radar)
+  Radar <- Order_Radar(Radar)
 
   # Get Path Leg Type
   Path_Leg_Reduced <- select(Path_Legs, Path_Leg_Name, Path_Leg_Type)
@@ -244,7 +1381,7 @@ Get_ORD_Prediction_Time <- function(Data, Radar, Path_Legs){
   return(Data)
 }
 
-# Time At Fixed DME.
+# OBSOLETE: Gets RTT and Time at Fixed DME Distance.
 Get_Time_At_Fixed_DME <- function(Data, Radar, DME, LorF, OrderBy){
 
   # Order Radar by Range To Threshold
@@ -269,9 +1406,6 @@ Get_Time_At_Fixed_DME <- function(Data, Radar, DME, LorF, OrderBy){
   return(Data)
 
 }
-
-
-
 
 Get_Nth_Time_At_LP_Distance <- function(LPR, Radar, N, Prefix, Filter_Var, Crit_Var, LorF, OrderBy){
 
@@ -304,9 +1438,6 @@ Get_Nth_Time_At_LP_Distance <- function(LPR, Radar, N, Prefix, Filter_Var, Crit_
 # Follower Flight Plan ID and the relevant Leader time at a certain distance.
 Get_Follower_Interpolated_RTTs <- function(LPR, Radar, Leader_Time_Var){
 
-  # Max Range to ILS Value to Consider
-  Max_Range_To_ILS <- 3 * NM_to_m
-
   # Get the Leader Times
   Leader_Times <- select(LPR, "Follower_Flight_Plan_ID", !!sym(Leader_Time_Var))
 
@@ -330,17 +1461,6 @@ Get_Follower_Interpolated_RTTs <- function(LPR, Radar, Leader_Time_Var){
            Second_Path_Leg = Path_Leg, Second_ILS_Locus_RTT = ILS_Locus_RTT, Second_Range_To_ILS = Range_To_ILS) %>%
             select(-Leader_Time)
 
-  #### MAYBE ADD: IF NA RANGE TO THRESHOLD AND ON INTERCEPT LEG - REPLACE WITH ILS LOCUS RTT + RANGE TO ILS
-  #Radar1 <- mutate(Radar1, First_Track_Distance =
-  #                   ifelse(is.na(First_Track_Distance) & (str_detect(First_Path_Leg, "Int") | str_detect(First_Path_Leg, "ILS")) & First_Range_To_ILS < Max_Range_To_ILS,
-  #                          First_ILS_Locus_RTT,
-  #                          First_Track_Distance))
-  #Radar1 <- mutate(Radar1, Second_Track_Distance =
-  #                   ifelse(is.na(Second_Track_Distance) & (str_detect(Second_Path_Leg, "Int") | str_detect(Second_Path_Leg, "ILS")) & Second_Range_To_ILS < Max_Range_To_ILS,
-  #                          Second_ILS_Locus_RTT,
-  #                          Second_Track_Distance))
-  ##########################################################################################################
-
   # Join the Two Sets together
   Radar <- full_join(Radar1, Radar2, by = c("Flight_Plan_ID"))
 
@@ -351,6 +1471,7 @@ Get_Follower_Interpolated_RTTs <- function(LPR, Radar, Leader_Time_Var){
                    Time_Ratio = Time_Delta_2 / Time_Delta,
                    Interp_Distance = Second_Track_Distance - Time_Ratio*Distance_Delta) %>% select(Flight_Plan_ID, Interp_Distance)
   return(Radar)
+  
 }
 
 
@@ -375,7 +1496,6 @@ Get_Interpolated_Separation_At_DME <- function(LPR, Radar, DME){
   return(LPR)
 
 }
-
 
 Get_Observed_Separation_Time_At_DME <- function(LPR, DME){
 
@@ -430,657 +1550,495 @@ Get_Observed_Compression_Values <- function(LPR, ORDorWAD){
 
 }
 
-
-
-# Calculate Surface Wind Parameters. Join_Time, Join_Date, Join_Runway need to
-# be specified before function application, and variables output should be renamed.
-Get_Surface_Wind <- function(Data, SW, Runways, Prefix, ID_Var, Date_Var, Time_Var, Runway_Var){
-
-  # Get Variable Names
-  Wind_SPD_Var <- paste0(Prefix, "_Surface_Wind_SPD")
-  Wind_HDG_Var <- paste0(Prefix, "_Surface_Wind_HDG")
-  Headwind_Var <- paste0(Prefix, "_Surface_Headwind")
-
-  # Get the Required Join Parameters (LP)
-  Data <- mutate(Data,
-                Join_Time := !!sym(Time_Var),
-                Join_Date := !!sym(Date_Var),
-                Join_Runway := !!sym(Runway_Var))
-
-  # Get the Required Join Parameters (SW)
-  SW <- mutate(SW,
-               Join_Time = Anemo_Time,
-               Join_Date = Anemo_Date,
-               Join_Runway = Landing_Runway)
-
-  # Convert to Data Tables and Set Keys for Rolling Join
-  SW <- as.data.table(SW)
-  Data <- as.data.table(Data)
-  setkey(SW, Join_Runway, Join_Date, Join_Time)
-  setkey(Data, Join_Runway, Join_Date, Join_Time)
-
-  # Do Rolling Join and convert back to data frame
-  Data <- SW[Data, roll = Inf]
-  Data <- as.data.frame(Data)
-
-  # Get Surface Headwind Parameter
-  Runways2 <- select(Runways, Runway_Name, Heading)
-  Data <- left_join(Data, Runways2, by = c("Join_Runway" = "Runway_Name"))
-  Data <- mutate(Data, Anemo_HW = Get_2D_Scalar_Product(Anemo_SPD, Anemo_HDG, 1, Heading))
-
-  # Select appropriate parameters and rename
-  Wind_Parameters <- select(Data, !!sym(ID_Var), Anemo_SPD, Anemo_HDG, Anemo_HW) %>%
-    rename(!!sym(Wind_SPD_Var) := "Anemo_SPD",
-           !!sym(Wind_HDG_Var) := "Anemo_HDG",
-           !!sym(Headwind_Var) := "Anemo_HW")
-
-  # Join values back onto Data.
-  Data <- left_join(Data, Wind_Parameters, by = setNames(ID_Var, ID_Var)) %>%
-    select(-c("Join_Time", "Join_Date", "Join_Runway", "Heading", "Anemo_HW",
-              "Landing_Runway", "Anemo_SPD", "Anemo_HDG", "Anemo_Date", "Anemo_Time"))
-
-  return(Data)
-}
-
-
-
 # Distances should include a Flight Plan ID, a Start Distance and End Distance
 # This can be used for PM and ORD. Outputs Speed and WE Trapezium average
 # across a distance window between start and end distance of Distances.
 Get_Average_Observed_Mode_S_Parameters <- function(LPR, Radar, Prefix, LorF, TimeorRange, Start_Var, End_Var){
-
+  
   # Get Variable Names
   FPID <- paste0(LorF, "_Flight_Plan_ID")
-
+  
   # Get Relevant Pair Data
   Pair_Data <- select(LPR, !!sym(FPID), !!sym(Start_Var), !!sym(End_Var)) %>% rename("Flight_Plan_ID" := !!sym(FPID))
-
+  
   # Join on the distances by Flight Plan ID
   Radar <- left_join(Radar, Pair_Data, by = c("Flight_Plan_ID"))
-
+  
   # Filter for RTT within the Distance Bounds
   if (TimeorRange == "Range"){Radar <- rename(Radar, "End_Distance" := !!sym(End_Var), "Start_Distance" := !!sym(Start_Var))
-    Radar <- filter(Radar, Range_To_Threshold >= End_Distance & Range_To_Threshold <= Start_Distance)}
-
+  Radar <- filter(Radar, Range_To_Threshold >= End_Distance & Range_To_Threshold <= Start_Distance)}
+  
   # Filter for Track_Time within the Time Bounds
   if (TimeorRange == "Time"){Radar <- rename(Radar, "End_Time" := !!sym(End_Var), "Start_Time" := !!sym(Start_Var))
-    Radar <- filter(Radar, Track_Time <= End_Time & Track_Time >= Start_Time)}
-
+  Radar <- filter(Radar, Track_Time <= End_Time & Track_Time >= Start_Time)}
+  
   # Filter to remove NA Wind Effect/IAS Values
   Radar <- filter(Radar, !is.na(Mode_S_IAS) & !is.na(Wind_Effect_IAS))
-
+  
   # Order by Flight Plan ID & Track Time
   Radar <- Order_Radar(Radar)
-
+  
   # Get a Sequence Number
   Radar <- group_by(Radar, Flight_Plan_ID) %>% mutate(Sequence_Number = row_number()) %>% ungroup()
-
+  
   # Take Required Fields from Radar
   Radar2 <- select(Radar, Flight_Plan_ID, Sequence_Number, Track_Time, Mode_S_IAS, Wind_Effect_IAS)
-
+  
   # Change Sequence number to next number. Change names of parameters.
   Radar2 <- mutate(Radar2, Sequence_Number = Sequence_Number + 1) %>%
     rename(Previous_Track_Time = Track_Time, Previous_Mode_S_IAS = Mode_S_IAS, Previous_Wind_Effect_IAS = Wind_Effect_IAS)
-
+  
   # Join on the Previous Parameters
   Radar <- left_join(Radar, Radar2, by = c("Flight_Plan_ID", "Sequence_Number"))
-
+  
   # Remove Radar2
   rm(Radar2)
-
+  
   # Get the Delta beween Track_Time and Previous_Track_Time
   Radar <- mutate(Radar, Track_Time_Delta = Track_Time - Previous_Track_Time)
-
+  
   # Get each Observation's Contribution to the Trapezium sum: IAS
   Radar <- mutate(Radar, Observed_Mean_IAS = Track_Time_Delta * (Mode_S_IAS + Previous_Mode_S_IAS) / 2)
-
+  
   # Get each Observation's Contribution to the Trapezium sum: Wind Effect
   Radar <- mutate(Radar, Observed_Mean_Wind_Effect = Track_Time_Delta * (Wind_Effect_IAS + Previous_Wind_Effect_IAS) / 2)
-
+  
   # Sum Track Time Delta, Observed Mean IAS/Wind Effect by Flight Plan ID
   Radar <- group_by(Radar, Flight_Plan_ID) %>% summarise(Total_Track_Time_Delta = sum(Track_Time_Delta, na.rm=T),
                                                          Observed_Mean_IAS = sum(Observed_Mean_IAS, na.rm=T),
                                                          Observed_Mean_Wind_Effect = sum(Observed_Mean_Wind_Effect, na.rm=T)) %>% ungroup()
-
+  
   # Divide the Observed sums by the Track Time delta to get the Trapezium rule average
   Radar <- mutate(Radar,
                   Observed_Mean_IAS = Observed_Mean_IAS / Total_Track_Time_Delta,
                   Observed_Mean_Wind_Effect = Observed_Mean_Wind_Effect / Total_Track_Time_Delta) %>%
     select(-Total_Track_Time_Delta)
-
+  
   # Get Variable Names
   IAS_Var <- paste0("Observed_", LorF, "_", Prefix, "_IAS")
   WE_Var <- paste0("Observed_", LorF, "_", Prefix, "_Wind_Effect")
-
+  
   # Rename Appropriately
   Radar <- rename(Radar,
                   !!sym(IAS_Var) := "Observed_Mean_IAS",
                   !!sym(WE_Var) := "Observed_Mean_Wind_Effect")
-
+  
   # Join on to Landing Pair Reference
   LPR <- left_join(LPR, Radar, by = setNames("Flight_Plan_ID", FPID))
-
+  
   # Return the Observed parameters.
   return(LPR)
-
+  
 }
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Forecast Data Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in Generating Forecast ORD Parameters.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles
+# With Joined values for Compression Start and End.
+Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var, Metric_Type, LegacyorRecat){
+  
+  # ------------------------ #
+  ### --- Setup
+  # ------------------------ #
+  
+  # Hardcoded Compression Metric: 1 = Distance difference, 2 = Distance,Speed,WE
+  #'Metric_Type <- 1
+  
+  # Variable Names
+  Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
+  Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
+  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
+  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
+  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
+  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  
+  # New Variable Names
+  Foll_Flying_Time_Var_LR <- paste0(LegacyorRecat, "_", Foll_Flying_Time_Var)
+  Lead_Flying_Time_Var_LR <- paste0(LegacyorRecat, "_", Lead_Flying_Time_Var)
+  Foll_Flying_Dist_Var_LR <- paste0(LegacyorRecat, "_", Foll_Flying_Dist_Var)
+  Lead_Flying_Dist_Var_LR <- paste0(LegacyorRecat, "_", Lead_Flying_Dist_Var)
+  Lead_Spd_Var_LR <- paste0(LegacyorRecat, "_", Lead_Spd_Var)
+  Lead_WE_Var_LR <- paste0(LegacyorRecat, "_", Lead_WE_Var)
+  Foll_Spd_Var_LR <- paste0(LegacyorRecat, "_", Foll_Spd_Var)
+  Foll_WE_Var_LR <- paste0(LegacyorRecat, "_", Foll_WE_Var)
+  
+  # ------------------------ #
+  ### --- Processing
+  # ------------------------ #
+  
+  # Split GS Profile into Leader/Follower
+  GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
+  GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
+  
+  # Get the Leader Flying Stats
+  Leader_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Leader(GS_Profile_Leader, Landing_Pair, LPID_Var,
+                                                                   Comp_Start_Var,
+                                                                   Delivery_Var = Comp_End_Var,
+                                                                   Prefix)
+  
+  # Select relevant fields from Leader Stats
+  Leader_Stats <- select(Leader_Stats,
+                         !!sym(LPID_Var),
+                         !!sym(Lead_Flying_Dist_Var_LR) := !!sym(Lead_Flying_Dist_Var),
+                         !!sym(Lead_Flying_Time_Var_LR) := !!sym(Lead_Flying_Time_Var),
+                         !!sym(Lead_Spd_Var_LR) := !!sym(Lead_Spd_Var),
+                         !!sym(Lead_WE_Var_LR) := !!sym(Lead_WE_Var))
+  
+  # Join the relevant Leader Stats to Landing Pair
+  Landing_Pair <- left_join(Landing_Pair, Leader_Stats, by = setNames(LPID_Var, LPID_Var))
+  
+  # Now calculate the Follower flying stats based on the Leader flying times we just calculated
+  Follower_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Follower(GS_Profile_Follower, Landing_Pair, LPID_Var,
+                                                                       Delivery_Var = Comp_End_Var,
+                                                                       Sep_Dist_Var,
+                                                                       Target_Time_Var = Lead_Flying_Time_Var_LR,
+                                                                       Prefix)
+  
+  # Select the relevant fields from Follower stats.
+  Follower_Stats <- select(Follower_Stats,
+                           !!sym(LPID_Var),
+                           !!sym(Foll_Flying_Dist_Var_LR) := !!sym(Foll_Flying_Dist_Var),
+                           !!sym(Foll_Flying_Time_Var_LR) := !!sym(Foll_Flying_Time_Var),
+                           !!sym(Foll_Spd_Var_LR) := !!sym(Foll_Spd_Var),
+                           !!sym(Foll_WE_Var_LR) := !!sym(Foll_WE_Var))
+  
+  # ------------------------ #
+  ### --- Results & Output
+  # ------------------------ #
+  
+  ## Join with Landing Pair Data
+  Landing_Pair <- left_join(Landing_Pair, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
+  
+  #TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
+  Landing_Pair <- mutate(Landing_Pair,
+                         Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var_LR) - !!sym(Foll_Flying_Time_Var_LR) > 0.0001, 1, 0),
+                         !!sym(Foll_Flying_Dist_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var_LR)),
+                         !!sym(Foll_Spd_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var_LR)),
+                         !!sym(Foll_WE_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var_LR))) %>%
+    select(-Temp_Flag)
+  
+  # Calculate Compression
+  Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix, LegacyorRecat)
+  
+  # Return results
+  return(Landing_Pair)
+  
+  
+}
+
+
+Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile_Leader, Landing_Pair, LP_Primary_Key, Comp_Start_Var, Delivery_Var, Prefix){
+  
+  # ------------------------ #
+  ### --- Setup
+  # ------------------------ #
+  
+  # Use LPID_Var as Primary Key for now
+  LPID_Var <- LP_Primary_Key
+  
+  # Variable Names
+  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
+  Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
+  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
+  
+  # Get Start/End Leader Distance from Landing Pair
+  Distances <- select(Landing_Pair, !!sym(LPID_Var),
+                      "Compression_Start" := !!sym(Comp_Start_Var),
+                      "Compression_End" := !!sym(Delivery_Var))
+  
+  # Join on the distances data ready for Calculations
+  GS_Profile_Leader <- inner_join(GS_Profile_Leader, Distances, by = setNames(LPID_Var, LPID_Var))
+  
+  # ------------------------ #
+  ### --- Processing
+  # ------------------------ #
+  
+  # Get flags for all segments within compression range, and one for start and end
+  GS_Profile_Leader <- mutate(GS_Profile_Leader,
+                              In_Range_Flag = ifelse(Start_Dist >= Compression_End & End_Dist < Compression_Start, 1, 0),
+                              Compression_End_Flag = ifelse(In_Range_Flag == 1 & End_Dist <= Compression_End, 1, 0),
+                              Compression_Start_Flag = ifelse(In_Range_Flag == 1 & Start_Dist >= Compression_Start, 1, 0))
+  
+  # Filter all segments not within the Compression range
+  GS_Profile_Leader <- filter(GS_Profile_Leader, In_Range_Flag != 0)
+  
+  # Find the GSPD and IAS differences for adjustment
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, GSPD_Difference = Start_GS - End_GS)
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, IAS_Difference = Start_IAS - End_IAS)
+  
+  # Adjust Leader Start/End Section values: Compression End Section.
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Compression_End - End_Dist)/(Start_Dist - End_Dist))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_GS = ifelse(Compression_End_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_IAS = ifelse(Compression_End_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_Dist = ifelse(Compression_End_Flag == 1, Compression_End, End_Dist))
+  
+  # Adjust Leader Start/End Section values: Compression Start Section.
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Start_Dist - Compression_Start)/(Start_Dist - End_Dist))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_GS = ifelse(Compression_Start_Flag == 1, Start_GS - (GSPD_Difference * Distance_Ratio), Start_GS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_IAS = ifelse(Compression_Start_Flag == 1, Start_IAS - (IAS_Difference * Distance_Ratio), Start_IAS))
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_Dist = ifelse(Compression_Start_Flag == 1, Compression_Start, Start_Dist))
+  
+  # Calculate the Leader Section Flying Times/Distance
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS),
+                              Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
+  
+  # Calculate the Start and End Wind Effects
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_WE = Start_GS - Start_IAS)
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_WE = End_GS - End_IAS)
+  
+  # Calculate the aggregate Mean Leader IAS/Wind Effect Trapezium rule calculations
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Mean_Leader_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
+  GS_Profile_Leader <- mutate(GS_Profile_Leader, Forecast_Mean_Leader_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
+  
+  # Get the Leader Stats: Flying Time, Flying Disance, Mean IAS and Mean WE (Trapezium)
+  Leader_Stats <- GS_Profile_Leader %>%
+    group_by(!!sym(LPID_Var)) %>%
+    summarise(!!sym(Lead_Flying_Time_Var) := sum(Section_Flying_Time, na.rm = F),
+              !!sym(Lead_Flying_Dist_Var) := max((Compression_Start - Compression_End), na.rm = F),
+              !!sym(Lead_Spd_Var) := sum(Mean_Leader_IAS, na.rm = F),
+              !!sym(Lead_WE_Var) := sum(Forecast_Mean_Leader_Wind_Effect, na.rm = F)) %>%
+    ungroup() %>%
+    mutate(!!sym(Lead_Spd_Var) := !!sym(Lead_Spd_Var) / !!sym(Lead_Flying_Time_Var),
+           !!sym(Lead_WE_Var) := !!sym(Lead_WE_Var) / !!sym(Lead_Flying_Time_Var))
+  
+  return(Leader_Stats)
+  
+}
+
+
+Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile_Follower, Landing_Pair, LP_Primary_Key, Delivery_Var, Sep_Dist_Var, Target_Time_Var, Prefix){
+  
+  # ------------------------ #
+  ### --- Setup
+  # ------------------------ #
+  
+  # Use LPID_Var as Primary Key for now
+  LPID_Var <- LP_Primary_Key
+  
+  # Variable Names
+  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+  Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
+  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
+  
+  # Get Start/End Leader Distance from Landing Pair
+  Parameters <- select(Landing_Pair, !!sym(LPID_Var),
+                       "Delivery_Point" := !!sym(Delivery_Var),
+                       "Follower_End_Distance" := !!sym(Sep_Dist_Var),
+                       "Target_Flying_Time" := !!sym(Target_Time_Var))
+  
+  # Add The End Distances (Separation Distance + Delivery)
+  Parameters <- mutate(Parameters, Follower_End_Distance = Follower_End_Distance + Delivery_Point)
+  
+  # Join on the distances data ready for Calculations
+  GS_Profile_Follower <- left_join(GS_Profile_Follower, Parameters, by = setNames(LPID_Var, LPID_Var))
+  
+  # ------------------------ #
+  ### --- Processing
+  # ------------------------ #
+  
+  # Get flags for Follower being within travel range and it's end section
+  GS_Profile_Follower <- mutate(GS_Profile_Follower,
+                                Viable_Flag = ifelse(Start_Dist >= Follower_End_Distance, 1, 0),
+                                Start_Flag = ifelse(Viable_Flag == 1 & End_Dist <= Follower_End_Distance, 1, 0))
+  
+  # Filter for only Viable follower segments
+  GS_Profile_Follower <- filter(GS_Profile_Follower, Viable_Flag == 1)
+  
+  # Find the Follower IAS/GSPD Differences for Partial Section Calculations.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
+  
+  # Adjust Follower end section values.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Distance_Ratio = (Follower_End_Distance - End_Dist)/(Start_Dist - End_Dist))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_GS = ifelse(Start_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_IAS = ifelse(Start_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_Dist = ifelse(Start_Flag == 1, Follower_End_Distance, End_Dist))
+  
+  # Find the first pass of the Section Flying Times. The End section time will be updated later.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS))
+  
+  # Get the Cumulative Flying Times for each Follower. For each segment and it's previous segment.
+  GS_Profile_Follower <- group_by(GS_Profile_Follower, !!sym(LPID_Var)) %>% mutate(Cumulative_Time = cumsum(Section_Flying_Time)) %>% ungroup()
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Prev_Cumulative_Time = Cumulative_Time - Section_Flying_Time)
+  
+  # Create flags for all Valid sections and the Follower start section
+  GS_Profile_Follower <- mutate(GS_Profile_Follower,
+                                Section_Time_Flag = ifelse(Prev_Cumulative_Time <= Target_Flying_Time, 1, 0),
+                                Last_Section_Flag = ifelse(Cumulative_Time >= Target_Flying_Time & Prev_Cumulative_Time < Target_Flying_Time, 1, 0))
+  
+  # Filter only for valid Follower Sections
+  GS_Profile_Follower <- filter(GS_Profile_Follower, Section_Time_Flag == 1)
+  
+  # Adjust Follower Start Section values. Use Time Ratio.
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Time_Ratio = (Target_Flying_Time - Prev_Cumulative_Time)/(Cumulative_Time - Prev_Cumulative_Time))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_GS = ifelse(Last_Section_Flag == 1, End_GS + (GSPD_Difference * Time_Ratio), Start_GS))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_IAS = ifelse(Last_Section_Flag == 1, End_IAS + (IAS_Difference * Time_Ratio), Start_IAS))
+  
+  # Adjust Initial section Flying Time, start distance and Cumulative time
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = ifelse(Last_Section_Flag == 1, (Target_Flying_Time - Prev_Cumulative_Time), Section_Flying_Time))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Time = ifelse(Last_Section_Flag == 1, Target_Flying_Time, Cumulative_Time))
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_Dist = ifelse(Last_Section_Flag == 1, End_Dist + (0.5 * Section_Flying_Time * (Start_GS + End_GS)),  Start_Dist),
+                                Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
+  
+  # Calculate the Start/End Follower Wind Effects
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_WE = Start_GS - Start_IAS)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_WE = End_GS - End_IAS)
+  
+  # Calculate the aggregate Mean Follower IAS/Wind Effect Trapezium rule calculations
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Mean_Follower_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Forecast_Mean_Follower_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
+  
+  # Calculate the Cumulative Follower Flying Distance
+  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Follower_Distance = Start_Dist - Follower_End_Distance)
+  
+  # Get the Follower Statistics: Follower Flying Distance/Time, Mean IAS, Mean WE (Trapezium rule)
+  Follower_Stats <- GS_Profile_Follower %>%
+    group_by(!!sym(LPID_Var)) %>%
+    summarise(!!sym(Foll_Flying_Time_Var) := sum(Section_Flying_Time, na.rm = F),
+              !!sym(Foll_Flying_Dist_Var) := sum(Section_Flying_Distance, na.rm = F),
+              !!sym(Foll_Spd_Var) := sum(Mean_Follower_IAS, na.rm = F),
+              !!sym(Foll_WE_Var) := sum(Forecast_Mean_Follower_Wind_Effect, na.rm = F)) %>%
+    ungroup() %>%
+    mutate(!!sym(Foll_Spd_Var) := !!sym(Foll_Spd_Var) / !!sym(Foll_Flying_Time_Var),
+           !!sym(Foll_WE_Var) := !!sym(Foll_WE_Var) / !!sym(Foll_Flying_Time_Var))
+  
+  
+  return(Follower_Stats)
+  
+  
+}
+
+
+Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix, LegacyorRecat){
+  
+  # Get Output Variable name
+  Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
+  
+  # Get input variable names
+  Foll_Flying_Dist_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Flying_Distance")
+  Lead_Flying_Dist_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Flying_Distance")
+  Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
+  Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
+  Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
+  Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
+  
+  # Type 1: Simple Predicted Distance Difference
+  if (Metric_Type == 1){Landing_Pair <- mutate(Landing_Pair, !!sym(Comp_Var) := !!sym(Foll_Flying_Dist_Var) - !!sym(Lead_Flying_Dist_Var))}
+  
+  # Type 2: Predicted Leader Flying Distance & Forecast Leader/Follower Speeds/WEs
+  if (Metric_Type == 2){Landing_Pair <- Landing_Pair %>%
+    mutate(!!sym(Comp_Var) := (!!sym(Lead_Flying_Dist_Var) / (!!sym(Lead_Spd_Var) + !!sym(Lead_WE_Var))) *
+             ((!!sym(Foll_Spd_Var) + !!sym(Foll_WE_Var)) - (!!sym(Lead_Spd_Var) + !!sym(Lead_WE_Var))))}
+  
+  return(Landing_Pair)
+  
+}
+
+
+Get_Prediction_Error_Variables <- function(Landing_Pair, Prefix, LegacyorRecat){
+  
+  # Define Variables
+  Pred_Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
+  Obs_Comp_Var <- paste0("Observed_", Prefix, "_Compression")
+  Comp_Error_Var <- paste0(LegacyorRecat, "_", Prefix, "_Compression_Error")
+  Pred_Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
+  Pred_Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
+  Pred_Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
+  Pred_Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
+  Obs_Lead_Spd_Var <- paste0("Observed_Leader_", Prefix, "_IAS")
+  Obs_Foll_Spd_Var <- paste0("Observed_Follower_", Prefix, "_IAS")
+  Obs_Lead_WE_Var <- paste0("Observed_Leader_", Prefix, "_Wind_Effect")
+  Obs_Foll_WE_Var <- paste0("Observed_Follower_", Prefix, "_Wind_Effect")
+  Lead_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS_Error")
+  Foll_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS_Error")
+  Lead_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect_Error")
+  Foll_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect_Error")
+  
+  # Mutate Variables
+  Landing_Pair <- mutate(Landing_Pair,
+                         !!sym(Comp_Error_Var) := !!sym(Obs_Comp_Var) - !!sym(Pred_Comp_Var),
+                         !!sym(Lead_Spd_Error_Var) := !!sym(Obs_Lead_Spd_Var) - !!sym(Pred_Lead_Spd_Var),
+                         !!sym(Foll_Spd_Error_Var) := !!sym(Obs_Foll_Spd_Var) - !!sym(Pred_Foll_Spd_Var),
+                         !!sym(Lead_WE_Error_Var) := !!sym(Obs_Lead_WE_Var) - !!sym(Pred_Lead_WE_Var),
+                         !!sym(Foll_WE_Error_Var) := !!sym(Obs_Foll_WE_Var) - !!sym(Pred_Foll_WE_Var))
+  
+  return(Landing_Pair)
+  
+}
+
 
 # Requires Validation Format.
 # Distances: A Data-frame with LAnding Pair ID, Start Distance and End Distance
 # Speeds: A dataframe with Landing Pair ID and Reference Speeds
 Get_Average_Forecast_Wind_Effect <- function(Data, Segment_Forecast, Prefix, ID_Var, Start_Dist_Var, End_Dist_Var, Speed_Var, Seg_Size){
-
+  
   # Order Segments
   Segment_Forecast <- Order_Segments(Segment_Forecast)
-
+  
   # Rename ID to Relevant ID Variable
   Segment_Forecast <- rename(Segment_Forecast, !!sym(ID_Var) := "ID")
-
+  
   # Get the Distances and Speeds Data
   Distances <- select(Data, !!sym(ID_Var), !!sym(Start_Dist_Var), !!sym(End_Dist_Var))
   Speeds <- select(Data, !!sym(ID_Var), !!sym(Speed_Var))
-
+  
   # Join on the Distances/Speeds to the Segs
   Segment_Forecast <- left_join(Segment_Forecast, Distances, by = setNames(ID_Var, ID_Var))
   Segment_Forecast <- left_join(Segment_Forecast, Speeds, by = setNames(ID_Var, ID_Var))
-
+  
   # Filter for Segments within Distance bounds somehow (Needs additions - need to incorporate seg size) ## EDIT: CHANGED TO USE FLOOR OF NM DISTANCE
   Segment_Forecast <- filter(Segment_Forecast,
                              DME_Seg >= floor(!!sym(End_Dist_Var) + NM_to_m - Seg_Size) &
                                DME_Seg <= (!!sym(Start_Dist_Var) - NM_to_m + Seg_Size))
-
+  
   # Get the Segment Size Delta
   Segment_Forecast <- mutate(Segment_Forecast,
                              Distance_Delta = ifelse((DME_Seg + Seg_Size) > !!sym(Start_Dist_Var), !!sym(Start_Dist_Var) - DME_Seg, Seg_Size),
                              Time_Delta = Distance_Delta / (!!sym(Speed_Var) + Forecast_Wind_Effect_IAS))
-
+  
   # Get the Total Distance/Time Flown for each Pair
   Segment_Stats <- group_by(Segment_Forecast, !!sym(ID_Var)) %>%
     summarise(Total_Distance = sum(Distance_Delta),
               Total_Time = sum(Time_Delta)) %>% ungroup()
-
+  
   # Rejoin Speeds
   Segment_Stats <- left_join(Segment_Stats, Speeds, by = setNames(ID_Var, ID_Var))
-
+  
   # Wind Effect Variable Name
   WE_Var <- paste0("Follower_Forecast_", Prefix, "_Wind_Effect")
-
+  
   # Get the Forecast GSPD and Wind Effect
   Segment_Stats <- mutate(Segment_Stats,
                           Forecast_GSPD = Total_Distance / Total_Time,
                           Forecast_Wind_Effect_IAS = Forecast_GSPD - !!sym(Speed_Var)) %>%
     select(!!sym(ID_Var), Forecast_Wind_Effect_IAS) %>% rename(!!sym(WE_Var) := "Forecast_Wind_Effect_IAS")
-
+  
   # Join back onto Data
   Data <- left_join(Data, Segment_Stats, by = setNames(ID_Var, ID_Var))
-
+  
   return(Data)
-
-}
-
-Get_LF_Ref_Parameters <- function(Landing_Pair, Flight_Plan, Runways, ACTW, ACTWL, LorF){
-
-  # Get the Variable Names
-  FPID <- paste0(LorF, "_Flight_Plan_ID")
-  Runway_Var <- paste0(LorF, "_Landing_Runway")
-  FP_Time_Var <- paste0(LorF, "_FP_Time")
-  AC_Type_Var <- paste0(LorF, "_Aircraft_Type")
-  Csn_Var <- paste0(LorF, "_Callsign")
-  New_Wake_Var <- paste0(LorF, "_Recat_Wake_Cat")
-  Old_Wake_Var <- paste0(LorF, "_Legacy_Wake_Cat")
-  Time_4DME_Var <- paste0(LorF, "_Time_At_4DME")
-
-  # Join L/F ID to Flight Plan and Rename Variables
-  Landing_Pair <- left_join(Landing_Pair, Flight_Plan, by = setNames("Flight_Plan_ID", FPID)) %>%
-    rename(!!sym(Runway_Var) := "Landing_Runway",
-           !!sym(FP_Time_Var) := "FP_Time",
-           !!sym(AC_Type_Var) := "Aircraft_Type",
-           !!sym(Csn_Var) := "Callsign",
-           !!sym(Time_4DME_Var) := "Time_At_4DME")
-
-  # Join L/F ID to AC to Wake and Rename
-  Landing_Pair <- left_join(Landing_Pair, ACTW, by = setNames("Aircraft_Type", AC_Type_Var)) %>%
-    rename(!!sym(New_Wake_Var) := "Wake")
-  Landing_Pair <- left_join(Landing_Pair, ACTWL, by = setNames("Aircraft_Type", AC_Type_Var)) %>%
-    rename(!!sym(Old_Wake_Var) := "Wake")
-
-  # Join on Runway Group/MRS (NEED TO ADD MRS TO SQL TBL_RUNWAY - 3NM FOR NOW)
-  Runway_Reduced <- select(Runways, Runway_Name, Runway_Group) %>%
-    mutate(Min_Radar_Separation = 3 * NM_to_m)
-
-  # Do for Followers (Doesn't matter which)
-  if(LorF == "Follower"){Landing_Pair <- left_join(Landing_Pair, Runway_Reduced, by = c("Follower_Landing_Runway" = "Runway_Name"))}
-
-  return(Landing_Pair)
-
-}
-
-Get_Pair_Ref_Parameter <- function(con, Landing_Pair, Ref_Source_Type, RecatorLegacy, Constraint, ACT_Enabled, Operator_Enabled){
-
-  # Operation settings
-
-  # Get the Wake Category Variable names (Aircraft Type/Operator variables are named consistently).
-  Lead_Wake_Var <- paste0("Leader_", RecatorLegacy, "_Wake_Cat")
-  Foll_Wake_Var <- paste0("Follower_", RecatorLegacy, "_Wake_Cat")
-  Lead_Wake_Var2 <- ifelse(RecatorLegacy == "Recat", "Leader_WTC", "Leader_WVI") # Should probably change the DB to make these the same
-  Foll_Wake_Var2 <- ifelse(RecatorLegacy == "Recat", "Follower_WTC", "Follower_WVI")
-
-  # Get the Final Output Variable name
-  Final_Outp_Var <- paste0("Reference_", RecatorLegacy, "_", Constraint, "_", Ref_Source_Type)
-
-  # Group Constraints by Pairing Level (Currently only supports Wake Separation/ROT Spacing)
-  if (Constraint %in% c("Wake_Separation")){Level <- "Type"}
-  if (Constraint %in% c("ROT_Spacing", "Non_Wake_Separation", "Spacing")){Level <- "Runway, Type"}
-  if (Constraint %in% c("Runway_Dependent")){Level <- "Runway Pair, Type"}
-
-
-  # Load the reference data to be joined depending on New/Old operations (RecatorLegacy),
-  # Separation/Spacing Constraint (Constraint) and time/ias/distance parameter (Ref_Source_Type)
-  if (RecatorLegacy == "Legacy"){
-
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_DBS_Wake_Turbulence")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_TBS_Wake_Turbulence")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Legacy_Wake_Separation_IAS")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Legacy_ROT_Spacing_Dist")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Legacy_ROT_Spacing_Time")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Legacy_ROT_Spacing_IAS")}
-
-  }
-
-  # NOTE: Operator and ACT can be independent (may be the case for ROT times for example)
-  if (RecatorLegacy == "Recat"){
-
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Dist")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Time")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Recat_Separation_IAS")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Dist")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Time")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_ROT_Spacing_IAS")}
-
-  }
-
-
-  # For New operations only: if ACT_Enabled then get Aircraft type pair parameters (e.g. PWS Wake)
-  if (ACT_Enabled == T){
-
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Dist")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Time")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Assumed_ACTP_Wake_Separation_IAS")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_ROT_Spacing_Dist")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_ROT_Spacing_Time")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Assumed_ACTP_ROT_Spacing_IAS")}
-
-  }
-
-  # For New operations only, and only if we decide to calibrate operator/type pairs.
-  if (Operator_Enabled == T){
-
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_Wake_Separation_Dist")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_Wake_Separation_Time")}
-    if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Assumed_AC_Operator_Wake_Separation_IAS")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_ROT_Spacing_Dist")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_ROT_Spacing_Time")}
-    if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Assumed_AC_Operator_ROT_Spacing_IAS")}
-
-  }
-
-
-  # Create placeholder column for which the hierarchy is applied
-  Landing_Pair <- mutate(Landing_Pair, Placeholder = NA)
-
-  # Begin vlaue assignment based on hierarchy: Operator -> Aircraft -> Wake
-  # Only uses data if it has been loaded
-  # Structure for thre tiers very similar so only below tier described
-  if (exists("Ref_Source_2")){
-
-    # Rename the desired variable to the new variable name for this tier
-    Outp_Var_2 <- paste0("Reference_", "AC_Operator", "_", Constraint, "_", Ref_Source_Type)
-    Ref_Var_2 <- colnames(Ref_Source_2)[ncol(Ref_Source_2)]
-    Ref_Source_2 <- rename(Ref_Source_2, !!sym(Outp_Var_2) := !!sym(Ref_Var))
-
-    # If a Wake separation, join by aircraft types and operators
-    if (Level == "Type"){
-      Landing_Pair <- left_join(Landing_Pair, Ref_Source_2,
-                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
-                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
-                                       setNames("Leader_Operator", "Leader_Operator"),
-                                       setNames("Follower_Operator", "Follower_Operator")))
-    }
-
-    # If a runway pair grouping join by Aircraft Types, Operators and any Landing Runway (Follower used, Not-in-trails are NA for now)
-    # Note: May need to add Runway Pair ROT Distances - unsure of scope for now
-    if (Level == "Runway, Type"){
-      Landing_Pair <- left_join(Landing_Pair, Ref_Source_2,
-                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
-                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
-                                       setNames("Leader_Operator", "Leader_Operator"),
-                                       setNames("Follower_Operator", "Follower_Operator"),
-                                       setNames("Runway", "Follower_Landing_Runway"))) %>%
-        mutate(!!sym(Outp_Var_2) := ifelse(Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Outp_Var_2)))
-    }
-
-    # Replace NA values in placeholder with Non-NA values from this tier, remove tier variable
-    Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var_2, Placeholder))) %>%
-      select(-!!sym(Outp_Var_2))
-
-  }
-
-  if (exists("Ref_Source_1")){
-
-    Outp_Var_1 <- paste0("Reference_", "ACTP", "_", Constraint, "_", Ref_Source_Type)
-    Ref_Var_1 <- colnames(Ref_Source_1)[ncol(Ref_Source_1)]
-    Ref_Source_1 <- rename(Ref_Source_1, !!sym(Outp_Var_1) := !!sym(Ref_Var_1))
-
-
-    if (Level == "Type"){
-      Landing_Pair <- left_join(Landing_Pair, Ref_Source_1,
-                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
-                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft")))
-    }
-
-    if (Level == "Runway, Type"){
-      Landing_Pair <- left_join(Landing_Pair, Ref_Source_1,
-                                by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
-                                       setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
-                                       setNames("Runway", "Follower_Landing_Runway")))
-    }
-
-    Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var_1), Placeholder)) %>%
-      select(-!!sym(Outp_Var_1))
-
-  }
-
-  if (exists("Ref_Source")){
-
-    Outp_Var <- Final_Outp_Var
-    Ref_Var <- colnames(Ref_Source)[ncol(Ref_Source)]
-    Ref_Source <- rename(Ref_Source, !!sym(Outp_Var) := !!sym(Ref_Var))
-
-    if (Level == "Type"){
-      Landing_Pair <- left_join(Landing_Pair, Ref_Source,
-                                by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var),
-                                       setNames(Foll_Wake_Var2, Foll_Wake_Var)))
-    }
-
-    if (Level == "Runway, Type"){
-      Landing_Pair <- left_join(Landing_Pair, Ref_Source,
-                                by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var),
-                                       setNames(Foll_Wake_Var2, Foll_Wake_Var),
-                                       setNames("Runway", "Follower_Landing_Runway")))
-    }
-
-    Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var), Placeholder)) %>%
-      select(-!!sym(Outp_Var))
-
-
-  }
-
-  # Rename the placeholder variable
-  Landing_Pair <- rename(Landing_Pair, !!sym(Final_Outp_Var) := "Placeholder")
-
-  return(Landing_Pair)
-
-}
-
-Get_Dependent_Runway_Offset_Changes <- function(Landing_Pair, Runway_Offsets){
-
-  # Join on the Offsets
-  Landing_Pair <- left_join(Landing_Pair, Runway_Offsets, by = c("Leader_Landing_Runway", "Follower_Landing_Runway")) %>%
-    mutate(Runway_Offset = ifelse(is.na(Runway_Offset), 0, Runway_Offset))
-
-  # Make Relevant Changes to DBS Distances
-  Landing_Pair <- mutate(Landing_Pair, Reference_Recat_Wake_Separation_Distance = Reference_Recat_Wake_Separation_Distance + Runway_Offset)
-  Landing_Pair <- mutate(Landing_Pair, Reference_Recat_ROT_Spacing_Distance = Reference_ROT_Spacing_Distance + Runway_Offset)
-  Landing_Pair <- mutate(Landing_Pair, Reference_Legacy_Wake_Separation_Distance = Reference_Legacy_Wake_Separation_Distance + Runway_Offset)
-  Landing_Pair <- mutate(Landing_Pair, DBS_All_Sep_Distance = DBS_All_Sep_Distance + Runway_Offset)
-
-  return(Landing_Pair)
-}
-
-
-
-Get_Forecast_Wind_Effect_At_DME <- function(Segments, Aircraft_Profile, ID_Var, DME){
-
-  # Get Variable Name
-  WE_Var <- paste0("Wind_Effect_", DME, "DME")
-
-  # Get the Wind Effects from the Segment Data
-  Wind_Effects <- filter(Segments, DME_Seg == DME * NM_to_m) %>%
-    rename(!!sym(WE_Var) := "Forecast_Wind_Effect_IAS")
-
-  # Join Wind Effect to Aircraft Profile
-  Aircraft_Profile <- left_join(Aircraft_Profile, Wind_Effects, by = setNames("ID", ID_Var))
-
-  return(Aircraft_Profile)
-
-}
-
-Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD){
-
-  # Change "Leader" to "Lead" For Variable Compatibility
-  if(LorF == "Leader"){LorF <- "Lead"}
-
-  # Get Other Variable Names
-  LSS_Type_Var <- paste0("Landing_Stabilisation_Speed_Type_", LorF)
-  VRef_Var <- paste0("Min_Safe_Landing_Speed_", LorF)
-  Gusting_Var <- paste0("Apply_Gusting_", LorF)
-  LSD_Var <- paste0("Local_Stabilisation_Distance_", LorF)
-  End_Fin_Decel_Var <- paste0("End_Final_Deceleration_Distance_", LorF) ## Added for PWS
-  SPS_Var <- paste0("Steady_Procedural_Speed_", LorF)
-  Fin_Decel_Var <- paste0("Final_Deceleration_", LorF)
-  End_Init_Decel_Var <- paste0("End_Initial_Deceleration_Distance_", LorF)
-  IPS_Var <- paste0("Initial_Procedural_Speed_", LorF)
-  Init_Decel_Var <- paste0("Initial_Deceleration_", LorF)
-
-  ## Temporary Fix for Discrepancy in Init_Decel_Var Names across Files ---------------------------- #
-  # if (Level == "DBS" & LorF == "Lead"){Init_Decel_Var <- "Initial_Deceleration_Lead"}
-  # if (Level == "DBS" & LorF == "Follower"){Init_Decel_Var <- "Initial_Deceleration_Follower"}
-  # if (Level == "Wake" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
-  # if (Level == "Wake" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_Follower"}
-  # if (Level == "Aircraft" & LorF == "Lead"){Init_Decel_Var <- "Initial_deceleration_Lead"}
-  # if (Level == "Aircraft" & LorF == "Follower"){Init_Decel_Var <- "Initial_deceleration_follower"}
-  # -------------------------------------------------------------------------------------------------- #
-
-  # Set by default inclusion of CCT and End Final Decel Distance to False
-  Use_CCT <- T
-
-  # Find the Unique Variable names for the Aircraft Profile and names from Adaptation
-  if (Level == "DBS"){Unique_Vars <- c("DBS_Distance")}
-  if (Level %in% c("Wake", "14Cat", "20Cat")){Unique_Vars <- c("Wake_Cat")}
-  if (Level == "Aircraft"){Unique_Vars <- c("Aircraft_Type")}
-  if (Level == "Operator"){Unique_Vars <- c("Aircraft_Type", "Operator")}
-
-  # Initialise a list of input (2) and Output (1) variable names
-  All_Vars_1 <- Unique_Vars
-  All_Vars_2 <- Unique_Vars
-
-  # If Using CCT, add this to list of input and output variable names
-  if (Use_CCT){
-    All_Vars_1 <- append(All_Vars_1, "Compression_Commencement_Threshold")
-    All_Vars_2 <- append(All_Vars_2, "Compression_Commencement_Threshold")
-  }
-
-  # Initialise the first set of variables present in all cases (Input - 2, Output - 1)
-  Inter_Vars_1 <- c("Landing_Stabilisation_Speed_Type", "VRef", "Apply_Gusting", "Local_Stabilisation_Distance")
-  Inter_Vars_2 <- c(LSS_Type_Var, VRef_Var, Gusting_Var, LSD_Var)
-
-  # Add these variable names to the total selections
-  All_Vars_1 <- append(All_Vars_1, Inter_Vars_1)
-  All_Vars_2 <- append(All_Vars_2, Inter_Vars_2)
-
-  # If using End Final Deceleration Distance, add it to the list
-  if (Use_EFDD){
-    All_Vars_1 <- append(All_Vars_1, "End_Final_Deceleration_Distance")
-    All_Vars_2 <- append(All_Vars_2, End_Fin_Decel_Var)
-  }
-
-  # Initialise the final set of variables present in all cases
-  Inter_Vars_1 <- c("Steady_Procedural_Speed", "Final_Deceleration", "End_Initial_Deceleration_Distance", "Initial_Procedural_Speed", "Initial_Deceleration")
-  Inter_Vars_2 <- c(SPS_Var, Fin_Decel_Var, End_Init_Decel_Var, IPS_Var, Init_Decel_Var)
-
-  # Build the final variable lists
-  All_Vars_1 <- append(All_Vars_1, Inter_Vars_1)
-  All_Vars_2 <- append(All_Vars_2, Inter_Vars_2)
-
-  # Lay out the Parameter names to add buffers to (Originals), the Output buffer names (1) and the Input buffer names (2)
-  Buffer_Originals <- c("VRef", "Steady_Procedural_Speed", "Initial_Procedural_Speed")
-  Buffer_Vars_1 <- c("VRef_Buffer", "SPS_Buffer", "IPS_Buffer")
-  Buffer_Vars_2 <- c(paste0("Min_Safe_Landing_Speed_Buffer", LorF), paste0("Steady_Procedural_Speed_Buffer", LorF), paste0("Initial_Procedural_Speed_Buffer", LorF))
-
-  # If The input buffer parameter exists, add the input and corresponding outp[ut parameter to final selection
-  if (ORDBuffers){
-    for (i in 1:length(Buffer_Vars_2)){
-      if (Buffer_Vars_2[i] %in% names(Ref_Data)){
-        All_Vars_1 <- append(All_Vars_1, Buffer_Vars_1[i])
-        All_Vars_2 <- append(All_Vars_2, Buffer_Vars_2[i])
-      }
-    }
-  }
-
-  # Initialise a string to evaluate the select statement
-  Language_String <- paste0("Ref_Data_New <- select(Ref_Data")
-
-  # Build the string by selecting the output vars as the input vars
-  for (j in 1: length(All_Vars_1)){
-    Language_String <- paste0(Language_String, ", ", All_Vars_1[j], " = ", All_Vars_2[j])
-    if (j == length(All_Vars_1)){Language_String <- paste0(Language_String, ")")}
-  }
-
-  # evaluate this string as "language" -> executes the string as code
-  eval(str2lang(Language_String))
-
-  # If any buffer variables exist, add them to their "original" and dispose of the buffer parameter
-  for (k in 1:length(Buffer_Originals)){
-    if (Buffer_Vars_1[k] %in% names(Ref_Data_New)){
-      Ref_Data_New <- mutate(Ref_Data_New, !!sym(Buffer_Originals[k]) := !!sym(Buffer_Originals[k]) + !!sym(Buffer_Vars_1[k])) %>%
-        select(-!!sym(Buffer_Vars_1[k]))
-    }
-  }
-
-  return(Ref_Data_New)
-
-}
-
-# Function to join the correct ORD adaptation
-Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat){
-  
-  # If ORD_Profile_Selection is TBS_Table, skip the Precedence checks and just join 
-  if (ORD_Profile_Selection == "TBS_Table" & LegacyorRecat == "Recat"){
-    Precedences = c("DBS")
-    ORD_Levels <- c(T)
-  }
-  
-  # Create the Precedence Table
-  Precedence_Table <- data.frame(Scheme = as.character(Precedences), Switch = ORD_Levels) %>%
-    mutate(ID = row_number()) %>% select(ID, everything())
-  
-  # Initialise Copy of LP for the "remmaining" unmatched data.
-  LPRem <- LP
-  
-  # Initialise a counter: counts how many tables have been matched.
-  Counter <- 0
-  
-  # Unlike SASAI, we are joining multiple parameters. These are all required to be non-NA thugh so we can check just one.
-  Param_Name <- "Steady_Procedural_Speed"
-  
-  # Loop across all level precedences.
-  for (i in 1:nrow(Precedence_Table)){
-
-    
-    # Get the parameter name, the "level" and its activity status.
-    Constr <- filter(Precedence_Table, ID == i)
-    Level = Constr$Scheme
-    Active = Constr$Switch
-    
-    # If this level is to be considered...
-    if (Active){
-      
-      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
-      message(paste0("Attempting to Join ORD type ", Level, " level Adaptation..."))
-      Table_Name <- Get_Reference_ORD_Parameter_Table_Name(Level, LegacyorRecat, ORD_Profile_Selection)
-      
-      # If the desired table exists in the database, load table and increment counter.
-      if (dbExistsTable(con, Table_Name)){
-        message(paste0("Joining ORD type ", Level, " level ", LegacyorRecat, " adaptation."))
-        Counter <- Counter + 1
-        Adaptation <- Load_Adaptation_Table(con, Table_Name)
-        
-        # Find/isolate the relevant columns from the data and the adaptation.
-        Join_Names_Adaptation <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Ref", LorF)
-        Join_Names_LP <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Data", LorF)
-        Adaptation <- Select_ORD_LF_Adaptation(Adaptation, Level, LorF, ORDBuffers, Use_EFDD)
-        Select_Names_Adaptation <- setdiff(names(Adaptation), Join_Names_Adaptation)
-        
-        # If Parameters already joined to non usccessful data, remove and rejoin based on new level.
-        if (Param_Name %in% names(LPRem)){
-          LPRem <- LPRem %>% select(-all_of(Select_Names_Adaptation))
-        }
-        
-        # Join on the adaptation and split into "successful" and "not successful" joins (non-NA and NA)
-        LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
-        LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
-        LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
-        
-        # Bind the data together. If first valid table, data must be initalised.
-        if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
-        
-        # If Adaptation table doesn't exist: display message.
-      } else {message(paste0("Cannot join ORD type ", Level, " level ", LegacyorRecat, " adaptation. The table ", Table_Name, " does not exist."))}
-      
-      message("---------------------------------------")
-    }
-    
-    # If the final "level" has been checked and at least one table was valid, bind on the final "not successful" data.
-    if (i == nrow(Precedence_Table) & Counter != 0){LP <- rbind(LP, LPRem)}
-    
-  }
-  
-  # If no adaptation values were valid and/or no "level" switches were active, add required parameter(s) as NA.
-  if (Counter == 0){
-    message(paste0("No Valid ORD type ", LegacyorRecat, " adaptation available. Defaulting values to NA."))
-    message("---------------------------------------")
-  #   for (j in 1:length(Select_Names_Adaptation)){
-  #     LP <- LP %>% mutate(!!sym(Select_Names_Adaptation[j]) := NA)}
-  }
-   
-  return(LP)
-}
-
-
-Get_Reference_ORD_Parameter_Table_Name <- function(Level, LegacyorRecat, ORD_Profile_Selection){
-  
-  if (Level == "Operator"){Middle <- "AC_Operator"} else {Middle <- Level}
-  String <- paste0("tbl_ORD_", Middle, "_Adaptation")
-  if (ORD_Profile_Selection == "TBS_Table"){String <- "tbl_ORD_DBS_Adaptation"}
-  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
-  message(paste0("Returning Table name ", String))
-  
-  return(String)
   
 }
 
-Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, LegacyorRecat, ReforData, LorF){
-  
-  if (ReforData == "Ref"){
-    if (ORD_Profile_Selection == "TBS_Table"){return(c("DBS_Distance"))}
-    else if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
-    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
-    else {return(c("Wake_Cat"))}
-  } else {
-    if (ORD_Profile_Selection == "TBS_Table"){return(c("DBS_All_Sep_Distance"))}
-    else if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
-    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
-    else {return(c("Wake_Cat"))}
-    # if (ORD_Profile_Selection == "TBS_Table"){return(c(paste0(LegacyorRecat, "_DBS_All_Sep_Distance")))}
-    # else if (Level == "Operator"){return(c(paste0(LorF, "_Aircraft_Type"), paste0(LorF, "_Operator")))}
-    # else if (Level == "Aircraft"){return(c(paste0(LorF, "_Aircraft_Type")))}
-    # else if (Level == "14Cat"){return(c(paste0(LorF, "_", LegacyorRecat, "_14Cat_Wake_Cat")))}
-    # else if (Level == "20Cat"){return(c(paste0(LorF, "_", LegacyorRecat, "_20Cat_Wake_Cat")))}
-    # else {return(c(paste0(LorF, "_", LegacyorRecat, "_Wake_Cat")))}
-  }
-  
-}
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# ORD Aircraft Profile Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in Generating the ORD Aircraft Profiles. This includes all Landing Stabilisation Speed and Deceleration
+# Distance calculations.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
+# Function to grab and arrange all relevant ORD adaptation into the Aircraft Profile format. Doesn't include LSS or Decel Distance calcs.
 Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, LegacyorRecat){
 
   # Get Variable Names
@@ -1092,7 +2050,7 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
   RW_Var <- paste0(LorF, "_Landing_Runway")
   TPR_Var <- substr(LorF, 1, 1)
   SW_Var <- "Forecast_AGI_Surface_Headwind"
-  if(LPID_Var != Get_LP_Primary_Key("Validation")){SW_Var <- paste0(LorF, "_", SW_Var)}
+  if(LPID_Var == Get_LP_Primary_Key("Verification")){SW_Var <- paste0(LorF, "_", SW_Var)}
   
   # Base selection of Aircraft Profile variables before joining ORD Adaptation
   Aircraft_Profile <- select(Landing_Pair,
@@ -1127,12 +2085,7 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
 
 }
 
-Split_Leader_Follower <- function(Data, LorF){
-  LorF <- substr(LorF, 1, 1)
-  Data <- filter(Data, This_Pair_Role == LorF)
-  return(Data)
-}
-
+# Function to grab the relevant ORD Ruwnay parameters for building the ORD Aircraft Profiles.
 Get_ORD_Runway_Parameters <- function(Aircraft_Profile, Landing_Pair, LPID_Var, LorFRunway){
 
   # ORD Runway Adaptation
@@ -1164,115 +2117,6 @@ Get_ORD_Runway_Parameters <- function(Aircraft_Profile, Landing_Pair, LPID_Var, 
 
 }
 
-Flag_PLT_Go_Arounds <- function(Landing_Pair, Radar, Path_Legs){
-
-  # Make reduced path leg table
-  Path_Leg_Types <- select(Path_Legs, Path_Leg_Name, Path_Leg_Type)
-
-  # Join on Path Leg Type from tbl_Path_Leg
-  Radar1 <- left_join(Radar, Path_Leg_Types, by=c("Path_Leg" = "Path_Leg_Name"))
-
-  # Make flag for Go-Around
-  Radar1 <- mutate(Radar1, Is_Go_Around = ifelse(Path_Leg_Type == "Go_Around", 1, 0))
-
-  # Find the number of Go-Around path legs
-  Radar1 <- group_by(Radar1, Flight_Plan_ID) %>% summarise(Go_Around_Count = sum(Is_Go_Around, na.rm=T)) %>% ungroup()
-
-  # Create flag for those with >=1 Go_Around path Leg
-  Radar1 <- mutate(Radar1, Goes_Around = ifelse(Go_Around_Count >= 1, 1, 0))
-
-  # Reduce Datasets: Get Go-Around Flag to Join
-  Radar1 <- select(Radar1, Flight_Plan_ID, Goes_Around)
-
-  # Join onto Landing Pair and Rename: Leader
-  Landing_Pair <- left_join(Landing_Pair, Radar1, by = c("Leader_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
-    rename(Goes_Around_Leader = Goes_Around)
-
-  # Join onto Landing Pair and Rename: Follower
-  Landing_Pair <- left_join(Landing_Pair, Radar1, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
-    rename(Goes_Around_Follower = Goes_Around)
-
-  # Get Final Pair Go-Around Flag
-  Landing_Pair <- mutate(Landing_Pair, Go_Around_Flag = ifelse(Goes_Around_Leader + Goes_Around_Follower >= 1, 1, 0))
-
-  # Remove intermediary variables
-  Landing_Pair <- select(Landing_Pair, -c("Goes_Around_Leader", "Goes_Around_Follower"))
-
-  return(Landing_Pair)
-}
-
-Create_Filter_Flag_Reference <- function(Landing_Pair, Radar, Path_Legs){
-
-  # Get Go-Around Flag
-  Landing_Pair <- Flag_PLT_Go_Arounds(Landing_Pair, Radar, Path_Legs)
-
-  # Create New Reference Flag
-  Landing_Pair <- mutate(Landing_Pair, Reference_Flag = Go_Around_Flag)
-
-  # Add to Reference Flag if Missing Aircraft Types
-  Landing_Pair <- mutate(Landing_Pair, Reference_Flag = ifelse(is.na(Leader_Aircraft_Type) | is.na(Follower_Aircraft_Type), 1, Reference_Flag))
-
-  return(Landing_Pair)
-
-}
-
-Create_Filter_Flag_Observation <- function(Landing_Pair, ORD_Aircraft, ORD_Profile_Selection, Wake_Pairs_Only, In_Trail_Only){
-
-  # Initialise Observation Flag equal to Reference Flag - All Criteria is included in Observation
-  Landing_Pair <- mutate(Landing_Pair, Observation_Flag = Reference_Flag)
-
-  # If Aircraft Type Only Validation: Only consider pairs where at least one Aircraft Type has specific parameters.
-  if (ORD_Profile_Selection == "Aircraft_Type"){
-    Landing_Pair <- mutate(Landing_Pair, Observation_Flag = ifelse(
-      Leader_Aircraft_Type %!in% ORD_Aircraft$Aircraft_Type &
-        Follower_Aircraft_Type %!in% ORD_Aircraft$Aircraft_Type,
-      1, Observation_Flag))}
-
-  # Add to Flag if only Wake Pairs being Considered - Note this actually includes ROT Pairs too
-  if (Wake_Pairs_Only){Landing_Pair <- mutate(Landing_Pair, Observation_Flag =
-                                                ifelse(is.na(Reference_Recat_Wake_Separation_Distance) &
-                                                         is.na(Reference_Recat_ROT_Spacing_Distance), 1, Observation_Flag))}
-
-  # Add to Flag if only In Trail Pairs being Considered
-  if (In_Trail_Only){Landing_Pair <- mutate(Landing_Pair, Observation_Flag = ifelse(Landing_Pair_Type == "Not_In_Trail", 1, Observation_Flag))}
-
-  return(Landing_Pair)
-
-}
-
-Create_Filter_Flag_Prediction <- function(Landing_Pair, ORDorWAD){
-
-  # Get Variable Names
-  Flag_Var <- paste0(ORDorWAD, "_Prediction_Flag")
-  Comp_Var <- paste0("Observed_", ORDorWAD, "_Compression")
-
-  # Initialise Prediction Flag equal to Observation Flag as Prediction only Uses Observation Values
-  Landing_Pair <- mutate(Landing_Pair, !!sym(Flag_Var) := Observation_Flag)
-
-  # Add to Flag if No Observed Compression Values.
-  Landing_Pair <- mutate(Landing_Pair, !!sym(Flag_Var) := ifelse(is.na(!!sym(Comp_Var)), 1, !!sym(Flag_Var)))
-
-  return(Landing_Pair)
-
-}
-
-Create_Filter_Flag_Performance <- function(Landing_Pair, Wake_Pairs_Only, In_Trail_Only){
-
-  # Initialise Performance Flag equal to Reference Flag - All Criteria is included in Performance Model
-  Landing_Pair <- mutate(Landing_Pair, Performance_Flag = Reference_Flag)
-
-  # Add to Flag if only Wake Pairs being Considered - Note this actually includes ROT Pairs too
-  if (Wake_Pairs_Only){Landing_Pair <- mutate(Landing_Pair, Performance_Flag =
-                                                ifelse(is.na(Reference_Recat_Wake_Separation_Distance) &
-                                                         is.na(Reference_Recat_ROT_Spacing_Distance), 1, Performance_Flag))}
-
-  # Add to Flag if only In Trail Pairs being Considered
-  if (In_Trail_Only){Landing_Pair <- mutate(Landing_Pair, Performance_Flag = ifelse(Landing_Pair_Type == "Not_In_Trail", 1, Performance_Flag))}
-
-  return(Landing_Pair)
-
-}
-
 # ----------------------------------------------- #
 # Landing Stabilisation Speed Calculations
 # ----------------------------------------------- #
@@ -1283,6 +2127,20 @@ Create_Filter_Flag_Performance <- function(Landing_Pair, Wake_Pairs_Only, In_Tra
 # these all up, which is used in ORD Aircraft Profile.
 # NOTE: Requires Forecast Surface Headwind.
 # ----------------------------------------------- #
+
+# General Landing Stabilisation Speed Function.
+Calculate_Landing_Stabilisation_Speed <- function(ORD_Aircraft_Profile, LPID_Var){
+  for (i in 0:12){
+    Type_Profiles <- filter(ORD_Aircraft_Profile, Landing_Stabilisation_Speed_Type == i)
+    Type_Profiles <- eval(parse(text = paste0("Calculate_LSS_Type_", i, "(Type_Profiles)")))
+    if (i == 0){Full_Profile <- Type_Profiles} else {Full_Profile <- rbind(Full_Profile, Type_Profiles)}
+  }
+  Full_Profile <- arrange(Full_Profile, !!sym(LPID_Var))
+  return(Full_Profile)
+}
+
+# ----------------------------------------------- #
+
 
 # Variant A of the Landing Stabilisation Speed Calculation. Currently used for types 0, 10, 11, 12
 Calculate_LSS_A <- function(ORD_Aircraft_Profile){
@@ -1430,17 +2288,6 @@ Calculate_LSS_Type_12 <- function(ORD_Aircraft_Profile){
 
 # ----------------------------------------------- #
 
-# General Landing Stabilisation Speed Function.
-Calculate_Landing_Stabilisation_Speed <- function(ORD_Aircraft_Profile, LPID_Var){
-  for (i in 0:12){
-    Type_Profiles <- filter(ORD_Aircraft_Profile, Landing_Stabilisation_Speed_Type == i)
-    Type_Profiles <- eval(parse(text = paste0("Calculate_LSS_Type_", i, "(Type_Profiles)")))
-    if (i == 0){Full_Profile <- Type_Profiles} else {Full_Profile <- rbind(Full_Profile, Type_Profiles)}
-  }
-  Full_Profile <- arrange(Full_Profile, !!sym(LPID_Var))
-  return(Full_Profile)
-}
-
 # ----------------------------------------------- #
 # Deceleration Distance Calculations
 # ----------------------------------------------- #
@@ -1458,17 +2305,31 @@ Calculate_Start_Initial_Decel_Distance <- function(ORD_Aircraft_Profile){
 
 # Calculate Start Final Deceleration Distance.
 Calculate_Final_Decel_Distance <- function(ORD_Aircraft_Profile){
-
-    ORD_Aircraft_Profile <- mutate(ORD_Aircraft_Profile,
-                                   Start_Final_Deceleration_Distance = ifelse(Local_Stabilisation_Distance > (End_Final_Deceleration_Distance + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration),
-                                                                              Local_Stabilisation_Distance,
-                                                                              End_Final_Deceleration_Distance + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration))
-
+  
+  ORD_Aircraft_Profile <- mutate(ORD_Aircraft_Profile,
+                                 Start_Final_Deceleration_Distance = ifelse(Local_Stabilisation_Distance > (End_Final_Deceleration_Distance + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration),
+                                                                            Local_Stabilisation_Distance,
+                                                                            End_Final_Deceleration_Distance + (Steady_Procedural_Speed - Landing_Stabilisation_Speed) / Final_Deceleration))
+  
   return(ORD_Aircraft_Profile)
 }
 
 
-# -- Generic
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# ORD IAS Profile Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in Generating the ORD IAS Profiles. This includes all Gust Adjusment calculations.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+
+# Build Full IAS Profile
+Build_Full_IAS_Profile <- function(Aircraft_Profile, LPID_Var){
+  for (i in 0:12){
+    Type_Profiles <- eval(parse(text = paste0("Build_IAS_Profile_Type_", i, "(Aircraft_Profile, LPID_Var)")))
+    if (i == 0){Full_Profile <- Type_Profiles} else {Full_Profile <- rbind(Full_Profile, Type_Profiles)}
+  }
+  Full_Profile <- arrange(Full_Profile, !!sym(LPID_Var))
+  return(Full_Profile)
+}
 
 # Generic Parameter Selection Function.
 Select_IAS_Profile_Fields <- function(Aircraft_Profile, LPID_Var){
@@ -1485,359 +2346,25 @@ Select_IAS_Profile_Fields <- function(Aircraft_Profile, LPID_Var){
   return(Aircraft_Profile)
 }
 
-# Build Full IAS Profile
-Build_Full_IAS_Profile <- function(Aircraft_Profile, LPID_Var){
-  for (i in 0:12){
-    Type_Profiles <- eval(parse(text = paste0("Build_IAS_Profile_Type_", i, "(Aircraft_Profile, LPID_Var)")))
-    if (i == 0){Full_Profile <- Type_Profiles} else {Full_Profile <- rbind(Full_Profile, Type_Profiles)}
-  }
-  Full_Profile <- arrange(Full_Profile, !!sym(LPID_Var))
-  return(Full_Profile)
-}
-
-# ----------------------------------------------- #
-# Gust Adjustments
-# ----------------------------------------------- #
-
-# Gust Adjustment calculations for type 1 and type 2.
-Generate_Gust_Adjustments_A <- function(Aircraft_Profile){
-  Aircraft_Profile <- mutate(Aircraft_Profile,
-                             Gust_Adjustment_1a = ifelse((-Wind_Effect_0DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_0DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_1b = ifelse((-Wind_Effect_1DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_1DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_1c = ifelse((-Wind_Effect_1DME - Surface_Headwind) > 0, (-Wind_Effect_1DME - Surface_Headwind), 0),
-                             Gust_Adjustment_1d = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
-                             Gust_Adjustment_2a = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
-                             Gust_Adjustment_2b = ifelse((-Wind_Effect_3DME - Surface_Headwind) > 0, (-Wind_Effect_3DME - Surface_Headwind), 0),
-                             Gust_Adjustment_2c = ifelse((-Wind_Effect_4DME - Surface_Headwind) > 0, (-Wind_Effect_4DME - Surface_Headwind), 0),
-                             Gust_Adjustment_1a = ifelse(is.na(Gust_Adjustment_1a), 0, Gust_Adjustment_1a),
-                             Gust_Adjustment_1b = ifelse(is.na(Gust_Adjustment_1b), 0, Gust_Adjustment_1b),
-                             Gust_Adjustment_1c = ifelse(is.na(Gust_Adjustment_1c), 0, Gust_Adjustment_1c),
-                             Gust_Adjustment_1d = ifelse(is.na(Gust_Adjustment_1d), 0, Gust_Adjustment_1d),
-                             Gust_Adjustment_2a = ifelse(is.na(Gust_Adjustment_2a), 0, Gust_Adjustment_2a),
-                             Gust_Adjustment_2b = ifelse(is.na(Gust_Adjustment_2b), 0, Gust_Adjustment_2b),
-                             Gust_Adjustment_2c = ifelse(is.na(Gust_Adjustment_2c), 0, Gust_Adjustment_2c))
-
-
+# Function to join wind effect values at a given DME for IAS Profile generation.
+Get_Forecast_Wind_Effect_At_DME <- function(Segments, Aircraft_Profile, ID_Var, DME){
+  
+  # Get Variable Name
+  WE_Var <- paste0("Wind_Effect_", DME, "DME")
+  
+  # Get the Wind Effects from the Segment Data
+  Wind_Effects <- filter(Segments, DME_Seg == DME * NM_to_m) %>%
+    rename(!!sym(WE_Var) := "Forecast_Wind_Effect_IAS")
+  
+  # Join Wind Effect to Aircraft Profile
+  Aircraft_Profile <- left_join(Aircraft_Profile, Wind_Effects, by = setNames("ID", ID_Var))
+  
   return(Aircraft_Profile)
-}
-
-# Gust adjustment aclculations for type 3
-Generate_Gust_Adjustments_B <- function(Aircraft_Profile){
-  Aircraft_Profile <- mutate(Aircraft_Profile,
-                             Gust_Adjustment_1a = ifelse((-Wind_Effect_0DME - Surface_Headwind) > 0, (-Wind_Effect_0DME - Surface_Headwind), 0),
-                             Gust_Adjustment_1b = ifelse((-Wind_Effect_1DME - Surface_Headwind) > 0, (-Wind_Effect_1DME - Surface_Headwind), 0),
-                             Gust_Adjustment_1c = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
-                             Gust_Adjustment_2a = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
-                             Gust_Adjustment_2b = ifelse((-Wind_Effect_3DME - Surface_Headwind) > 0, (-Wind_Effect_3DME - Surface_Headwind), 0),
-                             Gust_Adjustment_2c = ifelse((-Wind_Effect_4DME - Surface_Headwind) > 0, (-Wind_Effect_4DME - Surface_Headwind), 0),
-                             Gust_Adjustment_1a = ifelse(is.na(Gust_Adjustment_1a), 0, Gust_Adjustment_1a),
-                             Gust_Adjustment_1b = ifelse(is.na(Gust_Adjustment_1b), 0, Gust_Adjustment_1b),
-                             Gust_Adjustment_1c = ifelse(is.na(Gust_Adjustment_1c), 0, Gust_Adjustment_1c),
-                             Gust_Adjustment_2a = ifelse(is.na(Gust_Adjustment_2a), 0, Gust_Adjustment_2a),
-                             Gust_Adjustment_2b = ifelse(is.na(Gust_Adjustment_2b), 0, Gust_Adjustment_2b),
-                             Gust_Adjustment_2c = ifelse(is.na(Gust_Adjustment_2c), 0, Gust_Adjustment_2c))
-
-}
-
-# Gust adjustment calculations for type 4
-Generate_Gust_Adjustments_C <- function(Aircraft_Profile){
-  Aircraft_Profile <- mutate(Aircraft_Profile,
-                             Gust_Adjustment_1a = ifelse((-Wind_Effect_0DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_0DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_1b = ifelse((-Wind_Effect_1DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_1DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_1c = ifelse((-Wind_Effect_2DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_2DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_2a = ifelse((-Wind_Effect_2DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_2DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_2b = ifelse((-Wind_Effect_3DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_3DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_2c = ifelse((-Wind_Effect_4DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_4DME - Surface_Headwind) / 3, 0),
-                             Gust_Adjustment_1a = ifelse(is.na(Gust_Adjustment_1a), 0, Gust_Adjustment_1a),
-                             Gust_Adjustment_1b = ifelse(is.na(Gust_Adjustment_1b), 0, Gust_Adjustment_1b),
-                             Gust_Adjustment_1c = ifelse(is.na(Gust_Adjustment_1c), 0, Gust_Adjustment_1c),
-                             Gust_Adjustment_2a = ifelse(is.na(Gust_Adjustment_2a), 0, Gust_Adjustment_2a),
-                             Gust_Adjustment_2b = ifelse(is.na(Gust_Adjustment_2b), 0, Gust_Adjustment_2b),
-                             Gust_Adjustment_2c = ifelse(is.na(Gust_Adjustment_2c), 0, Gust_Adjustment_2c))
-  return(Aircraft_Profile)
-}
-
-# Segment Data Preparation. This converts ORD Validation, GWCS Validation and GWCS Verification data into
-# common format for universal processing. ORD Verification does not require this algorithm.
-Prepare_Segment_Data <- function(Type, Data, Seg_Size, Forecast_Seg_Max, Lookahead_Time){
-
-  # ORD Validation. Uses Landing Pair Reference Table - IDs are Landing Pair IDs. Uses Leader Landing Runway.
-  if (Type == "ORD"){
-    Segment_Forecast <- select(Data, c("Landing_Pair_ID", "Landing_Pair_Date", "Leader_Landing_Runway", "Runway_Group", "Prediction_Time"))
-    Segment_Forecast <- rename(Segment_Forecast, c("ID" = "Landing_Pair_ID", "Forecast_Time" = "Prediction_Time",
-                                                   "Runway" = "Leader_Landing_Runway", "Date" = "Landing_Pair_Date"))
-
-  }
-
-  # GWCS Validation. Uses Flight Plan/Derived. IDs are Flight Plan IDs and Forecast Times are Time at 4DME - Lookahead Time.
-  # Requires Runway Group to be joined on beforehand.
-  if (Type == "GWCS Validation"){
-    Segment_Forecast <- select(Data, c("Flight_Plan_ID", "FP_Date", "Landing_Runway", "Runway_Group", "Time_At_4DME"))
-    Segment_Forecast <- rename(Segment_Forecast, c("ID" = "Flight_Plan_ID", "Forecast_Time" = "Time_At_4DME",
-                                                   "Runway" = "Landing_Runway", "Date" = "FP_Date"))
-  }
-
-  # GWCS Verification. Leave alone for now.
-  if (Type == "GWCS Verification"){}
-
-  # Adjust the Forecast Times by subtracting the Lookahead Time. (For ORD this will be 0)
-  Segment_Forecast <- mutate(Segment_Forecast, Forecast_Time = Forecast_Time - Lookahead_Time)
-
-  # Make a Data Frame for all segments up to Forecast_Seg_Max. (Incorporate Seg Size here?)
-  Total_Segments <- data.frame(DME_Seg = 0:(Forecast_Seg_Max / NM_to_m))
-
-  # Merge the two Dataframes Together.
-  Segment_Forecast <- merge(Segment_Forecast, Total_Segments)
-
-  # Convert the DME Segments to SI units.
-  Segment_Forecast <- mutate(Segment_Forecast, DME_Seg = DME_Seg * NM_to_m)
-
-  return(Segment_Forecast)
-
-}
-
-
-Get_Non_Stale_Segments <- function(Segment_Forecast, Forecast_Seg, Stale_Time){
-
-  # -- Add duplicates of the join parameters to not lose anything.
-
-  # For our Segment Forecast Table. Add a minor offset as to match segments correctly.
-  Segment_Forecast <- mutate(Segment_Forecast,
-                             Join_Date = Date,
-                             Join_Runway = Runway_Group,
-                             Join_Time = Forecast_Time + 0.00001)
-
-  # For tbl_Mode_S_Wind_Seg_Forecast.
-  Forecast_Seg <- mutate(Forecast_Seg,
-                         Join_Date = Forecast_Date,
-                         Join_Runway = Runway_Group,
-                         Join_Time = Forecast_Time)
-
-  # -- Perform a Rolling Join
-
-  # Convert data to data.tables to allow rolling joins.
-  Segment_Forecast <- as.data.table(Segment_Forecast)
-  Forecast_Seg <- as.data.table(Forecast_Seg)
-
-  # Set Keys for Rolling Join. Join_Time will be the roll.
-  setkey(Segment_Forecast, Join_Date, Join_Runway, DME_Seg, Join_Time)
-  setkey(Forecast_Seg, Join_Date, Join_Runway, DME_Seg, Join_Time)
-
-  # Perform the Rolling Join, with the max roll being the Stale Time.
-  Segment_Forecast <- Forecast_Seg[Segment_Forecast, roll = Stale_Time]
-
-  # Return to data.frame format and select relevant fields.
-  Segment_Forecast <- as.data.frame(Segment_Forecast) %>% select(ID, Date, Join_Runway, DME_Seg, Join_Time, Segment_Time = Forecast_Time,
-                                                                 Forecast_Wind_Effect_IAS, Forecast_Wind_SPD, Forecast_Wind_HDG,
-                                                                 Forecast_Aircraft_Type) %>% rename(Runway_Group = Join_Runway,
-                                                                                                    Forecast_Time = Join_Time)
-  # Order data by ID and DME_Seg.
-  Segment_Forecast <- Segment_Forecast[order(Segment_Forecast$ID, Segment_Forecast$DME_Seg),]
-
-  return(Segment_Forecast)
-}
-
-# Function for Transferring Extrpolated Data to updated segment table. Extrapolation_Type = ("ORD", "TBS")
-Transfer_Extrapolated_Segment_Data <- function(Segment_Forecast, Extrapolation_Type){
-
-  if (Extrapolation_Type == "TBS"){
-    Segment_Forecast <- mutate(Segment_Forecast,
-                               TBS_Interpolated_Seg.x = ifelse(!is.na(Forecast_Wind_Effect_IAS.y), DME_Seg.y, TBS_Interpolated_Seg.x),
-                               Forecast_Time.x = Forecast_Time.y,
-                               Forecast_Wind_Effect_IAS.x = Forecast_Wind_Effect_IAS.y,
-                               Forecast_Wind_SPD.x = Forecast_Wind_SPD.y,
-                               Forecast_Wind_HDG.x = Forecast_Wind_HDG.y,
-                               Forecast_Aircraft_Type.x = Forecast_Aircraft_Type.y) %>%
-      select(ID, Date = Date.x, Runway_Group = Runway_Group.x, DME_Seg = DME_Seg.x, Segment_Time = Segment_Time.x,
-             Forecast_Time = Forecast_Time.x, Forecast_Wind_Effect_IAS = Forecast_Wind_Effect_IAS.x, Forecast_Wind_SPD = Forecast_Wind_SPD.x,
-             Forecast_Wind_HDG = Forecast_Wind_HDG.x, Forecast_Aircraft_Type = Forecast_Aircraft_Type.x, TBS_Interpolated_Seg = TBS_Interpolated_Seg.x)
-  }
-
-  if (Extrapolation_Type == "ORD"){
-    Segment_Forecast <- mutate(Segment_Forecast,
-                               ORD_Extrapolated_Seg.x = ifelse(!is.na(Forecast_Wind_Effect_IAS.y), DME_Seg.y, ORD_Extrapolated_Seg.x),
-                               TBS_Interpolated_Seg.x = ifelse(!is.na(Forecast_Wind_Effect_IAS.y), TBS_Interpolated_Seg.y, TBS_Interpolated_Seg.x),
-                               Forecast_Time.x = Forecast_Time.y,
-                               Forecast_Wind_Effect_IAS.x = Forecast_Wind_Effect_IAS.y,
-                               Forecast_Wind_SPD.x = Forecast_Wind_SPD.y,
-                               Forecast_Wind_HDG.x = Forecast_Wind_HDG.y,
-                               Forecast_Aircraft_Type.x = Forecast_Aircraft_Type.y) %>%
-      select(ID, Date = Date.x, Runway_Group = Runway_Group.x, DME_Seg = DME_Seg.x, Segment_Time = Segment_Time.x,
-             Forecast_Time = Forecast_Time.x, Forecast_Wind_Effect_IAS = Forecast_Wind_Effect_IAS.x, Forecast_Wind_SPD = Forecast_Wind_SPD.x,
-             Forecast_Wind_HDG = Forecast_Wind_HDG.x, Forecast_Aircraft_Type = Forecast_Aircraft_Type.x, TBS_Interpolated_Seg = TBS_Interpolated_Seg.x,
-             ORD_Extrapolated_Seg = ORD_Extrapolated_Seg.x)
-  }
-
-  return(Segment_Forecast)
-
-}
-
-
-TBS_Extrapolate_Segments <- function(Segment_Forecast, Max_Seg_Extrapolation, Extrapolation_Seg_Min, Separation_Forecast_Seg_Max){
-
-  # Make a variable for the origin of TBS Interpolated Segment
-  Segment_Forecast <- mutate(Segment_Forecast, TBS_Interpolated_Seg = NA)
-
-  # Keep the Segs that do not allow extrapolation separately
-  Unextrapolated_Forecast <- filter(Segment_Forecast, DME_Seg < Extrapolation_Seg_Min)
-
-  # TBS Segs are between Forecast Seg Min and Separation Forecast Seg Max. We Want these + maximum Seg Extrapolation range
-  TBS_Segment_Forecast <- filter(Segment_Forecast, DME_Seg >= Extrapolation_Seg_Min & DME_Seg <= (Separation_Forecast_Seg_Max + (Max_Seg_Extrapolation * NM_to_m)))
-
-  # Loop through each segment number. Should be updated to reflect segment size.
-  for (i in (Extrapolation_Seg_Min / NM_to_m) : (Separation_Forecast_Seg_Max / NM_to_m)){
-
-    # Filter for DME Seg in loop, separate raw segments from ones to be interpolated
-    TBS_Segments_This_Seg <- filter(TBS_Segment_Forecast, DME_Seg == i * NM_to_m)
-    TBS_Segments_This_Seg_Valid <- filter(TBS_Segments_This_Seg, !is.na(Forecast_Wind_Effect_IAS))
-    TBS_Segments_This_Seg_Null <- filter(TBS_Segments_This_Seg, is.na(Forecast_Wind_Effect_IAS))
-
-    # Bind the raw segments for this DME to the complete processed segments
-    if (i == (Extrapolation_Seg_Min / NM_to_m)){TBS_Segs_Complete <- TBS_Segments_This_Seg_Valid} else {
-      TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Valid)}
-
-    # Create new loop for extrapolation search. Go outward from 1 to Max_Seg_Extrapolation in either direction
-    for (j in 1 : Max_Seg_Extrapolation){
-
-      # -- Prioritise lower RTT values, but only do if segment within allowed interpolating range.
-      if ((i - j) * NM_to_m >= Extrapolation_Seg_Min){
-
-        # Filter for the Segment (i - j). e.g. For Segment 5, will start at Segment 4.
-        TBS_Segments_Extrapolate <- filter(TBS_Segment_Forecast, DME_Seg == (i - j) * NM_to_m)
-
-        # Join the Invalid segments to attempt to extrapolate with this segment
-        TBS_Segments_Compare <- inner_join(TBS_Segments_This_Seg_Null, TBS_Segments_Extrapolate, by = c("ID")) # and all extra manipulation
-
-        # Perform the TBS Extrapolation data transfer.
-        TBS_Segments_Compare <- Transfer_Extrapolated_Segment_Data(TBS_Segments_Compare, "TBS")
-
-        # Isolate remaining NULL segments.
-        TBS_Segments_This_Seg_Null <- filter(TBS_Segments_Compare, is.na(Forecast_Wind_Effect_IAS))
-
-        # Isolate successfully extrapolated segments
-        TBS_Segments_This_Seg_Valid <- filter(TBS_Segments_Compare, !is.na(Forecast_Wind_Effect_IAS))
-
-        # Add extrapolated segments to complete segment list.
-        TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Valid)
-      }
-
-      # -- Then do higher values
-
-      # Filter for segment (i + j).
-      TBS_Segments_Extrapolate <- filter(TBS_Segment_Forecast, DME_Seg == (i + j) * NM_to_m)
-
-      # Join the Invalid segments to attempt to extrapolate with this segment
-      TBS_Segments_Compare <- inner_join(TBS_Segments_This_Seg_Null, TBS_Segments_Extrapolate, by = c("ID"))
-
-      # Perform the TBS Extrapolation data transfer.
-      TBS_Segments_Compare <- Transfer_Extrapolated_Segment_Data(TBS_Segments_Compare, "TBS")
-
-      # Isolate remaining NULL segments.
-      TBS_Segments_This_Seg_Null <- filter(TBS_Segments_Compare, is.na(Forecast_Wind_Effect_IAS))
-
-      # Isolate successfully extrapolated segments
-      TBS_Segments_This_Seg_Valid <- filter(TBS_Segments_Compare, !is.na(Forecast_Wind_Effect_IAS))
-
-      # Add extrapolated segments to complete segment list.
-      TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Valid)
-
-      # If final attempt at extrapolation for ths segment, bind on the remaining NULL forecasts.
-      if (j == Max_Seg_Extrapolation){TBS_Segs_Complete <- rbind(TBS_Segs_Complete, TBS_Segments_This_Seg_Null)}
-
-    }
-
-  }
-
-  # Remove Old segments in the TBS Extrapolation range
-  Segment_Forecast <- filter(Segment_Forecast, DME_Seg > Separation_Forecast_Seg_Max)
-
-  # Add on thenew TBS Extrapolated Segments, as well as the Untouched segments
-  Segment_Forecast <- rbind(Segment_Forecast, Unextrapolated_Forecast) %>% rbind(TBS_Segs_Complete)
-
-  # Order Segments as before
-  Segment_Forecast <- Segment_Forecast[order(Segment_Forecast$ID, Segment_Forecast$DME_Seg),]
-
-  return(Segment_Forecast)
-}
-
-
-
-ORD_Extrapolate_Segments <- function(Segment_Forecast, Forecast_Seg_Max, Separation_Forecast_Seg_Max){
-
-  # Add a new parameter to signify which segment was used for ORD Extrapolation.
-  Segment_Forecast <- mutate(Segment_Forecast, ORD_Extrapolated_Seg = NA)
-
-  # ORD Segs are between Separation Forecast Seg Max - Extrap range and Forecast_Valid_Seg_Max.
-  ORD_Segs <- filter(Segment_Forecast, DME_Seg <= Forecast_Seg_Max & DME_Seg >= (Separation_Forecast_Seg_Max))
-
-  # We want to loop through all segments, starting with Separation_Forecast_Seg_Max + 1
-  for (i in ((Separation_Forecast_Seg_Max / NM_to_m) + 1) : (Forecast_Seg_Max / NM_to_m)){
-
-    # Select Data for this segment and the previous segment separately.
-    ORD_Segs_This_Seg <- filter(ORD_Segs, DME_Seg == (i * NM_to_m))
-    ORD_Segs_Prev_Seg <- filter(ORD_Segs, DME_Seg == ((i - 1) * NM_to_m))
-
-    # Select Populated and Non-Populated data from This Segment separately.
-    ORD_Segs_This_Seg_Valid <- filter(ORD_Segs_This_Seg, !is.na(Forecast_Wind_Effect_IAS))
-    ORD_Segs_This_Seg_Null <- filter(ORD_Segs_This_Seg, is.na(Forecast_Wind_Effect_IAS))
-
-    # Join on the Invalid This Segment Data to the Previous Segment Data.
-    ORD_Segs_This_Seg_Compare <- inner_join(ORD_Segs_This_Seg_Null, ORD_Segs_Prev_Seg, by=c("ID"))
-
-    # Perform the ORD Extrapolation data transfer.
-    ORD_Segs_This_Seg_Compare <- Transfer_Extrapolated_Segment_Data(ORD_Segs_This_Seg_Compare, "ORD")
-
-    # Bind the previously valid segs with those attempted to be extrapolated.
-    ORD_Segs_This_Seg <- rbind(ORD_Segs_This_Seg_Valid, ORD_Segs_This_Seg_Compare)
-
-    # Filter out this DME Segment from ORD_Segs.
-    ORD_Segs <- filter(ORD_Segs, DME_Seg != (i * NM_to_m))
-
-    # Add in the extrapolated data for this segment.
-    ORD_Segs <- rbind(ORD_Segs, ORD_Segs_This_Seg)
-  }
-
-  # Remove the old ORD Segs
-  Segment_Forecast <- filter(Segment_Forecast, DME_Seg < Separation_Forecast_Seg_Max)
-
-  # Add new ORD Segs
-  Segment_Forecast <- rbind(Segment_Forecast, ORD_Segs)
-
-  # Order as before
-  Segment_Forecast <- Segment_Forecast[order(Segment_Forecast$ID, Segment_Forecast$DME_Seg),]
-
-  return(Segment_Forecast)
-}
-
-
-# Function that changes the Wind entries depending on GWCS Wind Selection. Requires Extrapolation Complete.
-# !!! Do we need to change Wind Speed, HDG and Aircraft Type? See for GWCS.
-Treat_Default_Wind_Segments <- function(Segment_Forecast, Default_Wind, GWCS_Wind_Selection){
-
-  # Join on the Default Wind
-  Segment_Forecast <- left_join(Segment_Forecast, Default_Wind, by = c("DME_Seg" = "Wind_Segment_Start"))
-
-  # If GWCS_Wind_Selection is Always_Default, replace ALL Wind Effect values with Default
-  if (GWCS_Wind_Selection == "Always_Default"){Segment_Forecast <- mutate(Segment_Forecast, Forecast_Wind_Effect_IAS = Wind_Effect)}
-
-  # If GWCS_Wind_Selection is Always_Zero, replace ALL Wind Effect values with 0.
-  if (GWCS_Wind_Selection == "Always_Zero"){Segment_Forecast <- mutate(Segment_Forecast, Forecast_Wind_Effect_IAS = 0)}
-
-  # If GWCS_Wind_Selection is Auto_Default, replace NA Wind Effect values with Default. (After Extrapolation)
-  if (GWCS_Wind_Selection == "Auto_Default"){
-    Segment_Forecast <- mutate(Segment_Forecast,
-                               Forecast_Wind_Effect_IAS = ifelse(is.na(Forecast_Wind_Effect_IAS), Wind_Effect, Forecast_Wind_Effect_IAS))
-  }
-
-  # Remove Default Parameters.
-  Segment_Forecast <- select(Segment_Forecast, -c("Wind_Effect", "Wind_Segment_End"))
-
-  return(Segment_Forecast)
-
+  
 }
 
 # ----------------------------------------------- #
-# Profile Addition
+# Profile Setting
 # ----------------------------------------------- #
 
 # Generic Section 1 setting
@@ -2038,23 +2565,23 @@ Set_IAS_Profile_Section_5 <- function(Aircraft_Profile, Section_No){
 
 # Generic 5 stage IAS profile Build. Applicable for all types except gusting enabled 1, 2, 3, 4
 Build_IAS_Profile_Main <- function(Aircraft_Profile, LPID_Var){
-
+  
   IAS_Profile_1 <- Set_IAS_Profile_Section_1(Aircraft_Profile, 1) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_2 <- Set_IAS_Profile_Section_2(Aircraft_Profile, 2) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_3 <- Set_IAS_Profile_Section_3(Aircraft_Profile, 3) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_4 <- Set_IAS_Profile_Section_4(Aircraft_Profile, 4) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_5 <- Set_IAS_Profile_Section_5(Aircraft_Profile, 5) %>% Select_IAS_Profile_Fields(LPID_Var)
-
+  
   IAS_Profile <- rbind(IAS_Profile_1, IAS_Profile_2) %>% rbind(IAS_Profile_3) %>% rbind(IAS_Profile_4) %>%
     rbind(IAS_Profile_5)
-
+  
   return(IAS_Profile)
-
+  
 }
 
 # Complex
 Build_IAS_Profile_A <- function(Aircraft_Profile, LPID_Var){
-
+  
   IAS_Profile_1a <- Set_IAS_Profile_Section_1a(Aircraft_Profile, 1) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_1b <- Set_IAS_Profile_Section_1b_A(Aircraft_Profile, 2) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_1c <- Set_IAS_Profile_Section_1c_A(Aircraft_Profile, 3) %>% Select_IAS_Profile_Fields(LPID_Var)
@@ -2065,17 +2592,17 @@ Build_IAS_Profile_A <- function(Aircraft_Profile, LPID_Var){
   IAS_Profile_3 <- Set_IAS_Profile_Section_3(Aircraft_Profile, 8) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_4 <- Set_IAS_Profile_Section_4(Aircraft_Profile, 9) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_5 <- Set_IAS_Profile_Section_5(Aircraft_Profile, 10) %>% Select_IAS_Profile_Fields(LPID_Var)
-
+  
   IAS_Profile <- rbind(IAS_Profile_1a, IAS_Profile_1b) %>% rbind(IAS_Profile_1c) %>% rbind(IAS_Profile_1d) %>%
     rbind(IAS_Profile_2a) %>% rbind(IAS_Profile_2b) %>% rbind(IAS_Profile_2c) %>% rbind(IAS_Profile_3) %>%
     rbind(IAS_Profile_4) %>% rbind(IAS_Profile_5)
-
+  
   return(IAS_Profile)
-
+  
 }
 
 Build_IAS_Profile_B <- function(Aircraft_Profile, LPID_Var){
-
+  
   IAS_Profile_1a <- Set_IAS_Profile_Section_1a(Aircraft_Profile, 1) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_1b <- Set_IAS_Profile_Section_1b_B(Aircraft_Profile, 2) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_1c <- Set_IAS_Profile_Section_1c_B(Aircraft_Profile, 3) %>% Select_IAS_Profile_Fields(LPID_Var)
@@ -2086,17 +2613,17 @@ Build_IAS_Profile_B <- function(Aircraft_Profile, LPID_Var){
   IAS_Profile_3 <- Set_IAS_Profile_Section_3(Aircraft_Profile, 8) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_4 <- Set_IAS_Profile_Section_4(Aircraft_Profile, 9) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_5 <- Set_IAS_Profile_Section_5(Aircraft_Profile, 10) %>% Select_IAS_Profile_Fields(LPID_Var)
-
+  
   IAS_Profile <- rbind(IAS_Profile_1a, IAS_Profile_1b) %>% rbind(IAS_Profile_1c) %>% rbind(IAS_Profile_1d) %>%
     rbind(IAS_Profile_2a) %>% rbind(IAS_Profile_2b) %>% rbind(IAS_Profile_2c) %>% rbind(IAS_Profile_3) %>%
     rbind(IAS_Profile_4) %>% rbind(IAS_Profile_5)
-
+  
   return(IAS_Profile)
-
+  
 }
 
 Build_IAS_Profile_C <- function(Aircraft_Profile, LPID_Var){
-
+  
   IAS_Profile_1a <- Set_IAS_Profile_Section_1a(Aircraft_Profile, 1) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_1b <- Set_IAS_Profile_Section_1b_C(Aircraft_Profile, 2) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_1c <- Set_IAS_Profile_Section_1c_C(Aircraft_Profile, 3) %>% Select_IAS_Profile_Fields(LPID_Var)
@@ -2106,13 +2633,13 @@ Build_IAS_Profile_C <- function(Aircraft_Profile, LPID_Var){
   IAS_Profile_3 <- Set_IAS_Profile_Section_3(Aircraft_Profile, 7) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_4 <- Set_IAS_Profile_Section_4(Aircraft_Profile, 8) %>% Select_IAS_Profile_Fields(LPID_Var)
   IAS_Profile_5 <- Set_IAS_Profile_Section_5(Aircraft_Profile, 9) %>% Select_IAS_Profile_Fields(LPID_Var)
-
+  
   IAS_Profile <- rbind(IAS_Profile_1a, IAS_Profile_1b) %>% rbind(IAS_Profile_1c) %>%
     rbind(IAS_Profile_2a) %>% rbind(IAS_Profile_2b) %>% rbind(IAS_Profile_2c) %>% rbind(IAS_Profile_3) %>%
     rbind(IAS_Profile_4) %>% rbind(IAS_Profile_5)
-
+  
   return(IAS_Profile)
-
+  
 }
 
 # ----------------------------------------------- #
@@ -2218,11 +2745,122 @@ Build_IAS_Profile_Type_12 <- function(Aircraft_Profile, LPID_Var){
 }
 
 # ----------------------------------------------- #
-# GSPD Profile Building
-# ----------------------------------------------- #
-# Single function to build GS Profile for either L/F
+# Gust Adjustments
 # ----------------------------------------------- #
 
+# Gust Adjustment calculations for type 1 and type 2.
+Generate_Gust_Adjustments_A <- function(Aircraft_Profile){
+  Aircraft_Profile <- mutate(Aircraft_Profile,
+                             Gust_Adjustment_1a = ifelse((-Wind_Effect_0DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_0DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_1b = ifelse((-Wind_Effect_1DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_1DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_1c = ifelse((-Wind_Effect_1DME - Surface_Headwind) > 0, (-Wind_Effect_1DME - Surface_Headwind), 0),
+                             Gust_Adjustment_1d = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
+                             Gust_Adjustment_2a = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
+                             Gust_Adjustment_2b = ifelse((-Wind_Effect_3DME - Surface_Headwind) > 0, (-Wind_Effect_3DME - Surface_Headwind), 0),
+                             Gust_Adjustment_2c = ifelse((-Wind_Effect_4DME - Surface_Headwind) > 0, (-Wind_Effect_4DME - Surface_Headwind), 0),
+                             Gust_Adjustment_1a = ifelse(is.na(Gust_Adjustment_1a), 0, Gust_Adjustment_1a),
+                             Gust_Adjustment_1b = ifelse(is.na(Gust_Adjustment_1b), 0, Gust_Adjustment_1b),
+                             Gust_Adjustment_1c = ifelse(is.na(Gust_Adjustment_1c), 0, Gust_Adjustment_1c),
+                             Gust_Adjustment_1d = ifelse(is.na(Gust_Adjustment_1d), 0, Gust_Adjustment_1d),
+                             Gust_Adjustment_2a = ifelse(is.na(Gust_Adjustment_2a), 0, Gust_Adjustment_2a),
+                             Gust_Adjustment_2b = ifelse(is.na(Gust_Adjustment_2b), 0, Gust_Adjustment_2b),
+                             Gust_Adjustment_2c = ifelse(is.na(Gust_Adjustment_2c), 0, Gust_Adjustment_2c))
+
+
+  return(Aircraft_Profile)
+}
+
+# Gust adjustment aclculations for type 3
+Generate_Gust_Adjustments_B <- function(Aircraft_Profile){
+  Aircraft_Profile <- mutate(Aircraft_Profile,
+                             Gust_Adjustment_1a = ifelse((-Wind_Effect_0DME - Surface_Headwind) > 0, (-Wind_Effect_0DME - Surface_Headwind), 0),
+                             Gust_Adjustment_1b = ifelse((-Wind_Effect_1DME - Surface_Headwind) > 0, (-Wind_Effect_1DME - Surface_Headwind), 0),
+                             Gust_Adjustment_1c = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
+                             Gust_Adjustment_2a = ifelse((-Wind_Effect_2DME - Surface_Headwind) > 0, (-Wind_Effect_2DME - Surface_Headwind), 0),
+                             Gust_Adjustment_2b = ifelse((-Wind_Effect_3DME - Surface_Headwind) > 0, (-Wind_Effect_3DME - Surface_Headwind), 0),
+                             Gust_Adjustment_2c = ifelse((-Wind_Effect_4DME - Surface_Headwind) > 0, (-Wind_Effect_4DME - Surface_Headwind), 0),
+                             Gust_Adjustment_1a = ifelse(is.na(Gust_Adjustment_1a), 0, Gust_Adjustment_1a),
+                             Gust_Adjustment_1b = ifelse(is.na(Gust_Adjustment_1b), 0, Gust_Adjustment_1b),
+                             Gust_Adjustment_1c = ifelse(is.na(Gust_Adjustment_1c), 0, Gust_Adjustment_1c),
+                             Gust_Adjustment_2a = ifelse(is.na(Gust_Adjustment_2a), 0, Gust_Adjustment_2a),
+                             Gust_Adjustment_2b = ifelse(is.na(Gust_Adjustment_2b), 0, Gust_Adjustment_2b),
+                             Gust_Adjustment_2c = ifelse(is.na(Gust_Adjustment_2c), 0, Gust_Adjustment_2c))
+
+}
+
+# Gust adjustment calculations for type 4
+Generate_Gust_Adjustments_C <- function(Aircraft_Profile){
+  Aircraft_Profile <- mutate(Aircraft_Profile,
+                             Gust_Adjustment_1a = ifelse((-Wind_Effect_0DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_0DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_1b = ifelse((-Wind_Effect_1DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_1DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_1c = ifelse((-Wind_Effect_2DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_2DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_2a = ifelse((-Wind_Effect_2DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_2DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_2b = ifelse((-Wind_Effect_3DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_3DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_2c = ifelse((-Wind_Effect_4DME - Surface_Headwind) / 3 > 0, (-Wind_Effect_4DME - Surface_Headwind) / 3, 0),
+                             Gust_Adjustment_1a = ifelse(is.na(Gust_Adjustment_1a), 0, Gust_Adjustment_1a),
+                             Gust_Adjustment_1b = ifelse(is.na(Gust_Adjustment_1b), 0, Gust_Adjustment_1b),
+                             Gust_Adjustment_1c = ifelse(is.na(Gust_Adjustment_1c), 0, Gust_Adjustment_1c),
+                             Gust_Adjustment_2a = ifelse(is.na(Gust_Adjustment_2a), 0, Gust_Adjustment_2a),
+                             Gust_Adjustment_2b = ifelse(is.na(Gust_Adjustment_2b), 0, Gust_Adjustment_2b),
+                             Gust_Adjustment_2c = ifelse(is.na(Gust_Adjustment_2c), 0, Gust_Adjustment_2c))
+  return(Aircraft_Profile)
+}
+
+
+# ----------------------------------------------- #
+# PWS Edits: In Progress.
+# ----------------------------------------------- #
+
+# Generic Section 1 setting
+Set_IAS_Profile_Section_1_PWS <- function(Aircraft_Profile, Section_No){
+  Aircraft_Profile <- mutate(Aircraft_Profile, Section_Number = Section_No,
+                             Profile_Section = "1",
+                             Profile_Type = "C",
+                             Start_IAS = Landing_Stabilisation_Speed,
+                             End_IAS = Landing_Stabilisation_Speed,
+                             Start_Dist = End_Final_Deceleration_Distance,
+                             End_Dist = 0)
+  return(Aircraft_Profile)
+}
+
+
+# Generic Section 2 Setting
+Set_IAS_Profile_Section_2_PWS <- function(Aircraft_Profile, Section_No){
+  Aircraft_Profile <- mutate(Aircraft_Profile, Section_Number = Section_No,
+                             Profile_Section = "2",
+                             Profile_Type = "A",
+                             Start_IAS = Steady_Procedural_Speed,
+                             End_IAS = Landing_Stabilisation_Speed,
+                             Start_Dist = Start_Final_Deceleration_Distance,
+                             End_Dist = End_Final_Deceleration_Distance)
+  return(Aircraft_Profile)
+}
+
+
+Generate_Gust_Adjustment_Generic <- function(Aircraft_Profile){
+  
+  # Minimum Gust Adjustment Value.
+  Min_Adjustment <- 0
+  
+  #
+  
+  Aircraft_Profile <- Aircraft_Profile %>%
+    mutate(Gust_Adjustment = -(Section_Wind_Effect + Surface_Headwind) / Gust_Coefficient) %>%
+    mutate(Gust_Adjustment = ifelse(Gust_Adjustment < Min_Adjustment, Min_Adjustment, Gust_Adjustment)) %>%
+    mutate(Gust_Adjustment = ifelse(is.na(Gust_Adjustment), 0, Gust_Adjustment))
+  
+  # Assumes Start Distance, End Distance, Wind_Effect, Gust Change Distance, Pre_Change_Coefficient, Post_Change_Coefficient
+  
+  
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# ORD GSPD Profile Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Contains functions that assist in Generating the ORD GSPD Functions.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 Build_GSPD_Profile <- function(IAS_Profile, ORD_Segments, LPID_Var){
 
@@ -2303,986 +2941,989 @@ Build_GSPD_Profile <- function(IAS_Profile, ORD_Segments, LPID_Var){
   return(GS_Complete)
 }
 
-# Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles
-# With Joined values for Compression Start and End.
-Get_Forecast_Compression <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var){
-
-  # ------------------------ #
-  ### --- Setup
-  # ------------------------ #
-
-  # Variable Names
-  Comp_Var <- paste0("Forecast_", Prefix, "_Compression")
-  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
-  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
-  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
-  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
-
-  # Split GS Profile into Leader and Follower
-  GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
-  GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
-
-  # Get Start/End Leader Distance from Landing Pair
-  Distances <- select(Landing_Pair, !!sym(LPID_Var),
-                      "Compression_Start" := !!sym(Comp_Start_Var),
-                      "Compression_End" := !!sym(Comp_End_Var),
-                      "Follower_End_Distance" := !!sym(Sep_Dist_Var))
-
-  # Add The End Distances (Separation Distance + Delivery)
-  Distances <- mutate(Distances, Follower_End_Distance = Follower_End_Distance + Compression_End)
-
-  # Split the Leader/Follower Distances
-  Leader_Distances <- select(Distances, -c("Follower_End_Distance"))
-  Follower_Distance <- select(Distances, -c("Compression_Start", "Compression_End"))
-
-  # Join on the distances data ready for Calculations
-  GS_Profile_Leader <- left_join(GS_Profile_Leader, Leader_Distances, by = setNames(LPID_Var, LPID_Var))
-  GS_Profile_Follower <- left_join(GS_Profile_Follower, Follower_Distance, by = setNames(LPID_Var, LPID_Var))
-
-  # ------------------------ #
-  ### --- Leader
-  # ------------------------ #
-
-  # Get flags for all segments within compression range, and one for start and end
-  GS_Profile_Leader <- mutate(GS_Profile_Leader,
-                 In_Range_Flag = ifelse(Start_Dist >= Compression_End & End_Dist < Compression_Start, 1, 0),
-                 Compression_End_Flag = ifelse(In_Range_Flag == 1 & End_Dist <= Compression_End, 1, 0),
-                 Compression_Start_Flag = ifelse(In_Range_Flag == 1 & Start_Dist >= Compression_Start, 1, 0))
-
-  # Filter all segments not within the Compression range
-  GS_Profile_Leader <- filter(GS_Profile_Leader, In_Range_Flag != 0)
-
-  # Find the GSPD and IAS differences for adjustment
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, GSPD_Difference = Start_GS - End_GS)
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, IAS_Difference = Start_IAS - End_IAS)
-
-  # Adjust Leader Start/End Section values: Compression End Section.
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Compression_End - End_Dist)/(Start_Dist - End_Dist))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_GS = ifelse(Compression_End_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_IAS = ifelse(Compression_End_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_Dist = ifelse(Compression_End_Flag == 1, Compression_End, End_Dist))
-
-  # Adjust Leader Start/End Section values: Compression Start Section.
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Start_Dist - Compression_Start)/(Start_Dist - End_Dist))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_GS = ifelse(Compression_Start_Flag == 1, Start_GS - (GSPD_Difference * Distance_Ratio), Start_GS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_IAS = ifelse(Compression_Start_Flag == 1, Start_IAS - (IAS_Difference * Distance_Ratio), Start_IAS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_Dist = ifelse(Compression_Start_Flag == 1, Compression_Start, Start_Dist))
-
-  # Calculate the Leader Section Flying Times/Distance
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS),
-                 Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
-
-  # Calculate the Start and End Wind Effects
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_WE = Start_GS - Start_IAS)
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_WE = End_GS - End_IAS)
-
-  # Calculate the aggregate Mean Leader IAS/Wind Effect Trapezium rule calculations
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Mean_Leader_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Forecast_Mean_Leader_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
-
-  # Get the Leader Stats: Flying Time, Flying Disance, Mean IAS and Mean WE (Trapezium)
-  Leader_Stats <- GS_Profile_Leader %>% group_by(Landing_Pair_ID) %>%
-    summarise(Leader_Flying_Time = sum(Section_Flying_Time, na.rm = F),
-              Leader_Flying_Distance = max(Compression_Start - Compression_End, na.rm = F),
-              Mean_Leader_IAS = sum(Mean_Leader_IAS, na.rm = F),
-              Forecast_Mean_Leader_Wind_Effect = sum(Forecast_Mean_Leader_Wind_Effect, na.rm = F)) %>% ungroup() %>%
-    mutate(Mean_Leader_IAS = Mean_Leader_IAS / Leader_Flying_Time,
-           Forecast_Mean_Leader_Wind_Effect = Forecast_Mean_Leader_Wind_Effect / Leader_Flying_Time)
 
 
-  # Get the Leader Flying times specifically for the Follower
-  Leader_Times <- select(Leader_Stats, !!sym(LPID_Var), Leader_Flying_Time)
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# IAC TBS v1.0 Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# New functions created for IAC TBS v1.0. Will be organised into respective areas.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
-  # ------------------------ #
-  ### --- Follower
-  # ------------------------ #
-
-  # Get flags for Follower being within travel range and it's end section
-  GS_Profile_Follower <- mutate(GS_Profile_Follower,
-                 Viable_Flag = ifelse(Start_Dist >= Follower_End_Distance, 1, 0),
-                 Start_Flag = ifelse(Viable_Flag == 1 & End_Dist <= Follower_End_Distance, 1, 0))
-
-  # Filter for only Viable follower segments
-  GS_Profile_Follower <- filter(GS_Profile_Follower, Viable_Flag == 1)
-
-  # Find the Follower IAS/GSPD Differences for Partial Section Calculations.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
-
-  # Adjust Follower end section values.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Distance_Ratio = (Follower_End_Distance - End_Dist)/(Start_Dist - End_Dist))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_GS = ifelse(Start_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_IAS = ifelse(Start_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_Dist = ifelse(Start_Flag == 1, Follower_End_Distance, End_Dist))
-
-  # Find the first pass of the Section Flying Times. The End section time will be updated later.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS))
-
-  # Join on the Leader Flying Times for each Landing Pair ID.
-  GS_Profile_Follower <- left_join(GS_Profile_Follower, Leader_Times, by=setNames(LPID_Var, LPID_Var))
-
-  # Get the Cumulative Flying Times for each Follower. For each segment and it's previous segment.
-  GS_Profile_Follower <- group_by(GS_Profile_Follower, !!sym(LPID_Var)) %>% mutate(Cumulative_Time = cumsum(Section_Flying_Time)) %>% ungroup()
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Prev_Cumulative_Time = Cumulative_Time - Section_Flying_Time)
-
-  # Create flags for all Valid sections and the Follower start section
-  GS_Profile_Follower <- mutate(GS_Profile_Follower,
-                 Section_Time_Flag = ifelse(Prev_Cumulative_Time <= Leader_Flying_Time, 1, 0),
-                 Last_Section_Flag = ifelse(Cumulative_Time >= Leader_Flying_Time & Prev_Cumulative_Time < Leader_Flying_Time, 1, 0))
-
-  # Filter only for valid Follower Sections
-  GS_Profile_Follower <- filter(GS_Profile_Follower, Section_Time_Flag == 1)
-
-  # Adjust Follower Start Section values. Use Time Ratio.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Time_Ratio = (Leader_Flying_Time - Prev_Cumulative_Time)/(Cumulative_Time - Prev_Cumulative_Time))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_GS = ifelse(Last_Section_Flag == 1, End_GS + (GSPD_Difference * Time_Ratio), Start_GS))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_IAS = ifelse(Last_Section_Flag == 1, End_IAS + (IAS_Difference * Time_Ratio), Start_IAS))
-
-  # Adjust Initial section Flying Time, start distance and Cumulative time
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = ifelse(Last_Section_Flag == 1, (Leader_Flying_Time - Prev_Cumulative_Time), Section_Flying_Time))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Time = ifelse(Last_Section_Flag == 1, Leader_Flying_Time, Cumulative_Time))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_Dist = ifelse(Last_Section_Flag == 1, End_Dist + (0.5 * Section_Flying_Time * (Start_GS + End_GS)),  Start_Dist),
-                 Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
-
-  # Calculate the Start/End Follower Wind Effects
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_WE = Start_GS - Start_IAS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_WE = End_GS - End_IAS)
-
-  # Calculate the aggregate Mean Follower IAS/Wind Effect Trapezium rule calculations
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Mean_Follower_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Forecast_Mean_Follower_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
-
-  # Calculate the Cumulative Follower Flying Distance
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Follower_Distance = Start_Dist - Follower_End_Distance)
-
-  # Get the Follower Statistics: Follower Flying Distance/Time, Mean IAS, Mean WE (Trapezium rule)
-  Follower_Stats <- group_by(GS_Profile_Follower, Landing_Pair_ID) %>%
-    summarise(Follower_Flying_Distance = sum(Section_Flying_Distance, na.rm = F),
-              Follower_Flying_Time = max(Cumulative_Time, na.rm = F),
-              Mean_Follower_IAS = sum(Mean_Follower_IAS, na.rm = F),
-              Forecast_Mean_Follower_Wind_Effect = sum(Forecast_Mean_Follower_Wind_Effect, na.rm = F)) %>% ungroup() %>%
-    mutate(Mean_Follower_IAS = Mean_Follower_IAS / Follower_Flying_Time,
-           Forecast_Mean_Follower_Wind_Effect = Forecast_Mean_Follower_Wind_Effect / Follower_Flying_Time)
-
-  # ------------------------ #
-  ### --- Results & Output
-  # ------------------------ #
-
-  # Combine the Leader and Follower Stats
-  All_Stats <- full_join(Leader_Stats, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
-
-  # Calculate Compression
-  All_Stats <- mutate(All_Stats, Forecast_Compression = Follower_Flying_Distance - Leader_Flying_Distance)
-
-  # TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
-  All_Stats <- mutate(All_Stats,
-                      Forecast_Compression = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Forecast_Compression),
-                      Follower_Flying_Distance = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Follower_Flying_Distance),
-                      Mean_Follower_IAS = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Mean_Follower_IAS),
-                      Forecast_Mean_Follower_Wind_Effect = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Forecast_Mean_Follower_Wind_Effect))
-
-
-  ## Rename Variables
-  All_Stats <- select(All_Stats,
-                      !!sym(LPID_Var),
-                      !!sym(Comp_Var) := "Forecast_Compression",
-                      !!sym(Lead_Spd_Var) := "Mean_Leader_IAS",
-                      !!sym(Lead_WE_Var) := "Forecast_Mean_Leader_Wind_Effect",
-                      !!sym(Foll_Spd_Var) := "Mean_Follower_IAS",
-                      !!sym(Foll_WE_Var) := "Forecast_Mean_Follower_Wind_Effect")
-
-  ## Join with Landing Pair Data
-  Landing_Pair <- left_join(Landing_Pair, All_Stats, by = setNames(LPID_Var, LPID_Var))
-
-
-  # Return results
-  return(Landing_Pair)
-
+Get_Wake_Cats <- function(Wake_Scheme){
+  Wakes <- c("")
+  if (Wake_Scheme == "UK6Cat"){Wakes <- c("SUPER", "HEAVY", "UPPER", "MEDIUM", "LIGHT", "SMALL")}
+  if (Wake_Scheme == "ICAO4"){Wakes <- c("J", "H", "M", "L")}
+  if (Wake_Scheme == "ICAO4 Long"){Wakes <- c("SUPER", "HEAVY", "MEDIUM", "LIGHT")}
+  if (Wake_Scheme == "RECAT-EU"){Wakes <- c("A", "B", "C", "D", "E", "F")}
+  if (Wake_Scheme == "ICAO7"){Wakes <- c("A", "B", "C", "D", "E", "F", "G")}
+  if (Wake_Scheme == "RECAT-20"){Wakes <- c("A", "A1", "B", "B1", "B2", "C", "C1", "C2", "C3", "C4", "D", "D1", "E", "E1", "E2", "E3", "F", "F1", "F2", "F3")}
+  if (Wake_Scheme == "RECAT-14"){Wakes <- c("A1", "B1", "B2", "C1", "C2", "C3", "C4", "D1", "E1", "E2", "E3", "F1", "F2", "F3")}
+  return(Wakes)
 }
 
-Get_Prediction_Error_Variables <- function(Landing_Pair, Prefix, LegacyorRecat){
-
-  # Define Variables
-  Pred_Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
-  Obs_Comp_Var <- paste0("Observed_", Prefix, "_Compression")
-  Comp_Error_Var <- paste0(LegacyorRecat, "_", Prefix, "_Compression_Error")
-  Pred_Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
-  Pred_Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
-  Pred_Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
-  Pred_Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
-  Obs_Lead_Spd_Var <- paste0("Observed_Leader_", Prefix, "_IAS")
-  Obs_Foll_Spd_Var <- paste0("Observed_Follower_", Prefix, "_IAS")
-  Obs_Lead_WE_Var <- paste0("Observed_Leader_", Prefix, "_Wind_Effect")
-  Obs_Foll_WE_Var <- paste0("Observed_Follower_", Prefix, "_Wind_Effect")
-  Lead_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS_Error")
-  Foll_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS_Error")
-  Lead_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect_Error")
-  Foll_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect_Error")
-
-  # Mutate Variables
-  Landing_Pair <- mutate(Landing_Pair,
-                         !!sym(Comp_Error_Var) := !!sym(Obs_Comp_Var) - !!sym(Pred_Comp_Var),
-                         !!sym(Lead_Spd_Error_Var) := !!sym(Obs_Lead_Spd_Var) - !!sym(Pred_Lead_Spd_Var),
-                         !!sym(Foll_Spd_Error_Var) := !!sym(Obs_Foll_Spd_Var) - !!sym(Pred_Foll_Spd_Var),
-                         !!sym(Lead_WE_Error_Var) := !!sym(Obs_Lead_WE_Var) - !!sym(Pred_Lead_WE_Var),
-                         !!sym(Foll_WE_Error_Var) := !!sym(Obs_Foll_WE_Var) - !!sym(Pred_Foll_WE_Var))
-
-  return(Landing_Pair)
-
-}
-
-Add_Test_Variable <- function(Data, Type, Parameter, Tolerance){
-
-  # Get SQL Parameter Name
-  SQL_Param <- paste0("SQL_", Parameter)
-  FLAG_Param <- paste0("FLAG_", Parameter)
-  DIFF_Param <- paste0("DIFF_", Parameter)
-
-  # Add DIFF and FLAG Parameters
-  if (Type == "Numeric"){
-  Data <- mutate(Data,
-                 !!sym(DIFF_Param) := abs(!!sym(SQL_Param) - !!sym(Parameter)),
-                 !!sym(FLAG_Param) := ifelse(!!sym(DIFF_Param) > Tolerance, 1, 0))
-  }
-
-  if (Type != "Numeric"){
-    Data <- mutate(Data, !!sym(FLAG_Param) := ifelse(!!sym(SQL_Param) != !!sym(Parameter), 1, 0))
-  }
-
-  Data <- mutate(Data,
-                 !!sym(FLAG_Param) := ifelse(is.na(!!sym(Parameter)) & !is.na(!!sym(SQL_Param)), 1, !!sym(FLAG_Param)),
-                 !!sym(FLAG_Param) := ifelse(!is.na(!!sym(Parameter)) & is.na(!!sym(SQL_Param)), 1, !!sym(FLAG_Param)))
-
-  return(Data)
-}
-
-Debug_Test_Variable <- function(Data, ID_Var, Type, Parameter){
-
-  # Get Parameters
-  SQL_Param <- paste0("SQL_", Parameter)
-  DIFF_Param <- paste0("DIFF_", Parameter)
-  FLAG_Param <- paste0("FLAG_", Parameter)
-
-  # Filter for Flagged Observations
-  Data <- filter(Data, !!sym(FLAG_Param) == 1)
-
-  # Select Relevant Parameters (Numeric)
-  if(Type == "Numeric"){Data <- select(Data,
-                                       !!sym(ID_Var),
-                                       !!sym(Parameter),
-                                       !!sym(SQL_Param),
-                                       !!sym(DIFF_Param),
-                                       !!sym(FLAG_Param))}
-
-  return(Data)
-
-}
-
-Load_Radar_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
-
-  # Get Start Time
-  message(paste0("Loading Radar data for ORD Validation for the ", PROC_Period, " of ", PROC_Criteria, "..."))
-  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-
-  # Original Radar Data Query
-  Radar_Query <- "SELECT
-                    rtp.Flight_Plan_ID,
-                    rtp.Track_Time,
-                    rtpd.Range_To_Threshold,
-                    rtpd.Mode_S_Wind_Localiser_Capture,
-                    rtp.Mode_S_IAS,
-                    rtpd.Wind_Effect_IAS,
-                    rtpd.ILS_Locus_RTT,
-                    rtpd.Range_To_ILS,
-                    rtpd.Path_Leg
-                  FROM tbl_Radar_Track_Point rtp
-                  LEFT JOIN tbl_Radar_Track_Point_Derived rtpd
-                  ON rtp.Radar_Track_Point_ID = rtpd.Radar_Track_Point_ID "
-
-  # Edit Based on Data Loading Criteria
-  if (PROC_Period == "Day"){
-    Radar_Query <- paste0(Radar_Query, " WHERE Track_Date = '", PROC_Criteria, "'")}
-  if (PROC_Period == "Month"){
-    Radar_Query <- paste0(Radar_Query, " WHERE Track_Date LIKE '%", PROC_Criteria, "%'")}
-
-  # Acquire the Data
-  Radar <- dbGetQuery(con, Radar_Query, stringsAsFactors = F)
-
-  # How long did it take?
-  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Completed ORD Validation Radar Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
-                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
-
-  return(Radar)
-
-}
-
-Load_Surface_Wind_Data <- function(con, PROC_Period, PROC_Criteria){
-
-  # Get Start Time
-  message(paste0("Loading Surface Wind data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
-  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-
-  # Original Surface Wind Query
-  Surface_Wind_Query <- "SELECT
-                         Landing_Runway,
-                         Anemo_Date,
-                         Anemo_Time,
-                         Anemo_SPD,
-                         Anemo_HDG
-                       FROM tbl_Anemometer"
-
-  # Edit Based on Data Loading Criteria
-  if (PROC_Period == "Day"){
-    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Anemo_Date = '", PROC_Criteria, "'")}
-  if (PROC_Period == "Month"){
-    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Anemo_Date LIKE '%", PROC_Criteria, "%'")}
-
-  # Acquire the Data
-  Surface_Wind <- dbGetQuery(con, Surface_Wind_Query, stringsAsFactors = F)
-
-  # How long did it take?
-  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Completed Surface Wind Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
-                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
-
-  return(Surface_Wind)
-
-}
-
-Load_Flight_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
-
-  # Get Start Time
-  message(paste0("Loading ORD Validation Flight Plan data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
-  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-
-  # Original Flight Plan Query
-  Flight_Plan_Query <- "SELECT
-                         FP.Flight_Plan_ID,
-                         FP_Date,
-                         FP_Time,
-                         Aircraft_Type,
-                         Callsign,
-                         FP.Landing_Runway,
-                         Time_At_4DME
-                       FROM tbl_Flight_Plan FP
-                       LEFT JOIN tbl_Flight_Plan_Derived FPD
-                       ON FP.Flight_Plan_ID = FPD.Flight_Plan_ID"
-
-  # Edit Based on Data Loading Criteria
-  if (PROC_Period == "Day"){
-    Flight_Plan_Query <- paste0(Flight_Plan_Query, " WHERE FP_Date = '", PROC_Criteria, "'")}
-  if (PROC_Period == "Month"){
-    Flight_Plan_Query <- paste0(Flight_Plan_Query, " WHERE FP_Date LIKE '%", PROC_Criteria, "%'")}
-
-  # Acquire the Data
-  Flight_Plan <- dbGetQuery(con, Flight_Plan_Query, stringsAsFactors = F)
-
-  # How long did it take?
-  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Completed ORD Validation Flight Plan data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
-                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
-
-  return(Flight_Plan)
-
-}
-
-Load_Landing_Pair_Data <- function(con, PROC_Period, PROC_Criteria){
-
-  # Get Start Time
-  message(paste0("Loading Landing Pair data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
-  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-
-  # Original Landing Pair Query
-  Landing_Pair_Query <- "SELECT
-                         *
-                       FROM tbl_Landing_Pair"
-
-  # Edit Based on Data Loading Criteria
-  if (PROC_Period == "Day"){
-    Landing_Pair_Query <- paste0(Landing_Pair_Query, " WHERE Landing_Pair_Date = '", PROC_Criteria, "'")}
-  if (PROC_Period == "Month"){
-    Landing_Pair_Query <- paste0(Landing_Pair_Query, " WHERE Landing_Pair_Date LIKE '%", PROC_Criteria, "%'")}
-
-  # Acquire the Data
-  Landing_Pair <- dbGetQuery(con, Landing_Pair_Query, stringsAsFactors = F)
-
-  # How long did it take?
-  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Completed Landing Pair data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
-                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
-
-  return(Landing_Pair)
-
-}
-
-Load_Stage_2_Segment_Data <- function(con, PROC_Period, PROC_Criteria){
-
-  # Get Start Time
-  message(paste0("Loading Stage 2 Segment data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
-  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-
-  # Original Stage 2 Segment Query
-  Forecast_Segs_Query <- "SELECT
-                         *
-                        FROM tbl_Mode_S_Wind_Seg_Forecast"
-
-  # Edit Based on Data Loading Criteria
-  if (PROC_Period == "Day"){
-    Forecast_Segs_Query <- paste0(Forecast_Segs_Query, " WHERE Forecast_Date = '", PROC_Criteria, "'")}
-  if (PROC_Period == "Month"){
-    Forecast_Segs_Query <- paste0(Forecast_Segs_Query, " WHERE Forecast_Date LIKE '%", PROC_Criteria, "%'")}
-
-  # Acquire the Data
-  Segments <- dbGetQuery(con, Forecast_Segs_Query, stringsAsFactors = F)
-
-  # How long did it take?
-  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Completed Stage 2 Segment data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
-                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
-
-  return(Segments)
-
-}
-
-Get_LP_Primary_Key <- function(Database_Type){
-
-  # Name of Landing Pair Primary Key for Validation/Verification
-  if(Database_Type == "Validation"){return("Landing_Pair_ID")}
-  if(Database_Type == "Verification"){return("ORD_Tool_Calculation_ID")}
-}
-
-
-# Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles
-# With Joined values for Compression Start and End.
-Get_Forecast_ORD_Parameters <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var, Metric_Type, LegacyorRecat){
-
-  # ------------------------ #
-  ### --- Setup
-  # ------------------------ #
-
-  # Hardcoded Compression Metric: 1 = Distance difference, 2 = Distance,Speed,WE
-  #'Metric_Type <- 1
-
-  # Variable Names
-  Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
-  Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
-  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
-  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
-  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
-  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
-  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
-  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+Get_FAF_Distances <- function(FP, Runway){
   
-  # New Variable Names
-  Foll_Flying_Time_Var_LR <- paste0(LegacyorRecat, "_", Foll_Flying_Time_Var)
-  Lead_Flying_Time_Var_LR <- paste0(LegacyorRecat, "_", Lead_Flying_Time_Var)
-  Foll_Flying_Dist_Var_LR <- paste0(LegacyorRecat, "_", Foll_Flying_Dist_Var)
-  Lead_Flying_Dist_Var_LR <- paste0(LegacyorRecat, "_", Lead_Flying_Dist_Var)
-  Lead_Spd_Var_LR <- paste0(LegacyorRecat, "_", Lead_Spd_Var)
-  Lead_WE_Var_LR <- paste0(LegacyorRecat, "_", Lead_WE_Var)
-  Foll_Spd_Var_LR <- paste0(LegacyorRecat, "_", Foll_Spd_Var)
-  Foll_WE_Var_LR <- paste0(LegacyorRecat, "_", Foll_WE_Var)
+  # Acquire the FAF Distance
+  Runway <- select(Runway, Runway_Name, FAF_Distance = Local_Stabilisation_Distance)
+  
+  # Join on the FAF Distance
+  FP <- left_join(FP, Runway, by= c("Landing_Runway" = "Runway_Name"))
+  
+  return(FP)
+  
+  
+}
 
-  # ------------------------ #
-  ### --- Processing
-  # ------------------------ #
-
-  # Split GS Profile into Leader/Follower
-  GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
-  GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
-
-  # Get the Leader Flying Stats
-  Leader_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Leader(GS_Profile_Leader, Landing_Pair, LPID_Var,
-                                                                   Comp_Start_Var,
-                                                                   Delivery_Var = Comp_End_Var,
-                                                                   Prefix)
-
-  # Select relevant fields from Leader Stats
-  Leader_Stats <- select(Leader_Stats,
-                         !!sym(LPID_Var),
-                         !!sym(Lead_Flying_Dist_Var_LR) := !!sym(Lead_Flying_Dist_Var),
-                         !!sym(Lead_Flying_Time_Var_LR) := !!sym(Lead_Flying_Time_Var),
-                         !!sym(Lead_Spd_Var_LR) := !!sym(Lead_Spd_Var),
-                         !!sym(Lead_WE_Var_LR) := !!sym(Lead_WE_Var))
-
-  # Join the relevant Leader Stats to Landing Pair
-  Landing_Pair <- left_join(Landing_Pair, Leader_Stats, by = setNames(LPID_Var, LPID_Var))
-
-  # Now calculate the Follower flying stats based on the Leader flying times we just calculated
-  Follower_Stats <- Calculate_Predicted_ORD_Flying_Parameters_Follower(GS_Profile_Follower, Landing_Pair, LPID_Var,
-                                                                       Delivery_Var = Comp_End_Var,
-                                                                       Sep_Dist_Var,
-                                                                       Target_Time_Var = Lead_Flying_Time_Var_LR,
-                                                                       Prefix)
-
-  # Select the relevant fields from Follower stats.
-  Follower_Stats <- select(Follower_Stats,
-                           !!sym(LPID_Var),
-                           !!sym(Foll_Flying_Dist_Var_LR) := !!sym(Foll_Flying_Dist_Var),
-                           !!sym(Foll_Flying_Time_Var_LR) := !!sym(Foll_Flying_Time_Var),
-                           !!sym(Foll_Spd_Var_LR) := !!sym(Foll_Spd_Var),
-                           !!sym(Foll_WE_Var_LR) := !!sym(Foll_WE_Var))
-
-  # ------------------------ #
-  ### --- Results & Output
-  # ------------------------ #
-
-  ## Join with Landing Pair Data
-  Landing_Pair <- left_join(Landing_Pair, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
-
-  #TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
-  Landing_Pair <- mutate(Landing_Pair,
-                      Temp_Flag = ifelse(!!sym(Lead_Flying_Time_Var_LR) - !!sym(Foll_Flying_Time_Var_LR) > 0.0001, 1, 0),
-                      !!sym(Foll_Flying_Dist_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Flying_Dist_Var_LR)),
-                      !!sym(Foll_Spd_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_Spd_Var_LR)),
-                      !!sym(Foll_WE_Var_LR) := ifelse(Temp_Flag == 1, NA, !!sym(Foll_WE_Var_LR))) %>%
-    select(-Temp_Flag)
-
-  # Calculate Compression
-  Landing_Pair <- Calculate_Forecast_Compression(Landing_Pair, Metric_Type, Prefix, LegacyorRecat)
-
-  # Return results
-  return(Landing_Pair)
-
-
+# Get the Compression Commencement Threshold Distances from Aircraft Profile Data and join to Landing Pair.
+Get_CCT_Distances <- function(LP, ACProfile, LP_Primary_Key, LegacyorRecat){
+  
+  CCTs <- filter(ACProfile, This_Pair_Role == "L") %>%
+    select(!!sym(LP_Primary_Key), Compression_Commencement_Threshold)
+  
+  Var <- paste0(LegacyorRecat, "_Compression_Commencement_Threshold")
+  CCTs <- rename(CCTs, !!sym(Var) := Compression_Commencement_Threshold)
+  
+  LP <- left_join(LP, CCTs, by = setNames(LP_Primary_Key, LP_Primary_Key))
+  
+  return(LP)
+  
 }
 
 
-Calculate_Predicted_ORD_Flying_Parameters_Leader <- function(GS_Profile_Leader, Landing_Pair, LP_Primary_Key, Comp_Start_Var, Delivery_Var, Prefix){
-
-  # ------------------------ #
-  ### --- Setup
-  # ------------------------ #
-
-  # Use LPID_Var as Primary Key for now
-  LPID_Var <- LP_Primary_Key
-
-  # Variable Names
-  Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
-  Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
-  Lead_Flying_Time_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Time")
-  Lead_Flying_Dist_Var <- paste0("Forecast_Leader_", Prefix, "_Flying_Distance")
-
-  # Get Start/End Leader Distance from Landing Pair
-  Distances <- select(Landing_Pair, !!sym(LPID_Var),
-                      "Compression_Start" := !!sym(Comp_Start_Var),
-                      "Compression_End" := !!sym(Delivery_Var))
-
-  # Join on the distances data ready for Calculations
-  GS_Profile_Leader <- inner_join(GS_Profile_Leader, Distances, by = setNames(LPID_Var, LPID_Var))
-
-  # ------------------------ #
-  ### --- Processing
-  # ------------------------ #
-
-  # Get flags for all segments within compression range, and one for start and end
-  GS_Profile_Leader <- mutate(GS_Profile_Leader,
-                              In_Range_Flag = ifelse(Start_Dist >= Compression_End & End_Dist < Compression_Start, 1, 0),
-                              Compression_End_Flag = ifelse(In_Range_Flag == 1 & End_Dist <= Compression_End, 1, 0),
-                              Compression_Start_Flag = ifelse(In_Range_Flag == 1 & Start_Dist >= Compression_Start, 1, 0))
-
-  # Filter all segments not within the Compression range
-  GS_Profile_Leader <- filter(GS_Profile_Leader, In_Range_Flag != 0)
-
-  # Find the GSPD and IAS differences for adjustment
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, GSPD_Difference = Start_GS - End_GS)
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, IAS_Difference = Start_IAS - End_IAS)
-
-  # Adjust Leader Start/End Section values: Compression End Section.
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Compression_End - End_Dist)/(Start_Dist - End_Dist))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_GS = ifelse(Compression_End_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_IAS = ifelse(Compression_End_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_Dist = ifelse(Compression_End_Flag == 1, Compression_End, End_Dist))
-
-  # Adjust Leader Start/End Section values: Compression Start Section.
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Start_Dist - Compression_Start)/(Start_Dist - End_Dist))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_GS = ifelse(Compression_Start_Flag == 1, Start_GS - (GSPD_Difference * Distance_Ratio), Start_GS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_IAS = ifelse(Compression_Start_Flag == 1, Start_IAS - (IAS_Difference * Distance_Ratio), Start_IAS))
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_Dist = ifelse(Compression_Start_Flag == 1, Compression_Start, Start_Dist))
-
-  # Calculate the Leader Section Flying Times/Distance
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS),
-                              Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
-
-  # Calculate the Start and End Wind Effects
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_WE = Start_GS - Start_IAS)
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, End_WE = End_GS - End_IAS)
-
-  # Calculate the aggregate Mean Leader IAS/Wind Effect Trapezium rule calculations
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Mean_Leader_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
-  GS_Profile_Leader <- mutate(GS_Profile_Leader, Forecast_Mean_Leader_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
-
-  # Get the Leader Stats: Flying Time, Flying Disance, Mean IAS and Mean WE (Trapezium)
-  Leader_Stats <- GS_Profile_Leader %>%
-    group_by(!!sym(LPID_Var)) %>%
-    summarise(!!sym(Lead_Flying_Time_Var) := sum(Section_Flying_Time, na.rm = F),
-              !!sym(Lead_Flying_Dist_Var) := max((Compression_Start - Compression_End), na.rm = F),
-              !!sym(Lead_Spd_Var) := sum(Mean_Leader_IAS, na.rm = F),
-              !!sym(Lead_WE_Var) := sum(Forecast_Mean_Leader_Wind_Effect, na.rm = F)) %>%
-    ungroup() %>%
-    mutate(!!sym(Lead_Spd_Var) := !!sym(Lead_Spd_Var) / !!sym(Lead_Flying_Time_Var),
-           !!sym(Lead_WE_Var) := !!sym(Lead_WE_Var) / !!sym(Lead_Flying_Time_Var))
-
-  return(Leader_Stats)
-
-}
-
-
-Calculate_Predicted_ORD_Flying_Parameters_Follower <- function(GS_Profile_Follower, Landing_Pair, LP_Primary_Key, Delivery_Var, Sep_Dist_Var, Target_Time_Var, Prefix){
-
-  # ------------------------ #
-  ### --- Setup
-  # ------------------------ #
-
-  # Use LPID_Var as Primary Key for now
-  LPID_Var <- LP_Primary_Key
-
-  # Variable Names
-  Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
-  Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
-  Foll_Flying_Time_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Time")
-  Foll_Flying_Dist_Var <- paste0("Forecast_Follower_", Prefix, "_Flying_Distance")
-
-  # Get Start/End Leader Distance from Landing Pair
-  Parameters <- select(Landing_Pair, !!sym(LPID_Var),
-                       "Delivery_Point" := !!sym(Delivery_Var),
-                       "Follower_End_Distance" := !!sym(Sep_Dist_Var),
-                       "Target_Flying_Time" := !!sym(Target_Time_Var))
-
-  # Add The End Distances (Separation Distance + Delivery)
-  Parameters <- mutate(Parameters, Follower_End_Distance = Follower_End_Distance + Delivery_Point)
-
-  # Join on the distances data ready for Calculations
-  GS_Profile_Follower <- left_join(GS_Profile_Follower, Parameters, by = setNames(LPID_Var, LPID_Var))
-
-  # ------------------------ #
-  ### --- Processing
-  # ------------------------ #
-
-  # Get flags for Follower being within travel range and it's end section
-  GS_Profile_Follower <- mutate(GS_Profile_Follower,
-                                Viable_Flag = ifelse(Start_Dist >= Follower_End_Distance, 1, 0),
-                                Start_Flag = ifelse(Viable_Flag == 1 & End_Dist <= Follower_End_Distance, 1, 0))
-
-  # Filter for only Viable follower segments
-  GS_Profile_Follower <- filter(GS_Profile_Follower, Viable_Flag == 1)
-
-  # Find the Follower IAS/GSPD Differences for Partial Section Calculations.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
-
-  # Adjust Follower end section values.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Distance_Ratio = (Follower_End_Distance - End_Dist)/(Start_Dist - End_Dist))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_GS = ifelse(Start_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_IAS = ifelse(Start_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_Dist = ifelse(Start_Flag == 1, Follower_End_Distance, End_Dist))
-
-  # Find the first pass of the Section Flying Times. The End section time will be updated later.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS))
-
-  # Get the Cumulative Flying Times for each Follower. For each segment and it's previous segment.
-  GS_Profile_Follower <- group_by(GS_Profile_Follower, !!sym(LPID_Var)) %>% mutate(Cumulative_Time = cumsum(Section_Flying_Time)) %>% ungroup()
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Prev_Cumulative_Time = Cumulative_Time - Section_Flying_Time)
-
-  # Create flags for all Valid sections and the Follower start section
-  GS_Profile_Follower <- mutate(GS_Profile_Follower,
-                                Section_Time_Flag = ifelse(Prev_Cumulative_Time <= Target_Flying_Time, 1, 0),
-                                Last_Section_Flag = ifelse(Cumulative_Time >= Target_Flying_Time & Prev_Cumulative_Time < Target_Flying_Time, 1, 0))
-
-  # Filter only for valid Follower Sections
-  GS_Profile_Follower <- filter(GS_Profile_Follower, Section_Time_Flag == 1)
-
-  # Adjust Follower Start Section values. Use Time Ratio.
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Time_Ratio = (Target_Flying_Time - Prev_Cumulative_Time)/(Cumulative_Time - Prev_Cumulative_Time))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_GS = ifelse(Last_Section_Flag == 1, End_GS + (GSPD_Difference * Time_Ratio), Start_GS))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_IAS = ifelse(Last_Section_Flag == 1, End_IAS + (IAS_Difference * Time_Ratio), Start_IAS))
-
-  # Adjust Initial section Flying Time, start distance and Cumulative time
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = ifelse(Last_Section_Flag == 1, (Target_Flying_Time - Prev_Cumulative_Time), Section_Flying_Time))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Time = ifelse(Last_Section_Flag == 1, Target_Flying_Time, Cumulative_Time))
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_Dist = ifelse(Last_Section_Flag == 1, End_Dist + (0.5 * Section_Flying_Time * (Start_GS + End_GS)),  Start_Dist),
-                                Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
-
-  # Calculate the Start/End Follower Wind Effects
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_WE = Start_GS - Start_IAS)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, End_WE = End_GS - End_IAS)
-
-  # Calculate the aggregate Mean Follower IAS/Wind Effect Trapezium rule calculations
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Mean_Follower_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Forecast_Mean_Follower_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
-
-  # Calculate the Cumulative Follower Flying Distance
-  GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Follower_Distance = Start_Dist - Follower_End_Distance)
-
-  # Get the Follower Statistics: Follower Flying Distance/Time, Mean IAS, Mean WE (Trapezium rule)
-  Follower_Stats <- GS_Profile_Follower %>%
-    group_by(!!sym(LPID_Var)) %>%
-    summarise(!!sym(Foll_Flying_Time_Var) := sum(Section_Flying_Time, na.rm = F),
-              !!sym(Foll_Flying_Dist_Var) := sum(Section_Flying_Distance, na.rm = F),
-              !!sym(Foll_Spd_Var) := sum(Mean_Follower_IAS, na.rm = F),
-              !!sym(Foll_WE_Var) := sum(Forecast_Mean_Follower_Wind_Effect, na.rm = F)) %>%
-    ungroup() %>%
-    mutate(!!sym(Foll_Spd_Var) := !!sym(Foll_Spd_Var) / !!sym(Foll_Flying_Time_Var),
-           !!sym(Foll_WE_Var) := !!sym(Foll_WE_Var) / !!sym(Foll_Flying_Time_Var))
-
-
-  return(Follower_Stats)
-
-
-}
-
-
-Calculate_Forecast_Compression <- function(Landing_Pair, Metric_Type, Prefix, LegacyorRecat){
-
-  # Get Output Variable name
-  Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
-
-  # Get input variable names
-  Foll_Flying_Dist_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Flying_Distance")
-  Lead_Flying_Dist_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Flying_Distance")
-  Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
-  Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
-  Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
-  Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
-
-  # Type 1: Simple Predicted Distance Difference
-  if (Metric_Type == 1){Landing_Pair <- mutate(Landing_Pair, !!sym(Comp_Var) := !!sym(Foll_Flying_Dist_Var) - !!sym(Lead_Flying_Dist_Var))}
-
-  # Type 2: Predicted Leader Flying Distance & Forecast Leader/Follower Speeds/WEs
-  if (Metric_Type == 2){Landing_Pair <- Landing_Pair %>%
-    mutate(!!sym(Comp_Var) := (!!sym(Lead_Flying_Dist_Var) / (!!sym(Lead_Spd_Var) + !!sym(Lead_WE_Var))) *
-             ((!!sym(Foll_Spd_Var) + !!sym(Foll_WE_Var)) - (!!sym(Lead_Spd_Var) + !!sym(Lead_WE_Var))))}
-
-  return(Landing_Pair)
-
-}
-
-
-Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type, TBSCBuffers, LegacyorRecat){
+Get_RTTs_From_Distance <- function(FP, Radar, N, Distance, RTT_Var_In, Time_Var_In, Prefix_Out, MaxorMin, LorF){
   
-  # Create the Precedence Table
-  Precedence_Table <- data.frame(Scheme = Precedences, Switch = Values) %>%
-    mutate(ID = row_number()) %>% select(ID, everything())
+  RTT_Var <- paste0(Prefix_Out, "_RTT")
+  Time_Var <- paste0(Prefix_Out, "_Time")
+  FPID_Var <- "Flight_Plan_ID"
+  if (!is.na(LorF)){FPID_Var <- paste0(LorF, "_Flight_Plan_ID")}
   
-  # Initialise Copy of LP for the "remmaining" unmatched data.
-  LPRem <- LP
-  
-  # Initialise a counter: counts how many tables have been matched.
-  Counter <- 0
-  
-  # Loop across all level precedences.
-  for (i in 1:nrow(Precedence_Table)){
+  if (class(Distance) == "character"){
     
-    # Get the parameter name, the "level" and its activity status.
-    Param_Name <- Get_Reference_SASAI_Parameter_Name(Use, Param_Type)
-    Constr <- filter(Precedence_Table, ID == i)
-    Level = Constr$Scheme
-    Active = Constr$Switch
-    
-    # If this level is to be considered...
-    if (Active){
-      
-      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
-      message(paste0("Attempting to Join ", Use, " type ", Level, " level ", Param_Type, " Adaptation..."))
-      Table_Name <- Get_Reference_SASAI_Parameter_Table_Name(Use, Level, Param_Type, LegacyorRecat)
-      
-      # If the desired table exists in the database, load table and increment counter.
-      if (dbExistsTable(con, Table_Name)){
-        message(paste0("Joining ", Use, " type ", Level, " level ", Param_Type, " ", LegacyorRecat, " adaptation."))
-        Counter <- Counter + 1
-        Adaptation <- Load_Adaptation_Table(con, Table_Name)
-        
-        # If finding a time parameter, apply the time buffer if TBSCBuffers is active (Add the buffer to original value and select original)
-        if (TBSCBuffers & Param_Type == "Time" & "Buffer" %in% names(Adaptation)){Adaptation <- Adaptation %>% mutate(!!sym(Param_Name) := !!sym(Param_Name) + Buffer)}
-        
-        # Find/isolate the relevant columns from the data and the adaptation.
-        Join_Names_Adaptation <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Ref", LegacyorRecat)
-        Join_Names_LP <- Get_Reference_SASAI_Parameter_ID_Names(Use, Level, ReforData = "Data", LegacyorRecat)
-        Select_Names_Adaptation <- append(Join_Names_Adaptation, Param_Name)
-        Adaptation <- select(Adaptation, all_of(Select_Names_Adaptation))
-        
-        # If the column already exists in the "not successful" data, remove it to avoid column join duplicates.
-        if (Param_Name %in% names(LPRem)){LPRem <- LPRem %>% select(-!!sym(Param_Name))}
-        
-        # Join on the adaptation and split into "successful" and "not successful" joins (non-NA and NA)
-        LPRem <- left_join(LPRem, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
-        LPAdd <- filter(LPRem, !is.na(!!sym(Param_Name)))
-        LPRem <- filter(LPRem, is.na(!!sym(Param_Name)))
-        
-        # Bind the data together. If first valid table, data must be initalised.
-        if (Counter == 1){LP <- LPAdd} else {LP <- rbind(LP, LPAdd)}
-        
-        # If Adaptation table doesn't exist: display message.
-      } else {message(paste0("Cannot join ", Use, " type ", Level, " level ", Param_Type, " ", LegacyorRecat, " adaptation. The table ", Table_Name, " does not exist."))}
-      
-      message("---------------------------------------")
-    }
-    
-    # If the final "level" has been checked and at least one table was valid, bind on the final "not successful" data.
-    if (i == nrow(Precedence_Table) & Counter != 0){LP <- rbind(LP, LPRem)}
+    FP1 <- select(FP, !!sym(FPID_Var), NewDistance = !!sym(Distance))
+    Radar <- left_join(Radar, FP1, by = setNames(FPID_Var, "Flight_Plan_ID"))
     
   }
   
-  # If no adaptation values were valid and/or no "level" switches were active, add required parameter as NA.
-  if (Counter == 0){
-    message(paste0("No Valid ", Use, " type ", Param_Type, " ", LegacyorRecat, " adaptation available. Defaulting values to NA."))
-    message("---------------------------------------")
-    LP <- LP %>% mutate(!!sym(Param_Name) := NA)}
+  if (class(Distance) == "numeric"){
+    
+    Radar <- mutate(Radar, NewDistance = Distance)
+    
+  }
   
-  # Rename the parameter in accordance with the tool requirements. Indicates Recat or Legacy.
-  Param_Name_Old <- Param_Name
-  if (Param_Type == "Speed"){Param_Type <- "IAS"}
-  if (Use == "ROT"){Use <- "ROT_Spacing"} else if (Use == "Wake"){Use <- "Wake_Separation"}
-  Param_Name <- paste0("Reference_", LegacyorRecat, "_", Use, "_", Param_Type)
-  LP <- rename(LP, !!sym(Param_Name) := !!sym(Param_Name_Old))
+  Radar <- filter(Radar, !is.na(!!sym(RTT_Var_In)))
   
-  # Temp fix: If finding ROT value where leader/follower have different runways, set value to NA. ## NOTE: Will need to incorporate Runway Pair Rule!
-  LP <- arrange(LP, !!sym(LP_Primary_Key)) %>%
-    mutate(!!sym(Param_Name) := ifelse(Use == "ROT_Spacing" & Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Param_Name))) ## Remove ROT Constraints for not-in-trail runways.
+  if (MaxorMin == "Max"){
+    Radar <- arrange(Radar, Flight_Plan_ID, desc(!!sym(RTT_Var_In)))
+    if (!is.na(Distance)){Radar <- filter(Radar, !!sym(RTT_Var_In) <= NewDistance)}
+  }
   
-  # Not started: If Runways different - only keep wake separation parameters if a runway pair and Wake Dependent.
+  if (MaxorMin == "Min"){
+    Radar <- arrange(Radar, Flight_Plan_ID, !!sym(RTT_Var_In))
+    if (!is.na(Distance)){Radar <- filter(Radar, !!sym(RTT_Var_In) >= NewDistance)}
+  }
+  
+  Radar <- group_by(Radar, Flight_Plan_ID) %>% mutate(ID = row_number()) %>%
+    ungroup() %>% filter(ID == N) %>%
+    select(Flight_Plan_ID, !!sym(RTT_Var) := !!sym(RTT_Var_In), !!sym(Time_Var) := !!sym(Time_Var_In))
+  
+  FP <- left_join(FP, Radar, by = setNames("Flight_Plan_ID", FPID_Var))
+  
+  return(FP)
+  
+}
+
+Get_FAF_RTTs <- function(FP, Radar, N){
+  
+  Prefix_Out <- paste0("Leader_FAF_", N)
+  
+  FP <- Get_RTTs_From_Distance(FP, Radar, N, "FAF_Distance", "Range_To_Threshold", "Track_Time", Prefix_Out, "Min", NA)
+  
+  return(FP)
+  
+}
+
+Get_CCT_RTTs <- function(LP, Radar, LegacyorRecat){
+  
+  Prefix_Out <- paste0(LegacyorRecat, "_Leader_CCT")
+  Distance <- paste0(LegacyorRecat, "_Compression_Commencement_Threshold")
+  
+  LP <- Get_RTTs_From_Distance(LP, Radar, 1, Distance, "Range_To_Threshold", "Track_Time", Prefix_Out, "Min", "Leader")
+  
+  return(LP)
+  
+}
+
+Get_Max_RTTs <- function(FP, Radar, RTT_Var_In){
+  
+  Prefix_Out <- "Max"
+  
+  FP <- Get_RTTs_From_Distance(FP, Radar, 1, NA, RTT_Var_In, "Track_Time", Prefix_Out, "Max", NA)
+  
+  return(FP)
+  
+}
+
+Get_Fixed_RTTs <- function(FP, Radar, DME){
+  
+  Prefix_Out <- paste0(DME, "DME")
+  
+  FP <- Get_RTTs_From_Distance(FP, Radar, 1, DME * NM_to_m, "Range_To_Threshold", "Track_Time", Prefix_Out, "Min", NA)
+  
+}
+
+Get_Delivery_RTTs <- function(FP, Radar, Delivery_Distance, LegacyorRecat){
+  
+  Prefix_Out <- paste0(LegacyorRecat, "_Leader_Delivery")
+  
+  FP <- Get_RTTs_From_Distance(FP, Radar, 1, Delivery_Distance, "Range_To_Threshold", "Track_Time", Prefix_Out, "Min", NA)
+  
+  return(FP)
+  
+} 
+
+Get_CC_RTTs <- function(FP, LegacyorRecat){
+  
+  RTT_Var <- paste0(LegacyorRecat, "_Leader_CC_RTT")
+  Time_Var <- paste0(LegacyorRecat, "_Leader_CC_Time")
+  CCT_RTT_Var <- paste0(LegacyorRecat, "_Leader_CCT_RTT")
+  CCT_Time_Var <- paste0(LegacyorRecat, "_Leader_CCT_Time")
+  
+  FP <- FP %>% mutate(!!sym(RTT_Var) := pmin(!!sym(CCT_RTT_Var), Leader_Max_RTT, na.rm = T),
+                      !!sym(Time_Var) := ifelse(!!sym(RTT_Var) == !!sym(CCT_RTT_Var), !!sym(CCT_Time_Var), Leader_Max_Time))
+  
+  return(FP)
+  
+}
+
+Get_CC_Distances <- function(FP, LegacyorRecat){
+  
+  Dist_Var <- paste0(LegacyorRecat, "_Leader_CC_Distance")
+  RTT_Var <- paste0(LegacyorRecat, "_Leader_CC_RTT")
+  CCT_Var <- paste0(LegacyorRecat, "_Compression_Commencement_Threshold")
+  
+  FP <- FP %>% mutate(!!sym(Dist_Var) := pmin(!!sym(CCT_Var), !!sym(RTT_Var), na.rm = T))
+  
+}
+
+Generate_Forecast_ORD_Results <- function(LP, ORD_GS_Profile, LP_Primary_Key, Forecast_Compression_Type, LegacyorRecat){
+  
+  # LP <- LP_Original
+  # Forecast_Compression_Type <- 2
+  # LegacyorRecat <- "Recat"
+  # ORD_GS_Profile <- GSProfile
+  
+  NeworOld <- ifelse(LegacyorRecat == "Recat", "New", "Old")
+  
+  ORD_Sep_Var_In <- paste0(LegacyorRecat, "_Threshold_All_Separation_Distance")
+  ORD_Sep_Var_Out <- paste0(LegacyorRecat, "_ORD_Separation_Distance")
+  ORD_Comp_Var <- paste0(LegacyorRecat, "_Forecast_ORD_Compression")
+  WAD_Sep_Var <- paste0(LegacyorRecat, "_WAD_Separation_Distance")
+  
+  ORD_Comp_End_Var <- paste0(NeworOld, "_Delivery")
+  ORD_Comp_Start_Var <- "FAF_Distance"
+  WAD_Comp_End_Var <- "FAF_Distance"
+  WAD_Comp_Start_Var <- paste0(LegacyorRecat, "_Leader_CC_Distance")
+  
+  # Get the FAF Distance and the ORD Separation Distance in correct format
+  LP <- LP %>% mutate(!!sym(ORD_Sep_Var_Out) := !!sym(ORD_Sep_Var_In),
+                      FAF_Distance = Leader_FAF_Distance)
+  
+  # Calculate Full ORD from Compression Commencement to Delivery Point
+  LP <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, LP, LP_Primary_Key,
+                                    Prefix = "ORD",
+                                    Comp_End_Var = ORD_Comp_End_Var,
+                                    Comp_Start_Var = WAD_Comp_Start_Var,
+                                    Sep_Dist_Var = ORD_Sep_Var_Out,
+                                    Forecast_Compression_Type,
+                                    LegacyorRecat)
+  
+  # Calculate the ORD Portion from the FAF to the Delivery Point
+  LP <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, LP, LP_Primary_Key,
+                                    Prefix = "JustORD",
+                                    Comp_End_Var = ORD_Comp_End_Var,
+                                    Comp_Start_Var = ORD_Comp_Start_Var,
+                                    Sep_Dist_Var = ORD_Sep_Var_Out,
+                                    Forecast_Compression_Type,
+                                    LegacyorRecat)
+  
+  # Get the WAD Separation Distance as the ORD Separation Distance + ORD Portion Compression
+  LP <- LP %>% mutate(!!sym(WAD_Sep_Var) := !!sym(ORD_Sep_Var_Out) + !!sym(ORD_Comp_Var))
+  
+  # Calculate the WAD Portion from the Compression Commencement to the FAF
+  LP <- Get_Forecast_ORD_Parameters(ORD_GS_Profile, LP, LP_Primary_Key,
+                                    Prefix = "WAD",
+                                    Comp_End_Var = WAD_Comp_End_Var,
+                                    Comp_Start_Var = WAD_Comp_Start_Var,
+                                    Sep_Dist_Var = WAD_Sep_Var,
+                                    Forecast_Compression_Type,
+                                    LegacyorRecat)
   
   
   return(LP)
   
 }
 
-Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, LegacyorRecat){
+Get_Wake_Scheme_Equivalence <- function(New_Wake_Scheme, Old_Wake_Scheme, New_WTC){
   
-  String <- "tbl"
+  New_Wake_Cats <- as.character(Get_Wake_Cats(New_Wake_Scheme))
+  Old_Wake_Cats <- as.character(Get_Wake_Cats(Old_Wake_Scheme))
   
-  if (Param_Type == "Speed"){
-    Prefix <- "Assumed"
-    Suffix <- "IAS"
-  }
+  if (New_Wake_Scheme == Old_Wake_Scheme){Table <- data.frame(New = New_Wake_Cats, Old = Old_Wake_Cats)}
+  else if (New_Wake_Scheme == "RECAT-EU" & Old_Wake_Scheme == "UK6Cat"){Table <- data.frame(New = New_Wake_Cats, Old = Old_Wake_Cats)}
+  else if (New_Wake_Scheme %in% c("RECAT-20", "RECAT-14") & Old_Wake_Scheme == "RECAT-EU"){Table <- data.frame(New = New_Wake_Cats, Old = substr(New_Wake_Cats, 1, 1))}
+  else {return(NA)}
   
-  if (Param_Type == "Time"){
-    Prefix <- "Reference"
-    Suffix <- "Time"
-  }
-  
-  if (Param_Type == "Distance"){
-    Prefix <- "Reference"
-    Suffix <- "Dist"
-  }
-  
-  S2 <- ""
-  if (Level == "Operator"){S2 <- "AC_Operator_"}
-  if (Level == "Aircraft"){S2 <- "ACTP_"}
-  if (Level %in% c("14Cat", "20Cat")){S2 <- paste0(Level, "_")}
-  
-  if (Use == "Wake"){
-    if (Level == "Wake" & LegacyorRecat == "Recat"){Middle <- "Recat_Separation"} else {Middle <- "Wake_Separation"}
-  }
-  
-  if (Use == "ROT"){Middle <- "ROT_Spacing"}
-  
-  if (LegacyorRecat == "Legacy"){Suffix <- paste0(Suffix, "_Legacy")}
-  
-  String <- paste0(String, "_", Prefix, "_", S2, Middle, "_", Suffix)
-  
-  return(String)
+  Old_WTC <- as.character(filter(Table, New == New_WTC)$Old)
+  if (length(Old_WTC) == 1){return(as.character(Old_WTC))} else {return(NA)}
   
 }
 
-Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
+# Wake Pair Bolstering. Assumes Aircraft FP fields joined already.
+# (Callsign, Operator, Recat_Wake, Legacy_Wake, )
+
+
+
+Bolster_Landing_Pair_By_Leader_WTC <- function(LP, New_Wake_Scheme, Old_Wake_Scheme, Wake_Distances, Bolster_Pairs){
   
-  if (Param_Type == "Speed"){
-    Prefix <- "Assumed"
-    Suffix <- "IAS"
+  # Get the Pairs (Do all for now)
+  if (length(Bolster_Pairs) != 0){
+    Wake_Distances <- mutate(Wake_Distances, LF_Pair = paste(Leader_Recat_Wake_Cat, Follower_Recat_Wake_Cat, sep = "_")) %>%
+      filter(LF_Pair %in% Bolster_Pairs) %>% select(-LF_Pair)
   }
   
-  if (Param_Type == "Time"){
-    Prefix <- "Reference"
-    Suffix <- "Time"
+  # Code to retrieve the relevant pairs: Loop through each pair
+  for (i in 1:nrow(Wake_Distances)){
+    
+    # Get the Leader/Follower Wake
+    Wake_F <- Wake_Distances$Follower_WTC[i]
+    Wake_L <- Wake_Distances$Leader_WTC[i]
+    
+    # Attempt to map the Leader WTC to its legacy. If one to one mapping, add to bolstered data. (Will return NA if not 1-1)
+    Leg_WTC <- Get_Wake_Scheme_Equivalence(New_Wake_Scheme, Old_Wake_Scheme, Wake_L)
+    
+    # Get the Pairs in the Data to expand:
+    # Gets all pairs with matching follower and different leader. Duplicates and changes leader.
+    LP_Iter <- filter(LP, Follower_Recat_Wake_Cat == Wake_F & Leader_Recat_Wake_Cat != Wake_L) %>% 
+      mutate(Leader_Recat_Wake_Cat = Wake_L) %>%
+      mutate(Leader_Aircraft_Type = "ZZZZ") %>%
+      mutate(Leader_Callsign = "ZZZ999") %>%
+      mutate(Leader_Legacy_Wake_Cat = Leg_WTC) %>%
+      mutate(Bolster_Flag_WTC = 1)
+    
+    # Bind onto Bolstered dataset.
+    if (i == 1){LP_Bolster <- LP_Iter} else {LP_Bolster <- rbind(LP_Bolster, LP_Iter)}
+    
   }
   
-  if (Param_Type == "Distance"){
-    Prefix <- "Reference"
-    Suffix <- "Distance"
+  # Bind onto main dataset
+  LP <- rbind(LP, LP_Bolster)
+  
+  return(LP)
+  
+}
+
+# ROT Pair Bolstering
+Bolster_Landing_Pair_By_Separation <- function(){}
+
+# Prediction Time Adjustment
+Prediction_Time_Adjustment <- function(LP, Original_Distance_Var, TimeperNM = 25){
+  
+  
+  
+}
+
+Adjust_Radar_WEs <- function(Radar, AdjustWEs, MaxRangeToILS, AllowedPathLegs){
+  
+  if (!AdjustWEs){
+    Radar <- Radar %>%
+      mutate(Wind_Effect_IAS = ifelse(!is.na(Range_To_Threshold), Wind_Effect_IAS, NA),
+             Mode_S_IAS = ifelse(!is.na(Range_To_Threshold), Mode_S_IAS, NA))
   }
   
-  if (Use == "Wake"){Middle <- "Wake_Separation"}
-  if (Use == "ROT"){Middle <- "ROT_Spacing"}
-  
-  String <- paste0(Prefix, "_", Middle, "_", Suffix)
-  return(String)
+  return(Radar)
   
 }
 
-Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData, LegacyorRecat){
+Get_Average_Observed_Mode_S_Parameters_2 <- function(LP, Radar, Prefix, LorF, TimeorRange, Start_Var, End_Var, LegacyorRecat, MaxUnderSep, LP_Primary_Key, New_Prefix){
   
-  Vars <- c()
-  
-  if (ReforData == "Ref"){
-    if (Use == "ROT"){Vars <- append(Vars, "Runway")}
-    if (Level %in% c("Wake", "14Cat", "20Cat")){Vars <- append(Vars, c("Leader_WTC", "Follower_WTC"))}
-    if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}
-    if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
-  } else if (ReforData == "Data"){
-    if (Use == "ROT"){Vars <- append(Vars, "Leader_Landing_Runway")} # Use Leader's: This won't be done for Not-In-Trail Pairs. (Separate procedure!)
-    if (Level == "Wake"){Vars <- append(Vars, c(paste0("Leader_", LegacyorRecat, "_Wake_Cat"), paste0("Follower_", LegacyorRecat, "_Wake_Cat")))}
-    if (Level == "20Cat"){Vars <- append(Vars, c("Leader_20Cat_Wake_Cat", "Follower_20Cat_Wake_Cat"))}
-    if (Level == "14Cat"){Vars <- append(Vars, c("Leader_14Cat_Wake_Cat", "Follower_14Cat_Wake_Cat"))}
-    if (Level == "Aircraft"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Follower_Aircraft_Type"))}
-    if (Level == "Operator"){Vars <- append(Vars, c("Leader_Aircraft_Type", "Leader_Operator", "Follower_Aircraft_Type", "Follower_Operator"))}
+  Old_IAS_Var <- paste0("Observed_", LorF, "_", Prefix, "_IAS")
+  Old_WE_Var <- paste0("Observed_", LorF, "_", Prefix, "_Wind_Effect")
+  if (is.na(New_Prefix)){
+    New_IAS_Var <- paste0(LegacyorRecat, "_", Old_IAS_Var)
+    New_WE_Var <- paste0(LegacyorRecat, "_", Old_WE_Var)
+  } else {
+    New_IAS_Var <- paste0(New_Prefix, "_IAS")
+    New_WE_Var <- paste0(New_Prefix, "_Wind_Effect")
   }
   
-  return(Vars)
+  LP <- Get_Average_Observed_Mode_S_Parameters(LP, Radar, Prefix, LorF, TimeorRange, Start_Var, End_Var) %>%
+    rename(!!sym(New_IAS_Var) := !!sym(Old_IAS_Var), !!sym(New_WE_Var) := !!sym(Old_WE_Var))
+  
+  return(LP)
+  
+}
+
+Generate_Observed_ORD_Results <- function(LP, Radar, ORD_AC_Profile, TimeorRange, Metric_Type, Use_Adjustment, LegacyorRecat, AdjustWEs, MaxRangeToILS, AllowedPathLegs, MaxUnderRep){
+  
+  Radar <- Adjust_Radar_WEs(Radar, AdjustWEs, MaxRangeToILS, AllowedPathLegs)
+  
+  TimeorRTT <- ifelse(TimeorRange == "Time", "Time", "RTT")
+  
+  Lead_ORD_Stop_Var <- paste0(LegacyorRecat, "_Leader_Delivery_", TimeorRTT)
+  Lead_ORD_Start_Var <- paste0("Leader_FAF_1_", TimeorRTT)
+  Lead_WAD_Stop_Var <- paste0("Leader_FAF_2_", TimeorRTT)
+  Lead_WAD_Start_Var <- paste0(LegacyorRecat, "_Leader_CC_", TimeorRTT)
+  
+  Foll_ORD_Stop_Var <- ifelse(TimeorRTT == "Time", Lead_ORD_Stop_Var, paste0(LegacyorRecat, "_Follower_Int_Delivery_", TimeorRTT))
+  Foll_ORD_Start_Var <- ifelse(TimeorRTT == "Time", Lead_ORD_Start_Var, paste0("Follower_Int_FAF_1_", TimeorRTT))
+  Foll_WAD_Stop_Var <- ifelse(TimeorRTT == "Time", Lead_WAD_Stop_Var, paste0("Follower_Int_FAF_2_", TimeorRTT))
+  Foll_WAD_Start_Var <- ifelse(TimeorRTT == "Time", Lead_WAD_Start_Var, paste0(LegacyorRecat, "_Follower_Int_CC_", TimeorRTT))
+  
+  # Set the Start and End Variables based on Time or RTT
+  for (Trail in c("Not_In_Trail", "In_Trail", "In_Trail_Non_Sequential")){
+    
+    # Filter Data for Trail Type (This will need to be fixed for 3 parallel runways...)
+    LP_Trail <- filter(LP, Landing_Pair_Type == Trail)
+    JustORDPrefix <- "JustORD"
+    ORDPrefix <- "ORD"
+    WADPrefix <- "WAD"
+    
+    D1 <- Get_Follower_Interpolated_RTTs(LP_Trail, Radar, Leader_Time_Var = paste0(LegacyorRecat, "_Leader_Delivery_Time")) %>%
+      rename(!!sym(paste0(LegacyorRecat, "_Follower_Int_Delivery_RTT")) := Interp_Distance)
+    D2 <- Get_Follower_Interpolated_RTTs(LP_Trail, Radar, Leader_Time_Var = "Leader_FAF_1_Time") %>%
+      rename(!!sym(paste0(LegacyorRecat, "_Follower_Int_FAF_1_RTT")) := Interp_Distance)
+    D3 <- Get_Follower_Interpolated_RTTs(LP_Trail, Radar, Leader_Time_Var = "Leader_FAF_2_Time") %>%
+      rename(!!sym(paste0(LegacyorRecat, "_Follower_Int_FAF_2_RTT")) := Interp_Distance)
+    D4 <- Get_Follower_Interpolated_RTTs(LP_Trail, Radar, Leader_Time_Var = paste0(LegacyorRecat, "_Leader_CC_Time")) %>%
+      rename(!!sym(paste0(LegacyorRecat, "_Follower_Int_CC_RTT")) := Interp_Distance)
+    
+    LP_Trail <- LP_Trail %>%
+      left_join(D1, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
+      left_join(D2, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
+      left_join(D3, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID")) %>%
+      left_join(D4, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
+    
+    # Leader Just ORD Observed Speeds/WEs
+    LP_Trail <- Get_Average_Observed_Mode_S_Parameters_2(LP_Trail, Radar,
+                                                         Prefix = JustORDPrefix,
+                                                         LorF = "Leader",
+                                                         TimeorRange,
+                                                         Start_Var = Lead_ORD_Start_Var,
+                                                         End_Var = Lead_ORD_Stop_Var,
+                                                         LegacyorRecat,
+                                                         MaxUnderRep,
+                                                         LP_Primary_Key,
+                                                         NA)
+    
+    # Follower Just ORD Observed Speeds/WEs
+    LP_Trail <- Get_Average_Observed_Mode_S_Parameters_2(LP_Trail, Radar,
+                                                         Prefix = JustORDPrefix,
+                                                         LorF = "Follower",
+                                                         TimeorRange,
+                                                         Start_Var = Foll_ORD_Start_Var,
+                                                         End_Var = Foll_ORD_Stop_Var,
+                                                         LegacyorRecat,
+                                                         MaxUnderRep,
+                                                         LP_Primary_Key,
+                                                         NA)
+    
+    LP_Trail <- Get_Average_Observed_Mode_S_Parameters_2(LP_Trail, Radar,
+                                                         Prefix = WADPrefix,
+                                                         LorF = "Leader",
+                                                         TimeorRange,
+                                                         Start_Var = Lead_WAD_Start_Var,
+                                                         End_Var = Lead_WAD_Stop_Var,
+                                                         LegacyorRecat,
+                                                         MaxUnderRep,
+                                                         LP_Primary_Key,
+                                                         NA)
+    
+    LP_Trail <- Get_Average_Observed_Mode_S_Parameters_2(LP_Trail, Radar,
+                                                         Prefix = WADPrefix,
+                                                         LorF = "Follower",
+                                                         TimeorRange,
+                                                         Start_Var = Foll_WAD_Start_Var,
+                                                         End_Var = Foll_WAD_Stop_Var,
+                                                         LegacyorRecat,
+                                                         MaxUnderRep,
+                                                         LP_Primary_Key,
+                                                         NA)
+    
+    LP_Trail <- Get_Average_Observed_Mode_S_Parameters_2(LP_Trail, Radar,
+                                                         Prefix = ORDPrefix,
+                                                         LorF = "Leader",
+                                                         TimeorRange,
+                                                         Start_Var = Lead_WAD_Start_Var,
+                                                         End_Var = Lead_ORD_Stop_Var,
+                                                         LegacyorRecat,
+                                                         MaxUnderRep,
+                                                         LP_Primary_Key,
+                                                         NA)
+    
+    LP_Trail <- Get_Average_Observed_Mode_S_Parameters_2(LP_Trail, Radar,
+                                                         Prefix = ORDPrefix,
+                                                         LorF = "Follower",
+                                                         TimeorRange,
+                                                         Start_Var = Foll_WAD_Start_Var,
+                                                         End_Var = Foll_ORD_Stop_Var,
+                                                         LegacyorRecat,
+                                                         MaxUnderRep,
+                                                         LP_Primary_Key,
+                                                         NA)
+    
+    if (exists("LP_New")){
+      LP_New <- rbind(LP_New, LP_Trail)
+    } else {LP_New <- LP_Trail}
+    
+  }
+  
+  LP <- LP_New
+  rm(LP_New)
+  
+  # Get the Delivered FAF and CC Separations
+  LP <- LP %>%
+    mutate(!!sym(paste0(LegacyorRecat, "_Observed_FAF_Separation_Distance")) := !!sym(paste0(LegacyorRecat, "_Follower_Int_FAF_1_RTT")) - Leader_FAF_1_RTT) %>%
+    mutate(!!sym(paste0(LegacyorRecat, "_Observed_CC_Separation_Distance")) := !!sym(paste0(LegacyorRecat, "_Follower_Int_CC_RTT")) - !!sym(paste0(LegacyorRecat, "_Leader_CC_RTT"))) %>%
+    mutate(!!sym(paste0(LegacyorRecat, "_Observed_Follower_WAD_Flying_Distance")) := !!sym(paste0(LegacyorRecat, "_Follower_Int_CC_RTT")) - !!sym(paste0(LegacyorRecat, "_Follower_Int_FAF_2_RTT"))) %>%
+    mutate(!!sym(paste0(LegacyorRecat, "_Observed_Follower_JustORD_Flying_Distance")) := !!sym(paste0(LegacyorRecat, "_Follower_Int_FAF_1_RTT")) - !!sym(paste0(LegacyorRecat, "_Follower_Int_Delivery_RTT"))) %>%
+    mutate(!!sym(paste0(LegacyorRecat, "_Observed_Follower_ORD_Flying_Distance")) := !!sym(paste0(LegacyorRecat, "_Follower_Int_CC_RTT")) - !!sym(paste0(LegacyorRecat, "_Follower_Int_Delivery_RTT")))
+  
+  # Generate ORD Compression
+  LP <- Generate_Observed_Compression(LP, ORD_AC_Profile, Observed_Compression_Type, Use_Adjustment, LegacyorRecat)
+  
+  return(LP)
   
 }
 
 
+Generate_Observed_Compression <- function(LP, ACProfile, Metric_Type, Use_Adjustment, LegacyorRecat){
+  
+  
+  
+  # Get the Procedural Speed Difference (Assume Difference in Follower/Leader Steady Proc Speed)
+  Adjust_Var <- paste0(LegacyorRecat, "_Follower_Adjustment")
+  if (Use_Adjustment){
+    ACLeader <- filter(ACProfile, This_Pair_Role == "L") %>% select(Observation_ID, LS = Steady_Procedural_Speed)
+    ACFoll <- filter(ACProfile, This_Pair_Role == "F") %>% select(Observation_ID, FS = Steady_Procedural_Speed)
+    Adjustments <- left_join(ACLeader, ACFoll, by = c("Observation_ID")) %>%
+      mutate(!!sym(Adjust_Var) := LS - FS) %>% select(Observation_ID, !!sym(Adjust_Var))
+    LP <- left_join(LP, Adjustments, by = c("Observation_ID"))
+  } else {
+    LP <- mutate(LP, !!sym(Adjust_Var) := 0)
+  }
+  
+  # Compression Variables
+  JustORD_Comp_Var <- paste0(LegacyorRecat, "_Observed_JustORD_Compression")
+  WAD_Comp_Var <- paste0(LegacyorRecat, "_Observed_WAD_Compression")
+  ORD_Comp_Var <- paste0(LegacyorRecat, "_Observed_ORD_Compression")
+  
+  # Observed Distance Variables
+  Lead_JustORD_Dist_Var <- paste0(LegacyorRecat, "_Observed_Leader_JustORD_Flying_Distance") 
+  Lead_ORD_Dist_Var <- paste0(LegacyorRecat, "_Observed_Leader_ORD_Flying_Distance") 
+  Lead_WAD_Dist_Var <- paste0(LegacyorRecat, "_Observed_Leader_WAD_Flying_Distance")
+  Foll_JustORD_Dist_Var <- paste0(LegacyorRecat, "_Observed_Follower_JustORD_Flying_Distance") 
+  Foll_ORD_Dist_Var <- paste0(LegacyorRecat, "_Observed_Follower_ORD_Flying_Distance") 
+  Foll_WAD_Dist_Var <- paste0(LegacyorRecat, "_Observed_Follower_WAD_Flying_Distance") 
+  
+  # Observed IAS Variables
+  Obs_Lead_JustORD_IAS_Var <- paste0(LegacyorRecat, "_Observed_Leader_JustORD_IAS") 
+  Obs_Lead_ORD_IAS_Var <- paste0(LegacyorRecat, "_Observed_Leader_ORD_IAS") 
+  Obs_Lead_WAD_IAS_Var <- paste0(LegacyorRecat, "_Observed_Leader_WAD_IAS")
+  Obs_Foll_JustORD_IAS_Var <- paste0(LegacyorRecat, "_Observed_Follower_JustORD_IAS") 
+  Obs_Foll_ORD_IAS_Var <- paste0(LegacyorRecat, "_Observed_Follower_ORD_IAS") 
+  Obs_Foll_WAD_IAS_Var <- paste0(LegacyorRecat, "_Observed_Follower_WAD_IAS") 
+  
+  # Forecast IAS Variables
+  Pre_Lead_JustORD_IAS_Var <- paste0(LegacyorRecat, "_Forecast_Leader_JustORD_IAS") 
+  Pre_Lead_ORD_IAS_Var <- paste0(LegacyorRecat, "_Forecast_Leader_ORD_IAS") 
+  Pre_Lead_WAD_IAS_Var <- paste0(LegacyorRecat, "_Forecast_Leader_WAD_IAS")
+  Pre_Foll_JustORD_IAS_Var <- paste0(LegacyorRecat, "_Forecast_Follower_JustORD_IAS") 
+  Pre_Foll_ORD_IAS_Var <- paste0(LegacyorRecat, "_Forecast_Follower_ORD_IAS") 
+  Pre_Foll_WAD_IAS_Var <- paste0(LegacyorRecat, "_Forecast_Follower_WAD_IAS") 
+  
+  # Observed WE Variables
+  Obs_Lead_JustORD_WE_Var <- paste0(LegacyorRecat, "_Observed_Leader_JustORD_Wind_Effect") 
+  Obs_Lead_ORD_WE_Var <- paste0(LegacyorRecat, "_Observed_Leader_ORD_Wind_Effect") 
+  Obs_Lead_WAD_WE_Var <- paste0(LegacyorRecat, "_Observed_Leader_WAD_Wind_Effect")
+  Obs_Foll_JustORD_WE_Var <- paste0(LegacyorRecat, "_Observed_Follower_JustORD_Wind_Effect") 
+  Obs_Foll_ORD_WE_Var <- paste0(LegacyorRecat, "_Observed_Follower_ORD_Wind_Effect") 
+  Obs_Foll_WAD_WE_Var <- paste0(LegacyorRecat, "_Observed_Follower_WAD_Wind_Effect") 
+  
+  if (Metric_Type == 1){
+    LP <- LP %>%
+      mutate(!!sym(JustORD_Comp_Var) := !!sym(Foll_JustORD_Dist_Var) - !!sym(Lead_JustORD_Dist_Var)) %>%
+      mutate(!!sym(WAD_Comp_Var) := !!sym(Foll_WAD_Dist_Var) - !!sym(Lead_WAD_Dist_Var)) %>%
+      mutate(!!sym(ORD_Comp_Var) := !!sym(Foll_ORD_Dist_Var) - !!sym(Lead_ORD_Dist_Var))
+  }
+  
+  if (Metric_Type == 2){
+    
+    # Recalculate the Follower IAS with the Adjustments (How are these done?)
+    
+    LP <- LP %>%
+      mutate(!!sym(JustORD_Comp_Var) := (!!sym(Lead_JustORD_Dist_Var) / (!!sym(Obs_Lead_JustORD_IAS_Var) + !!sym(Obs_Lead_JustORD_WE_Var))) *
+               ((!!sym(Pre_Foll_JustORD_IAS_Var) + !!sym(Adjust_Var) + !!sym(Obs_Foll_JustORD_WE_Var)) - (!!sym(Obs_Lead_JustORD_IAS_Var) + !!sym(Obs_Lead_JustORD_WE_Var))),
+             !!sym(WAD_Comp_Var) := (!!sym(Lead_WAD_Dist_Var) / (!!sym(Pre_Lead_WAD_IAS_Var) + !!sym(Obs_Lead_WAD_WE_Var))) *
+               ((!!sym(Pre_Foll_WAD_IAS_Var) + !!sym(Adjust_Var) + !!sym(Obs_Foll_WAD_WE_Var)) - (!!sym(Pre_Lead_WAD_IAS_Var) + !!sym(Obs_Lead_WAD_WE_Var))),
+             !!sym(ORD_Comp_Var) := !!sym(JustORD_Comp_Var) + !!sym(WAD_Comp_Var))
+  }
+  
+  return(LP)
+  
+}
 
-
-#################################--#####################################################
-
-
-# Generic Section 1 setting
-Set_IAS_Profile_Section_1_PWS <- function(Aircraft_Profile, Section_No){
-  Aircraft_Profile <- mutate(Aircraft_Profile, Section_Number = Section_No,
-                             Profile_Section = "1",
-                             Profile_Type = "C",
-                             Start_IAS = Landing_Stabilisation_Speed,
-                             End_IAS = Landing_Stabilisation_Speed,
-                             Start_Dist = End_Final_Deceleration_Distance,
-                             End_Dist = 0)
-  return(Aircraft_Profile)
+Get_ORD_Error_Variables <- function(LP, LegacyorRecat){
+  
+  for (Prefix in c("JustORD", "WAD", "ORD")){
+    
+    # Define Variables
+    Pred_Comp_Var <- paste0(LegacyorRecat, "_Forecast_", Prefix, "_Compression")
+    Obs_Comp_Var <- paste0(LegacyorRecat, "_Observed_", Prefix, "_Compression")
+    Comp_Error_Var <- paste0(LegacyorRecat, "_", Prefix, "_Compression_Error")
+    Pred_Lead_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS")
+    Pred_Foll_Spd_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS")
+    Pred_Lead_WE_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect")
+    Pred_Foll_WE_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect")
+    Obs_Lead_Spd_Var <- paste0(LegacyorRecat, "_Observed_Leader_", Prefix, "_IAS")
+    Obs_Foll_Spd_Var <- paste0(LegacyorRecat, "_Observed_Follower_", Prefix, "_IAS")
+    Obs_Lead_WE_Var <- paste0(LegacyorRecat, "_Observed_Leader_", Prefix, "_Wind_Effect")
+    Obs_Foll_WE_Var <- paste0(LegacyorRecat, "_Observed_Follower_", Prefix, "_Wind_Effect")
+    Lead_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_IAS_Error")
+    Foll_Spd_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_IAS_Error")
+    Lead_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Leader_", Prefix, "_Wind_Effect_Error")
+    Foll_WE_Error_Var <- paste0(LegacyorRecat, "_Forecast_Follower_", Prefix, "_Wind_Effect_Error")
+    
+    # Mutate Variables
+    LP <- mutate(LP,
+                 !!sym(Comp_Error_Var) := !!sym(Obs_Comp_Var) - !!sym(Pred_Comp_Var),
+                 !!sym(Lead_Spd_Error_Var) := !!sym(Obs_Lead_Spd_Var) - !!sym(Pred_Lead_Spd_Var),
+                 !!sym(Foll_Spd_Error_Var) := !!sym(Obs_Foll_Spd_Var) - !!sym(Pred_Foll_Spd_Var),
+                 !!sym(Lead_WE_Error_Var) := !!sym(Obs_Lead_WE_Var) - !!sym(Pred_Lead_WE_Var),
+                 !!sym(Foll_WE_Error_Var) := !!sym(Obs_Foll_WE_Var) - !!sym(Pred_Foll_WE_Var))
+    
+  }
+  
+  
+  
+  return(LP)
+  
 }
 
 
-# Generic Section 2 Setting
-Set_IAS_Profile_Section_2_PWS <- function(Aircraft_Profile, Section_No){
-  Aircraft_Profile <- mutate(Aircraft_Profile, Section_Number = Section_No,
-                             Profile_Section = "2",
-                             Profile_Type = "A",
-                             Start_IAS = Steady_Procedural_Speed,
-                             End_IAS = Landing_Stabilisation_Speed,
-                             Start_Dist = Start_Final_Deceleration_Distance,
-                             End_Dist = End_Final_Deceleration_Distance)
-  return(Aircraft_Profile)
-}
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Degenerate Functions ----
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
+# Old functions that have no use. Will be deleted after extensive checking.
+# ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_Gust_Adjustment_Generic <- function(Aircraft_Profile){
+# Forecast Compression Function. Requires Leader (GS_Profile_Leader) and Follower (GS_Profile_Follower) Groundspeed Profiles
+# With Joined values for Compression Start and End.
+# Get_Forecast_Compression <- function(GS_Profile, Landing_Pair, LPID_Var, Prefix, Comp_End_Var, Comp_Start_Var, Sep_Dist_Var){
+#   
+#   # ------------------------ #
+#   ### --- Setup
+#   # ------------------------ #
+#   
+#   # Variable Names
+#   Comp_Var <- paste0("Forecast_", Prefix, "_Compression")
+#   Lead_Spd_Var <- paste0("Forecast_Leader_", Prefix, "_IAS")
+#   Lead_WE_Var <- paste0("Forecast_Leader_", Prefix, "_Wind_Effect")
+#   Foll_Spd_Var <- paste0("Forecast_Follower_", Prefix, "_IAS")
+#   Foll_WE_Var <- paste0("Forecast_Follower_", Prefix, "_Wind_Effect")
+#   
+#   # Split GS Profile into Leader and Follower
+#   GS_Profile_Leader <- Split_Leader_Follower(GS_Profile, "Leader")
+#   GS_Profile_Follower <- Split_Leader_Follower(GS_Profile, "Follower")
+#   
+#   # Get Start/End Leader Distance from Landing Pair
+#   Distances <- select(Landing_Pair, !!sym(LPID_Var),
+#                       "Compression_Start" := !!sym(Comp_Start_Var),
+#                       "Compression_End" := !!sym(Comp_End_Var),
+#                       "Follower_End_Distance" := !!sym(Sep_Dist_Var))
+#   
+#   # Add The End Distances (Separation Distance + Delivery)
+#   Distances <- mutate(Distances, Follower_End_Distance = Follower_End_Distance + Compression_End)
+#   
+#   # Split the Leader/Follower Distances
+#   Leader_Distances <- select(Distances, -c("Follower_End_Distance"))
+#   Follower_Distance <- select(Distances, -c("Compression_Start", "Compression_End"))
+#   
+#   # Join on the distances data ready for Calculations
+#   GS_Profile_Leader <- left_join(GS_Profile_Leader, Leader_Distances, by = setNames(LPID_Var, LPID_Var))
+#   GS_Profile_Follower <- left_join(GS_Profile_Follower, Follower_Distance, by = setNames(LPID_Var, LPID_Var))
+#   
+#   # ------------------------ #
+#   ### --- Leader
+#   # ------------------------ #
+#   
+#   # Get flags for all segments within compression range, and one for start and end
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader,
+#                               In_Range_Flag = ifelse(Start_Dist >= Compression_End & End_Dist < Compression_Start, 1, 0),
+#                               Compression_End_Flag = ifelse(In_Range_Flag == 1 & End_Dist <= Compression_End, 1, 0),
+#                               Compression_Start_Flag = ifelse(In_Range_Flag == 1 & Start_Dist >= Compression_Start, 1, 0))
+#   
+#   # Filter all segments not within the Compression range
+#   GS_Profile_Leader <- filter(GS_Profile_Leader, In_Range_Flag != 0)
+#   
+#   # Find the GSPD and IAS differences for adjustment
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, GSPD_Difference = Start_GS - End_GS)
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, IAS_Difference = Start_IAS - End_IAS)
+#   
+#   # Adjust Leader Start/End Section values: Compression End Section.
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Compression_End - End_Dist)/(Start_Dist - End_Dist))
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, End_GS = ifelse(Compression_End_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, End_IAS = ifelse(Compression_End_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, End_Dist = ifelse(Compression_End_Flag == 1, Compression_End, End_Dist))
+#   
+#   # Adjust Leader Start/End Section values: Compression Start Section.
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Distance_Ratio = (Start_Dist - Compression_Start)/(Start_Dist - End_Dist))
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_GS = ifelse(Compression_Start_Flag == 1, Start_GS - (GSPD_Difference * Distance_Ratio), Start_GS))
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_IAS = ifelse(Compression_Start_Flag == 1, Start_IAS - (IAS_Difference * Distance_Ratio), Start_IAS))
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_Dist = ifelse(Compression_Start_Flag == 1, Compression_Start, Start_Dist))
+#   
+#   # Calculate the Leader Section Flying Times/Distance
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS),
+#                               Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
+#   
+#   # Calculate the Start and End Wind Effects
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Start_WE = Start_GS - Start_IAS)
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, End_WE = End_GS - End_IAS)
+#   
+#   # Calculate the aggregate Mean Leader IAS/Wind Effect Trapezium rule calculations
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Mean_Leader_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
+#   GS_Profile_Leader <- mutate(GS_Profile_Leader, Forecast_Mean_Leader_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
+#   
+#   # Get the Leader Stats: Flying Time, Flying Disance, Mean IAS and Mean WE (Trapezium)
+#   Leader_Stats <- GS_Profile_Leader %>% group_by(Landing_Pair_ID) %>%
+#     summarise(Leader_Flying_Time = sum(Section_Flying_Time, na.rm = F),
+#               Leader_Flying_Distance = max(Compression_Start - Compression_End, na.rm = F),
+#               Mean_Leader_IAS = sum(Mean_Leader_IAS, na.rm = F),
+#               Forecast_Mean_Leader_Wind_Effect = sum(Forecast_Mean_Leader_Wind_Effect, na.rm = F)) %>% ungroup() %>%
+#     mutate(Mean_Leader_IAS = Mean_Leader_IAS / Leader_Flying_Time,
+#            Forecast_Mean_Leader_Wind_Effect = Forecast_Mean_Leader_Wind_Effect / Leader_Flying_Time)
+#   
+#   
+#   # Get the Leader Flying times specifically for the Follower
+#   Leader_Times <- select(Leader_Stats, !!sym(LPID_Var), Leader_Flying_Time)
+#   
+#   # ------------------------ #
+#   ### --- Follower
+#   # ------------------------ #
+#   
+#   # Get flags for Follower being within travel range and it's end section
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower,
+#                                 Viable_Flag = ifelse(Start_Dist >= Follower_End_Distance, 1, 0),
+#                                 Start_Flag = ifelse(Viable_Flag == 1 & End_Dist <= Follower_End_Distance, 1, 0))
+#   
+#   # Filter for only Viable follower segments
+#   GS_Profile_Follower <- filter(GS_Profile_Follower, Viable_Flag == 1)
+#   
+#   # Find the Follower IAS/GSPD Differences for Partial Section Calculations.
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
+#   
+#   # Adjust Follower end section values.
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Distance_Ratio = (Follower_End_Distance - End_Dist)/(Start_Dist - End_Dist))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, End_GS = ifelse(Start_Flag == 1, End_GS + (GSPD_Difference * Distance_Ratio), End_GS))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, End_IAS = ifelse(Start_Flag == 1, End_IAS + (IAS_Difference * Distance_Ratio), End_IAS))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, End_Dist = ifelse(Start_Flag == 1, Follower_End_Distance, End_Dist))
+#   
+#   # Find the first pass of the Section Flying Times. The End section time will be updated later.
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = 2 * (Start_Dist - End_Dist)/(Start_GS + End_GS))
+#   
+#   # Join on the Leader Flying Times for each Landing Pair ID.
+#   GS_Profile_Follower <- left_join(GS_Profile_Follower, Leader_Times, by=setNames(LPID_Var, LPID_Var))
+#   
+#   # Get the Cumulative Flying Times for each Follower. For each segment and it's previous segment.
+#   GS_Profile_Follower <- group_by(GS_Profile_Follower, !!sym(LPID_Var)) %>% mutate(Cumulative_Time = cumsum(Section_Flying_Time)) %>% ungroup()
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Prev_Cumulative_Time = Cumulative_Time - Section_Flying_Time)
+#   
+#   # Create flags for all Valid sections and the Follower start section
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower,
+#                                 Section_Time_Flag = ifelse(Prev_Cumulative_Time <= Leader_Flying_Time, 1, 0),
+#                                 Last_Section_Flag = ifelse(Cumulative_Time >= Leader_Flying_Time & Prev_Cumulative_Time < Leader_Flying_Time, 1, 0))
+#   
+#   # Filter only for valid Follower Sections
+#   GS_Profile_Follower <- filter(GS_Profile_Follower, Section_Time_Flag == 1)
+#   
+#   # Adjust Follower Start Section values. Use Time Ratio.
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Time_Ratio = (Leader_Flying_Time - Prev_Cumulative_Time)/(Cumulative_Time - Prev_Cumulative_Time))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, GSPD_Difference = Start_GS - End_GS)
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, IAS_Difference = Start_IAS - End_IAS)
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_GS = ifelse(Last_Section_Flag == 1, End_GS + (GSPD_Difference * Time_Ratio), Start_GS))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_IAS = ifelse(Last_Section_Flag == 1, End_IAS + (IAS_Difference * Time_Ratio), Start_IAS))
+#   
+#   # Adjust Initial section Flying Time, start distance and Cumulative time
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Section_Flying_Time = ifelse(Last_Section_Flag == 1, (Leader_Flying_Time - Prev_Cumulative_Time), Section_Flying_Time))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Time = ifelse(Last_Section_Flag == 1, Leader_Flying_Time, Cumulative_Time))
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_Dist = ifelse(Last_Section_Flag == 1, End_Dist + (0.5 * Section_Flying_Time * (Start_GS + End_GS)),  Start_Dist),
+#                                 Section_Flying_Distance = (Start_GS + End_GS) * Section_Flying_Time / 2)
+#   
+#   # Calculate the Start/End Follower Wind Effects
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Start_WE = Start_GS - Start_IAS)
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, End_WE = End_GS - End_IAS)
+#   
+#   # Calculate the aggregate Mean Follower IAS/Wind Effect Trapezium rule calculations
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Mean_Follower_IAS = (Start_IAS + End_IAS) * Section_Flying_Time / 2)
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Forecast_Mean_Follower_Wind_Effect = (Start_WE + End_WE) * Section_Flying_Time / 2)
+#   
+#   # Calculate the Cumulative Follower Flying Distance
+#   GS_Profile_Follower <- mutate(GS_Profile_Follower, Cumulative_Follower_Distance = Start_Dist - Follower_End_Distance)
+#   
+#   # Get the Follower Statistics: Follower Flying Distance/Time, Mean IAS, Mean WE (Trapezium rule)
+#   Follower_Stats <- group_by(GS_Profile_Follower, Landing_Pair_ID) %>%
+#     summarise(Follower_Flying_Distance = sum(Section_Flying_Distance, na.rm = F),
+#               Follower_Flying_Time = max(Cumulative_Time, na.rm = F),
+#               Mean_Follower_IAS = sum(Mean_Follower_IAS, na.rm = F),
+#               Forecast_Mean_Follower_Wind_Effect = sum(Forecast_Mean_Follower_Wind_Effect, na.rm = F)) %>% ungroup() %>%
+#     mutate(Mean_Follower_IAS = Mean_Follower_IAS / Follower_Flying_Time,
+#            Forecast_Mean_Follower_Wind_Effect = Forecast_Mean_Follower_Wind_Effect / Follower_Flying_Time)
+#   
+#   # ------------------------ #
+#   ### --- Results & Output
+#   # ------------------------ #
+#   
+#   # Combine the Leader and Follower Stats
+#   All_Stats <- full_join(Leader_Stats, Follower_Stats, by = setNames(LPID_Var, LPID_Var))
+#   
+#   # Calculate Compression
+#   All_Stats <- mutate(All_Stats, Forecast_Compression = Follower_Flying_Distance - Leader_Flying_Distance)
+#   
+#   # TEMP FIX: If Leader Time != Follower Time, Make Everything NULL
+#   All_Stats <- mutate(All_Stats,
+#                       Forecast_Compression = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Forecast_Compression),
+#                       Follower_Flying_Distance = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Follower_Flying_Distance),
+#                       Mean_Follower_IAS = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Mean_Follower_IAS),
+#                       Forecast_Mean_Follower_Wind_Effect = ifelse(Leader_Flying_Time - Follower_Flying_Time > 0.0001, NA, Forecast_Mean_Follower_Wind_Effect))
+#   
+#   
+#   ## Rename Variables
+#   All_Stats <- select(All_Stats,
+#                       !!sym(LPID_Var),
+#                       !!sym(Comp_Var) := "Forecast_Compression",
+#                       !!sym(Lead_Spd_Var) := "Mean_Leader_IAS",
+#                       !!sym(Lead_WE_Var) := "Forecast_Mean_Leader_Wind_Effect",
+#                       !!sym(Foll_Spd_Var) := "Mean_Follower_IAS",
+#                       !!sym(Foll_WE_Var) := "Forecast_Mean_Follower_Wind_Effect")
+#   
+#   ## Join with Landing Pair Data
+#   Landing_Pair <- left_join(Landing_Pair, All_Stats, by = setNames(LPID_Var, LPID_Var))
+#   
+#   
+#   # Return results
+#   return(Landing_Pair)
+#   
+# }
 
-  # Minimum Gust Adjustment Value.
-  Min_Adjustment <- 0
+# # Function to join the correct ORD adaptation. Now obsolete for Validation purposes.
+# Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORD_OP, ORD_AC, ORD_W, ORD_DBS){
+#   
+#   # Operator level added for PWS
+#   if (ORD_Profile_Selection == "Operator"){
+#     LP <- mutate(LP, AC_Operator_Pair = paste0(Aircraft_Type, "-", Operator))
+#     ORD_OP <- mutate(ORD_OP, AC_Operator_Pair = paste0(Aircraft_Type, "-", Operator)) %>% select-c("Aircraft_Type", "Operator")
+#     LP0 <- inner_join(LP, ORD_OP, by = c("AC_Operator_Pair"))
+#     LP1 <- filter(LP, AC_Operator_Pair %!in% ORD_AC$AC_Operator_Pair)
+#     LP1 <- inner_join(LP1, ORD_AC, by=c("Aircraft_Type"))
+#     LP2 <- filter(LP1, Aircraft_Type %!in% ORD_AC$Aircraft_Type)
+#     LP2 <- inner_join(LP2, ORD_W, by=c("Wake_Cat"))
+#     LP <- rbind(LP0, LP1, LP2) %>% select(-AC_Operator_Pair)
+#   }
+#   
+#   if (ORD_Profile_Selection == "Aircraft_Type"){
+#     LP1 <- inner_join(LP, ORD_AC, by=c("Aircraft_Type"))
+#     LP2 <- filter(LP, Aircraft_Type %!in% ORD_AC$Aircraft_Type)
+#     LP2 <- inner_join(LP2, ORD_W, by=c("Wake_Cat"))
+#     LP <- rbind(LP1, LP2)
+#   }
+#   
+#   if (ORD_Profile_Selection == "Wake"){
+#     LP <- inner_join(LP, ORD_W, by=c("Wake_Cat"))
+#   }
+#   
+#   if (ORD_Profile_Selection == "TBS_Table"){
+#     LP <- inner_join(LP, ORD_DBS, by=c("DBS_All_Sep_Distance"="DBS_Distance"))
+#   }
+#   
+#   return(LP)
+# }
+# 
+# Get_Compression_Distances <- function(LP, Precedences, ORD_Levels, ORD_Profile_Selection, Distance){
+#   
+#   if (Distance == "LST"){Dist_Var <- "Local_Stabilisation_Distance"}
+#   if (Distance == "CCT"){Dist_Var <- "Compression_Commencement_Threshold"}
+#   
+#   LP <- Join_ORD_Adaptation(LP, ORD_Profile_Selection, ORDBuffers = F, Precedences, ORD_Levels, LorF = "Leader", Use_EFDD = F, LegacyorRecat = "Recat") %>%
+#     select(Landing_Pair_ID, !!sym(Dist_Var))
+#   
+#   return(LP)
+#   
+# }
 
-  #
-
-  Aircraft_Profile <- Aircraft_Profile %>%
-    mutate(Gust_Adjustment = -(Section_Wind_Effect + Surface_Headwind) / Gust_Coefficient) %>%
-    mutate(Gust_Adjustment = ifelse(Gust_Adjustment < Min_Adjustment, Min_Adjustment, Gust_Adjustment)) %>%
-    mutate(Gust_Adjustment = ifelse(is.na(Gust_Adjustment), 0, Gust_Adjustment))
-
-  # Assumes Start Distance, End Distance, Wind_Effect, Gust Change Distance, Pre_Change_Coefficient, Post_Change_Coefficient
-
-
-
-}
+# Get_Pair_Ref_Parameter <- function(con, Landing_Pair, Ref_Source_Type, RecatorLegacy, Constraint, ACT_Enabled, Operator_Enabled){
+#   
+#   # Operation settings
+#   
+#   # Get the Wake Category Variable names (Aircraft Type/Operator variables are named consistently).
+#   Lead_Wake_Var <- paste0("Leader_", RecatorLegacy, "_Wake_Cat")
+#   Foll_Wake_Var <- paste0("Follower_", RecatorLegacy, "_Wake_Cat")
+#   Lead_Wake_Var2 <- ifelse(RecatorLegacy == "Recat", "Leader_WTC", "Leader_WVI") # Should probably change the DB to make these the same
+#   Foll_Wake_Var2 <- ifelse(RecatorLegacy == "Recat", "Follower_WTC", "Follower_WVI")
+#   
+#   # Get the Final Output Variable name
+#   Final_Outp_Var <- paste0("Reference_", RecatorLegacy, "_", Constraint, "_", Ref_Source_Type)
+#   
+#   # Group Constraints by Pairing Level (Currently only supports Wake Separation/ROT Spacing)
+#   if (Constraint %in% c("Wake_Separation")){Level <- "Type"}
+#   if (Constraint %in% c("ROT_Spacing", "Non_Wake_Separation", "Spacing")){Level <- "Runway, Type"}
+#   if (Constraint %in% c("Runway_Dependent")){Level <- "Runway Pair, Type"}
+#   
+#   
+#   # Load the reference data to be joined depending on New/Old operations (RecatorLegacy),
+#   # Separation/Spacing Constraint (Constraint) and time/ias/distance parameter (Ref_Source_Type)
+#   if (RecatorLegacy == "Legacy"){
+#     
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_DBS_Wake_Turbulence")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_TBS_Wake_Turbulence")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Legacy_Wake_Separation_IAS")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Legacy_ROT_Spacing_Dist")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Legacy_ROT_Spacing_Time")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Legacy_ROT_Spacing_IAS")}
+#     
+#   }
+#   
+#   # NOTE: Operator and ACT can be independent (may be the case for ROT times for example)
+#   if (RecatorLegacy == "Recat"){
+#     
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Dist")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Time")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_Recat_Separation_IAS")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Dist")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Reference_ROT_Spacing_Time")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source <- Load_Adaptation_Table(con, "tbl_Assumed_ROT_Spacing_IAS")}
+#     
+#   }
+#   
+#   
+#   # For New operations only: if ACT_Enabled then get Aircraft type pair parameters (e.g. PWS Wake)
+#   if (ACT_Enabled == T){
+#     
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Dist")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Time")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Assumed_ACTP_Wake_Separation_IAS")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_ROT_Spacing_Dist")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_ROT_Spacing_Time")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source_1 <- Load_Adaptation_Table(con, "tbl_Assumed_ACTP_ROT_Spacing_IAS")}
+#     
+#   }
+#   
+#   # For New operations only, and only if we decide to calibrate operator/type pairs.
+#   if (Operator_Enabled == T){
+#     
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Distance"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_Wake_Separation_Dist")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "Time"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_Wake_Separation_Time")}
+#     if (Constraint == "Wake_Separation" & Ref_Source_Type == "IAS"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Assumed_AC_Operator_Wake_Separation_IAS")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Distance"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_ROT_Spacing_Dist")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "Time"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Reference_AC_Operator_ROT_Spacing_Time")}
+#     if (Constraint == "ROT_Spacing" & Ref_Source_Type == "IAS"){Ref_Source_2 <- Load_Adaptation_Table(con, "tbl_Assumed_AC_Operator_ROT_Spacing_IAS")}
+#     
+#   }
+#   
+#   
+#   # Create placeholder column for which the hierarchy is applied
+#   Landing_Pair <- mutate(Landing_Pair, Placeholder = NA)
+#   
+#   # Begin vlaue assignment based on hierarchy: Operator -> Aircraft -> Wake
+#   # Only uses data if it has been loaded
+#   # Structure for thre tiers very similar so only below tier described
+#   if (exists("Ref_Source_2")){
+#     
+#     # Rename the desired variable to the new variable name for this tier
+#     Outp_Var_2 <- paste0("Reference_", "AC_Operator", "_", Constraint, "_", Ref_Source_Type)
+#     Ref_Var_2 <- colnames(Ref_Source_2)[ncol(Ref_Source_2)]
+#     Ref_Source_2 <- rename(Ref_Source_2, !!sym(Outp_Var_2) := !!sym(Ref_Var))
+#     
+#     # If a Wake separation, join by aircraft types and operators
+#     if (Level == "Type"){
+#       Landing_Pair <- left_join(Landing_Pair, Ref_Source_2,
+#                                 by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
+#                                        setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
+#                                        setNames("Leader_Operator", "Leader_Operator"),
+#                                        setNames("Follower_Operator", "Follower_Operator")))
+#     }
+#     
+#     # If a runway pair grouping join by Aircraft Types, Operators and any Landing Runway (Follower used, Not-in-trails are NA for now)
+#     # Note: May need to add Runway Pair ROT Distances - unsure of scope for now
+#     if (Level == "Runway, Type"){
+#       Landing_Pair <- left_join(Landing_Pair, Ref_Source_2,
+#                                 by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
+#                                        setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
+#                                        setNames("Leader_Operator", "Leader_Operator"),
+#                                        setNames("Follower_Operator", "Follower_Operator"),
+#                                        setNames("Runway", "Follower_Landing_Runway"))) %>%
+#         mutate(!!sym(Outp_Var_2) := ifelse(Leader_Landing_Runway != Follower_Landing_Runway, NA, !!sym(Outp_Var_2)))
+#     }
+#     
+#     # Replace NA values in placeholder with Non-NA values from this tier, remove tier variable
+#     Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var_2, Placeholder))) %>%
+#       select(-!!sym(Outp_Var_2))
+#     
+#   }
+#   
+#   if (exists("Ref_Source_1")){
+#     
+#     Outp_Var_1 <- paste0("Reference_", "ACTP", "_", Constraint, "_", Ref_Source_Type)
+#     Ref_Var_1 <- colnames(Ref_Source_1)[ncol(Ref_Source_1)]
+#     Ref_Source_1 <- rename(Ref_Source_1, !!sym(Outp_Var_1) := !!sym(Ref_Var_1))
+#     
+#     
+#     if (Level == "Type"){
+#       Landing_Pair <- left_join(Landing_Pair, Ref_Source_1,
+#                                 by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
+#                                        setNames("Follower_Aircraft_Type", "Follower_Aircraft")))
+#     }
+#     
+#     if (Level == "Runway, Type"){
+#       Landing_Pair <- left_join(Landing_Pair, Ref_Source_1,
+#                                 by = c(setNames("Leader_Aircraft_Type", "Leader_Aircraft_Type"),
+#                                        setNames("Follower_Aircraft_Type", "Follower_Aircraft"),
+#                                        setNames("Runway", "Follower_Landing_Runway")))
+#     }
+#     
+#     Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var_1), Placeholder)) %>%
+#       select(-!!sym(Outp_Var_1))
+#     
+#   }
+#   
+#   if (exists("Ref_Source")){
+#     
+#     Outp_Var <- Final_Outp_Var
+#     Ref_Var <- colnames(Ref_Source)[ncol(Ref_Source)]
+#     Ref_Source <- rename(Ref_Source, !!sym(Outp_Var) := !!sym(Ref_Var))
+#     
+#     if (Level == "Type"){
+#       Landing_Pair <- left_join(Landing_Pair, Ref_Source,
+#                                 by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var),
+#                                        setNames(Foll_Wake_Var2, Foll_Wake_Var)))
+#     }
+#     
+#     if (Level == "Runway, Type"){
+#       Landing_Pair <- left_join(Landing_Pair, Ref_Source,
+#                                 by = c(setNames(Lead_Wake_Var2, Lead_Wake_Var),
+#                                        setNames(Foll_Wake_Var2, Foll_Wake_Var),
+#                                        setNames("Runway", "Follower_Landing_Runway")))
+#     }
+#     
+#     Landing_Pair <- mutate(Landing_Pair, Placeholder = ifelse(is.na(Placeholder), !!sym(Outp_Var), Placeholder)) %>%
+#       select(-!!sym(Outp_Var))
+#     
+#     
+#   }
+#   
+#   # Rename the placeholder variable
+#   Landing_Pair <- rename(Landing_Pair, !!sym(Final_Outp_Var) := "Placeholder")
+#   
+#   return(Landing_Pair)
+#   
+# }
