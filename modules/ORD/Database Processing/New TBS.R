@@ -116,6 +116,9 @@ for (Date in Date_List){
 # These should be set in Adaptation Tables. But for easy prototyping, keep internal.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
+# Are we joining on Gusting Data?
+Join_Gusting <- T
+  
 # Primary Key in use. Use Observation_ID to distibuish between Bolstered Samples with same LP.
 LP_Primary_Key <- "Observation_ID"
 
@@ -261,6 +264,7 @@ Radar <- Load_Radar_Data_ORD_Validation(con, PROC_Period, Date) # Radar Data
 FP <- Load_Flight_Data_ORD_Validation(con, PROC_Period, Date) # Flight Plan (Aircraft Level) Data
 Segments <- Load_Stage_2_Segment_Data(con, PROC_Period, Date) # GWCS Forecast Segment Data
 SW <- Load_Surface_Wind_Data(con, PROC_Period, Date) # Surface Wind data
+if (Join_Gusting){Gust <- Load_Gust_Data(con, PROC_Period, Date)}
 
 # If not in Testing Mode, Generate LAnding Pairs for this day and load to SQL
 if (!Testing){
@@ -356,6 +360,16 @@ LP <- Get_Surface_Wind(LP, SW, Runways,
                        Date_Var = "Landing_Pair_Date",
                        Time_Var = "Prediction_Time",
                        Runway_Var = "Leader_Landing_Runway")
+
+# Get the Forecast Surface Gust for the Follower Runway.
+if (Join_Gusting){
+  
+  # Join on the Gust Values
+  LP <- LP %>%
+    rolling_join(Gust, c("Landing_Pair_Date", "Follower_Landing_Runway", "Prediction_Time"), c("Gust_Date", "Runway", "Gust_Time"), Roll = +Inf) %>%
+    rename(Forecast_AGI_Surface_Gust = Gust)
+  
+}
 
 # Find New Prediction Times ----
 

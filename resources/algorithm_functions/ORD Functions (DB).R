@@ -764,6 +764,38 @@ Load_Surface_Wind_Data <- function(con, PROC_Period, PROC_Criteria){
   
 }
 
+Load_Gust_Data <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading Surface Gust data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Surface Wind Query
+  Surface_Wind_Query <- "SELECT
+                         Runway,
+                         Gust_Date,
+                         Gust_Time,
+                         Gust AS Gust * dbo.fnc_GI_Kts_To_M_Per_Sec(),
+                       FROM tbl_Gusting"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Gust_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Gust_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Surface_Wind <- dbGetQuery(con, Surface_Wind_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed Surface Gust Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Surface_Wind)
+  
+}
+
 Load_Flight_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
   
   # Get Start Time
@@ -2139,6 +2171,7 @@ Get_Average_Forecast_Wind_Effect <- function(Data, Segment_Forecast, Prefix, ID_
 Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, LegacyorRecat){
 
   # Get Variable Names
+  Use_Gust_Data <- F
   ID_Var <- LPID_Var
   FPID <- paste0(LorF, "_Flight_Plan_ID") # Not Currently Used - Need to Add to Verification
   AC_Type_Var <- paste0(LorF, "_Aircraft_Type")
@@ -2158,6 +2191,12 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
                              "DBS_All_Sep_Distance" := !!sym(paste0(LegacyorRecat, "_DBS_All_Sep_Distance")),
                              "Surface_Headwind" := !!sym(SW_Var),
                              "Landing_Runway" := !!sym(RW_Var))
+  
+  # acquire and join on the real gust data if we use it
+  if (Use_Gust_Data){
+    Gust <- select(Landing_Pair, !!sym(ID_Var), Forecast_AGI_Surface_Gust)
+    Aircraft_Profile <- left_join(Aircraft_Profile, Gust, by = setNames(ID_Var, ID_Var))
+  }
 
   # Add "This_Pair_Role" Column
   Aircraft_Profile <- mutate(Aircraft_Profile, This_Pair_Role = TPR_Var)
@@ -2176,6 +2215,7 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
   if (!Use_EFDD){Aircraft_Profile <- mutate(Aircraft_Profile, End_Final_Deceleration_Distance = Thousand_Ft_Gate)}
 
   # Update Gust Adjustment Value based on Apply Gusting: Set former to 0 if latter is 0
+  if (Use_Gust_Data){Aircraft_Profile <- mutate(Aircraft_Profile, Gust_Adjustment = Forecast_AGI_Surface_Gust)}
   Aircraft_Profile <- mutate(Aircraft_Profile, Gust_Adjustment = ifelse(Apply_Gusting == 1, Gust_Adjustment, 0))
 
   return(Aircraft_Profile)
