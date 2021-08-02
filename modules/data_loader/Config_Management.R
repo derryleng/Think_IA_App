@@ -607,7 +607,7 @@ import_Config <- function(configDir, dbi_con, load_legacy_wake = T, load_DW_volu
 # Export Config Functions -------------------------------------------------
 # ----------------------------------------------------------------------- #
 
-xml_airspace <- function(OutputPath, dbi_con) {
+xml_airspace <- function(OutputPath, variant_tag, Use_Variants, dbi_con) {
 
   # Redundant dependencies:
   # usp_GI_Get_Airfield_Data
@@ -623,9 +623,15 @@ xml_airspace <- function(OutputPath, dbi_con) {
   tbl_Airfield <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield"))
   tbl_Adaptation_Data <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Adaptation_Data"))
   tbl_Runway <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Runway"))
-  tbl_Path_Leg <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Path_Leg"))
-  tbl_Volume <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Volume"))
-  tbl_Polygon <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Polygon"))
+  if (Use_Variants) {
+    tbl_Path_Leg <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Path_Leg", variant_tag)))
+    tbl_Volume <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Volume", variant_tag)))
+    tbl_Polygon <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Polygon", variant_tag)))
+  } else {
+    tbl_Path_Leg <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Path_Leg")))
+    tbl_Volume <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Volume")))
+    tbl_Polygon <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Polygon")))
+  }
   tbl_Path_Leg_Transition <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Path_Leg_Transition"))
 
   area_of_interest <- data.table(
@@ -1214,12 +1220,21 @@ xml_tdps <- function(OutputPath, dbi_con) {
 
 }
 
-export_Config <- function(configDir, dbi_con, ver_str = "V0.0.0") {
+export_Config <- function(configDir, dbi_con, ver_str = "V0.0.0", Use_Variants) {
 
   message("[",Sys.time(),"] ", "Exporting config XML to: ", configDir)
   Airfield_Name <- as.vector(unlist(dbGetQuery(dbi_con, "SELECT * FROM tbl_Airfield")$Airfield_Name))
 
-  xml_airspace(file.path(configDir, paste0("airspace-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
+  if (Use_Variants) {
+    variant <- c(1, 2, 3)
+    for (i in variant) {
+      variant_tag <- ifelse(i == 1, "", paste0("_", i))
+      xml_airspace(file.path(configDir, paste0("airspace-", Airfield_Name, "-", ver_str, variant_tag, ".xml")), variant_tag, T, dbi_con)
+    }
+  } else {
+    xml_airspace(file.path(configDir, paste0("airspace-", Airfield_Name, "-", ver_str, ".xml")), NA, F, dbi_con)
+  }
+
   xml_gwcs(file.path(configDir, paste0("gwcs-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
   xml_ord(file.path(configDir, paste0("ord-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
   xml_sasai(file.path(configDir, paste0("sasai-", Airfield_Name, "-", ver_str, ".xml")), dbi_con)
