@@ -139,7 +139,18 @@ data_loader_server <- function(input, output, session, con, dbi_con) {
   observeEvent(input$export_xml, {
     withCallingHandlers({
       shinyjs::html("console_output", "")
-      export_Config(isolate(export_dir()), isolate(dbi_con), isolate(input$export_xml_version))
+      export_Config(isolate(export_dir()), isolate(dbi_con), isolate(input$export_xml_version), F)
+    },
+    message = function(m) {
+      shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
+    })
+  })
+
+
+  observeEvent(input$export_xml_variants, {
+    withCallingHandlers({
+      shinyjs::html("console_output", "")
+      export_Config(isolate(export_dir()), isolate(dbi_con), isolate(input$export_xml_version), T)
     },
     message = function(m) {
       shinyjs::html(id = "console_output", html = paste0(m$message, "<br>"), add = TRUE)
