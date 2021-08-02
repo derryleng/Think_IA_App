@@ -1108,6 +1108,18 @@ Get_Reference_ORD_Parameter_Table_Name <- function(Level, LegacyorRecat, ORD_Pro
   
 }
 
+# Function that provides the correct T2F Adaptation table name based on it's "Level".
+Get_Reference_T2F_Parameter_Table_Name <- function(Level, LegacyorRecat){
+  
+  if (Level == "Operator"){Middle <- "AC_Operator"} else {Middle <- Level}
+  String <- paste0("tbl_T2F_", Middle, "_Adaptation")
+  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
+  message(paste0("Returning Table name ", String))
+  
+  return(String)
+  
+}
+
 # Function that returns the Identifiers of a given ORD Adaptation level.
 Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, LegacyorRecat, ReforData, LorF){
   
@@ -1125,7 +1137,92 @@ Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, L
   
 }
 
+# Function that returns the Identifiers of a given ORD Adaptation level.
+Get_Reference_T2F_Parameter_ID_Names <- function(Level, LegacyorRecat, ReforData, LorF){
+  
+  if (ReforData == "Ref"){
+    if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
+    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
+    else {return(c("Wake_Cat"))}
+  } else {
+    if (Level == "Operator"){return(paste0(LorF, "_", c("Aircraft_Type", "Operator")))}
+    else if (Level == "Aircraft"){return(paste0(LorF, "_", c("Aircraft_Type")))}
+    else {return(paste0(LorF, "_", LegacyorRecat, "_", c("Wake_Cat")))}
+  }
+  
+}
 
+
+# T2F Adaptation Joining.
+Get_T2F_Adaptation_In_Precedence <- function(con, LP_Primary_Key, LP, Precedences, Values, LegacyorRecat, LorF){
+  
+  # Create the Precedence Table
+  Precedence_Table <- data.frame(Scheme = Precedences, Switch = Values) %>%
+    mutate(ID = row_number()) %>% select(ID, everything())
+  
+  # Initialise a counter: counts how many tables have been matched.
+  Counter <- 0
+  
+  # Loop across all level precedences.
+  for (i in 1:nrow(Precedence_Table)){
+    
+    # Get the parameter name, the "level" and its activity status.
+    Constr <- filter(Precedence_Table, ID == i)
+    Level = Constr$Scheme
+    Active = Constr$Switch
+    
+    # If this level is to be considered...
+    if (Active){
+      
+      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
+      Table_Name <- Get_Reference_T2F_Parameter_Table_Name(Level, LegacyorRecat)
+      
+      # If the desired table exists in the database, load table and increment counter.
+      if (dbExistsTable(con, Table_Name)){
+        Counter <- Counter + 1
+        Adaptation <- Load_Adaptation_Table(con, Table_Name)
+        
+        # If IDs already have adaptation assigned, remove them.
+        if (Counter > 1){LP <- filter(LP, !!sym(LP_Primary_Key) %!in% CompleteIDs)}
+        
+        # Find/isolate the relevant columns from the data and the adaptation.
+        Join_Names_Adaptation <- Get_Reference_T2F_Parameter_ID_Names(Level, LegacyorRecat, ReforData = "Ref", LorF)
+        Join_Names_LP <- Get_Reference_T2F_Parameter_ID_Names(Level, LegacyorRecat, ReforData = "Data", LorF)
+        Select_Names_LP <- append(c(LP_Primary_Key), Join_Names_LP)
+        
+        # Get the relevant LP Data
+        LPLevel <- select(LP, all_of(Select_Names_LP)) %>% mutate(Level_Used = Level)
+        
+        # Join on the adaptation
+        LPLevel <- inner_join(LPLevel, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+        
+        # Remove the Level identifiers.
+        LPLevel <- select(LPLevel, -all_of(Join_Names_LP))
+        
+        # Bind the data together. If first valid table, data must be initalised.
+        if (Counter == 1){LPNew <- LPLevel} else {LP <- rbind(LPNew, LPLevel)}
+        
+        # Get the LPIDs that have been successfully joined for removal later.
+        CompleteIDs <- select(LPNew, !!sym(LP_Primary_Key)) %>% rename(ID := !!sym(LP_Primary_Key))
+        CompleteIDs <- unique(CompleteIDs$ID)
+        
+        # If Adaptation table doesn't exist: display message.
+      } else {message(paste0("The table ", Table_Name, " does not exist."))}
+      
+      message("---------------------------------------")
+    }
+    
+  }
+  
+  if (LorF == "Leader"){Sub <- "L"} else {Sub <- "F"}
+  LPNew <- mutate(LPNew, This_Pair_Role = Sub) %>%
+    select(!!sym(LP_Primary_Key), This_Pair_Role, everything())
+  
+  return(LPNew)
+  
+}
+
+# SASAI Reference parameter joining
 Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type, TBSCBuffers, LegacyorRecat){
   
   # Create the Precedence Table
