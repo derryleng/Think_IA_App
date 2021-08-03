@@ -146,6 +146,12 @@ ORD_Levels <- c(F, T, T)
 TBS_Wake_Levels <- c(F, T, T)
 TBS_ROT_Levels <- c(F, F, T)
 
+# "Symmetry" Switches for Wake TBS Calculations
+SymmetryWakeNew <- T
+
+# What era of ROT Adaptation to use? ("ROT" | "New_ROT") -- New ROT is PWS Specific.
+ROTTimeTypeNew <- "ROT" 
+
 # Switch for use of TBSC Time Buffers (If TRUE, Buffer in time adaptation files added to reference)
 TBSCBuffersNew <- F
 
@@ -198,6 +204,12 @@ Old_Constraints <- c("Wake", "ROT", "Non_Wake", "Runway_Dependent")
 ORD_Levels_Legacy <- c(F, T, T)
 TBS_Wake_Levels_Legacy <- c(F, T, T)
 TBS_ROT_Levels_Legacy <- c(F, F, T)
+
+# "Symmetry" Switches for Wake TBS Calculations
+SymmetryWakeNew <- T
+
+# What era of ROT Adaptation to use? ("ROT" | "New_ROT") -- New ROT is PWS Specific.
+ROTTimeTypeOld <- "ROT" 
 
 # Switch for use of TBSC Time Buffers (If TRUE, Buffer in time adaptation files added to reference)
 TBSCBuffersOld <- F
@@ -333,7 +345,7 @@ LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use 
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels, Param_Type = "Time", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels, Param_Type = "Speed", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Distance", TBSCBuffersNew, "Recat")
-LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Time", TBSCBuffersNew, "Recat")
+LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = ROTTimeTypeNew, Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Time", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Speed", TBSCBuffersNew, "Recat")
 
 # Get Reference "Legacy" Pair Parameters. Currently includes Wake and ROT adaptation.
@@ -341,7 +353,7 @@ LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use 
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels_Legacy, Param_Type = "Time", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels_Legacy, Param_Type = "Speed", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Distance", TBSCBuffersOld, "Legacy")
-LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Time", TBSCBuffersOld, "Legacy")
+LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = ROTTimeTypeOld, Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Time", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Speed", TBSCBuffersOld, "Legacy")
 
 # PRepare TBSC Extras (RNAV Flag, Non-Wake Spacing, Runway Dep Separation, TBS Service Level)
@@ -350,8 +362,8 @@ LP <- Get_TBS_Service_Level(con, LP, LP_Primary_Key)
 
 # Get the DBS All Sep Distance - ## Wake only for TBS Table for existing operations.
 LP <- mutate(LP, 
-             Recat_DBS_All_Sep_Distance = pmax(Reference_Recat_ROT_Spacing_Distance, Reference_Recat_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T),
-             Legacy_DBS_All_Sep_Distance = pmax(Reference_Legacy_ROT_Spacing_Distance, Reference_Legacy_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T))
+             Recat_DBS_All_Sep_Distance = pmax(Reference_Recat_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T),
+             Legacy_DBS_All_Sep_Distance = pmax(Reference_Legacy_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T))
 
 # Get the Forecast Surface Wind for the Leader
 LP <- Get_Surface_Wind(LP, SW, Runways,
@@ -529,6 +541,7 @@ for (LegacyorRecat in c("Recat", "Legacy")){
     AllowedPathLegs <- AllowedPathLegsOld
     MaxUnderRep <- MaxUnderRepOld
     UnderSeps <- UnderSepsOld
+    SymmetryWake <- SymmetryWakeOld
   } else {
       Delivery_Column <- "New_Delivery"
       Use_EFDD <- UseEFDDNew
@@ -547,13 +560,14 @@ for (LegacyorRecat in c("Recat", "Legacy")){
       AllowedPathLegs <- AllowedPathLegsNew
       MaxUnderRep <- MaxUnderRepNew
       UnderSeps <- UnderSepsNew
+      SymmetryWake <- SymmetryWakeNew
     }
   
   Dist_Values <- c()
   
   # Setup the Profiles for Wake and ROT Constraints.
-  TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat)
-  TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat)
+  TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat, SymmetryWake)
+  TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat, Symmetry = F)
   
   LP <- mutate(LP, Delivery_Distance = !!sym(Delivery_Column))
   

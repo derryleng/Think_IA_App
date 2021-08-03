@@ -1348,6 +1348,11 @@ Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP
 
 Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, LegacyorRecat){
   
+  # If using new ROT methodology, get the new ROT table(s).
+  if (Use == "New_ROT" & Param_Type == "Time"){
+    return(Get_Reference_ROT_Time_Table_Name(Level, LegacyorRecat))
+  }
+  
   String <- "tbl"
   
   if (Param_Type == "Speed"){
@@ -1384,6 +1389,26 @@ Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, Leg
   
 }
 
+Get_Reference_ROT_Time_Table_Name <- function(Level, LegacyorRecat){
+  
+  # Initislaise the table name string
+  String <- "tbl_ROT_Time_"
+  
+  # Add on the level element
+  if (Level == "Operator"){S2 <- "AC_Operator"}
+  if (Level == "Aircraft"){S2 <- "Aircraft"}
+  if (Level == "Wake"){S2 <- "Wake"}
+  
+  # Put the backend on.
+  String <- paste0(String, S2, "_Adaptation")
+  
+  # If Legacy adaptation, add on Legacy suffix.
+  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
+  
+  return(String)
+  
+}
+
 Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
   
   if (Param_Type == "Speed"){
@@ -1402,14 +1427,37 @@ Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
   }
   
   if (Use == "Wake"){Middle <- "Wake_Separation"}
-  if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  if (Use %in% c("ROT", "New_ROT")){Middle <- "ROT_Spacing"}
   
   String <- paste0(Prefix, "_", Middle, "_", Suffix)
   return(String)
   
 }
 
+Get_Reference_ROT_Time_ID_Names <- function(Level, ReforData, LegacyorRecat){
+  
+  if (ReforData == "Ref"){
+    Vars <- c("Runway")
+    if (Level == "Wake"){Vars <- append(Vars, "Wake_Cat")}
+    if (Level == "Aircraft"){Vars <- append(Vars, "Aircraft_Type")}
+    if (Level == "Operator"){Vars <- append(Vars, "Aircraft_Type", "Operator")}
+  } else if (ReforData == "Data"){
+    Vars <- c("Leader_Landing_Runway")
+    if (Level == "Wake"){Vars <- append(Vars, paste0("Leader_", LegacyorRecat, "_Wake_Cat"))}
+    if (Level == "Aircraft"){Vars <- append(Vars, "Leader_Aircraft_Type")}
+    if (Level == "Operator"){Vars <- append(Vars, "Leader_Aircraft_Type", "Leader_Operator")}
+  }
+  
+  return(Vars)
+  
+}
+
 Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData, LegacyorRecat){
+  
+  # If using New ROT, use that function instead.
+  if (Use == "New_ROT"){
+    return(Get_Reference_ROT_Time_ID_Names(Level, ReforData, LegacyorRecat))
+  }
   
   Vars <- c()
   

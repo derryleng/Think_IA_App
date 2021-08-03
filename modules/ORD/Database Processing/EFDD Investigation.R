@@ -95,7 +95,7 @@ con <- Get_DBI_Connection(IP, Database)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # Choose mode of analysis
-Mode <- c("EFDD", "TTB")[1]
+Mode <- c("EFDD", "TTB", "Profile Analysis")[3]
 
 # Function for EFDD Plot.
 Generate_EFDD_Plot <- function(Data, Group){
@@ -358,7 +358,85 @@ if (Mode == "TTB"){
   
 }
 
+if (Mode == "Profile Analysis"){
+  
+  OutputFolder <- file.path(GetSaveDirectory(3, "ORD", "Outputs"), "Speed Profiles", "2021-07-16 V1.0 (AH)")
+  
+  Times <- dbGetQuery(con, "SELECT LP.Landing_Pair_ID, Follower_Flight_Plan_ID, Prediction_Time FROM tbl_Landing_Pair LP INNER JOIN tbl_ORD_Prediction OP ON LP.Landing_Pair_ID = OP.LAnding_Pair_ID")
+  Gust <- dbGetQuery(con, "SELECT Gust_Date, Gust_Time, Runway, Gust FROM tbl_Gusting")
+  QNH <- dbGetQuery(con, "SELECT Baro_Date, Baro_Time, Baro_Pressure FROM tbl_Baro") %>% mutate(Baro_Pressure_Diff = (Baro_Pressure-101325) / 100)
+  RefDists <- dbGetQuery(con, "SELECT Landing_Pair_ID, Ref_Recat_Wake_Separation_Distance, Observed_Follower_eTBS_Wind_Effect FROM tbl_eTBS_Performance_Model")
+  RWs <- dbGetQuery(con, "SELECT Runway_Name FROM tbl_Runway")$Runway_Name
+  
+  Gust <- mutate(Gust, Gust_Date2 = paste0(substr(Gust_Date, 1, 6), substr(Gust_Date, 9, 10))) %>% mutate(Gust_Date = Gust_Date2) %>% select(-Gust_Date2)
+  
+  data <- fread(file.path(OutputFolder, "Approach_Speed_Profiles.csv")) %>% mutate(SHW_Group = cut(Surface_Headwind, breaks = c(-Inf, -15, -10, -5, 5, 10, 15, Inf)))
+  
+  data <- data %>%
+    left_join(Times, by = "Follower_Flight_Plan_ID") %>%
+    left_join(RefDists, by = c("Landing_Pair_ID")) %>%
+    rolling_join(Gust, c("FP_Date", "Landing_Runway", "Prediction_Time"), c("Gust_Date", "Runway", "Gust_Time"), Roll = "nearest") %>%
+    rolling_join(QNH, c("FP_Date", "Prediction_Time"), c("Baro_Date", "Baro_Time"),  Roll = "nearest")
+  
+  #data1 <- filter(data, Follower_Aircraft_Type %in% c("A388", "B744", "A320", "A319"))# %>% filter(abs(n1) < 7 & abs(n2) < 14)
+  #ggplot(data1) + geom_boxplot(mapping = aes(x = as.factor(Follower_Aircraft_Type), y = n1)) + ylim(0, 5)
+  #data1 <- filter(data, abs(Surface_Headwind) <= 15)
+  data1 <- data %>% mutate(newd = (b-a1/n2-n1))
+  
+  stats <- data1 %>% group_by(Follower_Aircraft_Type) %>% summarise(count = n(), mean_n1 = median(n1, na.rm=T), mean_n2 = median(n2, na.rm=T), mean_d = median(n2-n1, na.rm=T)) %>%
+    ungroup() %>% filter(count > 1000)
+  
+  # ex <- filter(data1, Follower_Aircraft_Type %in% c("A388", "B744", "A320", "A319")) #%>% filter(SHW_Group != "(-15,-10]")
+  # ggplot(ex,mapping = aes(x = Surface_Headwind, y = n1)) + geom_point(alpha = 0.05) + ylim(2, 4) + facet_wrap(~Follower_Aircraft_Type) + geom_smooth(method = loess)
+  # ggplot(data1,mapping = aes(x = SHW_Group, y = -newd)) + geom_boxplot() + ylim(-140, -110) + geom_smooth(method = lm) + facet_wrap(~lss_type)
+  # ggplot(data1,mapping = aes(x = SHW_Group, y = n1)) + geom_boxplot() + ylim(2, 5) + geom_smooth(method = lm) + facet_wrap(~lss_type)
+  # 
+  data1 <- data1 %>% filter(a1 < 200 & a1 > 80 & n1 < 5 & n1 > 1) %>% mutate(Operator = substr(Follower_Callsign, 1, 3)) %>% mutate(Dummy = 1)
+  
+  list <- c()
+  ACTs <- unique(stats$Follower_Aircraft_Type) 
+  for (j in 1:length(ACTs)){
+    ACT <- ACTs[j]
+    Use_Gust <- T
+    Use_SHW <- T
+    Use_QNH <- T
+    Use_OP <- T
+    
+    ex <- filter(data1, Follower_Aircraft_Type == ACT)
+    
+    str <- "n1 ~ Dummy"
+    if (Use_Gust){str <- paste0(str, " + Gust")}
+    if (Use_SHW){str <- paste0(str, " + Surface_Headwind")}
+    if (Use_QNH){str <- paste0(str, " + Baro_Pressure_Diff")}
+    
+    if (Use_OP){
+      l <- c()
+      for (op in unique(ex$Operator)){
+        l <- append(l, op)
+        ex <- mutate(ex, !!sym(op) := ifelse(Operator == op, 1, 0))
+      }
+      
+      for (i in l){
+        if (i != 1){str <- paste0(str, " + `", i, "`")}
+      }
+    }
+    
+    model <- lm(data = ex, formula = as.formula(str))
+    f <- summary(model)
+    c <- data.frame(f$coefficients)
+    print(paste0(ACT, " R2: ", f$adj.r.squared))
+    list <- append(list, round(f$adj.r.squared, 3))
+  }
+  
+  df <- data.frame(AC = ACTs, R2 = list)
+  
+#}
 
+#df_new <- df
+
+df <- select(df, -AC)
+
+df_new <- cbind(df_new, df)
 
 
 

@@ -65,11 +65,11 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Precedences, Levels, LegacyorRecat){
+Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Precedences, Levels, LegacyorRecat, SymmetryWake){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, Levels, LegacyorRecat)}
-  if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size = 1852, Precedences, Levels, LegacyorRecat)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, Levels, LegacyorRecat, SymmetryWake)}
+  if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size = 1852, Precedences, Levels, LegacyorRecat, SymmetryWake)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
     message(paste0("TBS Calculation Type (", TTB_Type, ") Not Supported! No profile returned."))
@@ -165,10 +165,10 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
   
   # Build an Aircraft Profile with ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat)
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile_Symmetric(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)
@@ -182,15 +182,114 @@ Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, 
   
 }
 
-
-Generate_TTB_T2F_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size, Precedences, T2F_Levels, LegacyorRecat){
+Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
   
-  # Get T2F Model Adaptation
-  LPLead <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Leader")
-  LPFoll <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Follower")
+  # Create standard aircraft profile if symmetry not required.
+  if (!Symmetry){
+    return(Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat))
+  }
+  
+  # Loop across all levels
+  for (LevelIndex in length(ORD_Levels)){
+    
+    # Make local copy of ORD_Levels to be edited.
+    ORD_Levels_Local <- ORD_Levels
+    
+    # If level is being used
+    if (ORD_Levels[LevelIndex]){
+      
+      # Turn off all other Levels.
+      for (LevelIndexLocal in length(ORD_Levels_Local)){
+        
+        if (LevelIndex != LevelIndexLocal){ORD_Levels_Local[LevelIndexLocal] <- F}
+        
+      }
+      
+      # Get Aircraft Profile for This Level only.
+      AircraftProfileLocal <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels_Local, LegacyorRecat)
+      
+      # Separate into Leader/Follower.
+      AircraftProfileLocalLeader <- filter(AircraftProfileLocal, This_Pair_Role == "L") %>% select(!!sym(ID_Var), VRef_Lead = VRef)
+      AircraftProfileLocalFollower <- filter(AircraftProfileLocal, This_Pair_Role == "F") %>% select(!!sym(ID_Var), VRef_Foll = VRef)
+      AircraftProfileLocalCheck <- full_join(AircraftProfileLocalLeader, AircraftProfileLocalFollower, by = setNames(ID_Var, ID_Var)) %>%
+        rename(ID = !!sym(ID_Var))
+      
+      # Check to see if both Leader/Follower values are populated. If not, remove from Landing Pair from AircraftProfileLocal.
+      AircraftProfileLocalCheck <- filter(AircraftProfileLocalCheck, !is.na(Vref_Lead) & !is.na(Vref_Foll))
+      AircraftProfileLocal <- filter(AircraftProfileLocal, !!sym(ID_Var) %in% AircraftProfileLocalCheck$ID)
+      LPR <- filter(LPR, !!sym(ID_Var) %!in% AircraftProfileLocalCheck$ID)
+      
+      # Add to Final Aircraft Profile Table.
+      if (exists("AircraftProfile")){AircraftProfile <- rbind(AircraftProfile, AircraftProfileLocal)} else {AircraftProfile <- AircraftProfileLocal}
+      
+    }
+    
+  }
+  
+  # Order by ID again.
+  AircraftProfile <- arrange(AircraftProfile, !!sym(ID_Var))
+  
+  return(AircraftProfile)
+  
+}
+
+Generate_T2F_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, Symmetry){
+  
+  if (!Symmetry){
+    LPLead <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Leader")
+    LPFoll <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Follower")
+    Profile <- rbind(LPLead, LPFoll)
+    return(Profile)
+  }
+  
+  # Loop across all levels
+  for (LevelIndex in length(T2F_Levels)){
+    
+    # Make local copy of ORD_Levels to be edited.
+    T2F_Levels_Local <- T2F_Levels
+    
+    # If level is being used
+    if (T2F_Levels[LevelIndex]){
+      
+      # Turn off all other Levels.
+      for (LevelIndexLocal in length(T2F_Levels_Local)){
+        
+        if (LevelIndex != LevelIndexLocal){T2F_Levels_Local[LevelIndexLocal] <- F}
+        
+      }
+      
+      # Get T2F Model Adaptation
+      LPLead <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels_Local, LegacyorRecat, LorF = "Leader") 
+      LPLeadCheck <- LPLead %>% group_by(!!sym(ID_Var)) %>% summarise(Lead_Count = n()) %>% ungroup()
+      LPFoll <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels_Local, LegacyorRecat, LorF = "Follower")
+      LPFollCheck <- LPFoll %>% group_by(!!sym(ID_Var)) %>% summarise(Foll_Count = n()) %>% ungroup()
+      LPCheck <- full_join(LPLeadCheck, LPFollCheck, by = setNames(ID_Var, ID_Var)) %>% rename(ID := !!sym(ID_Var))
+      
+      # Check to see if both Leader/Follower values are populated. If not, remove from Landing Pair from AircraftProfileLocal.
+      LPCheck <- filter(LPCheck, !is.na(Foll_Count) & !is.na(Lead_Count))
+      LPLead <- filter(LPLead, !!sym(ID_Var) %in% LPCheck$ID)
+      LPFoll <- filter(LPLead, !!sym(ID_Var) %in% LPCheck$ID)
+      ProfileLocal <- rbind(LPLead, LPFoll)
+      LPR <- filter(LPR, !!sym(ID_Var) %!in% LPCheck$ID)
+      
+      # Add to Final Aircraft Profile Table.
+      if (exists("Profile")){Profile <- rbind(Profile, ProfileLocal)} else {Profile <- ProfileLocal}
+      
+    }
+    
+  }
+  
+  return(Profile)
+  
+}
+
+Generate_TTB_T2F_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size, Precedences, T2F_Levels, LegacyorRecat, Symmetry){
+  
+  # Get T2F Model Adaptation. Now compatible with Symmetry.
+  Profile <- Generate_T2F_Aircraft_Profile_Symmetric(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, Symmetry)
   
   # Build full Profile
-  Profile <- rbind(LPLead, LPFoll) %>% arrange(!!sym(ID_Var), This_Pair_Role, Range_To_Threshold) %>%
+  Profile <- Profile %>% arrange(!!sym(ID_Var), This_Pair_Role, Range_To_Threshold) %>%
     rename(End_Dist = Range_To_Threshold, End_IAS = Average_IAS)
   
   # Lag to get the End IAS of each section
