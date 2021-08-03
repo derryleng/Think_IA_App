@@ -54,7 +54,8 @@ data_loader_ui <- function(id) {
             div(style = "padding: 8px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0;", "Version Suffix"),
             div(style = "flex-grow: 1", textInput(ns("export_xml_version"), NULL, "V0.0.0")),
             div(style = "width: 5px"),
-            actionButton(ns("export_xml"), "Export XML")
+            actionButton(ns("export_xml"), "Export XML"),
+            actionButton(ns("export_xml_variants"), "Export XML Variants")
           )
         ),
 

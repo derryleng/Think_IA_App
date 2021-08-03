@@ -29,8 +29,9 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
-ModuleFolder <- "ORD"
-ModuleSubfolder <- "Database Processing"
+ModuleFolder <- "TBSC"
+ModuleSubfolder <- "Calibration & Validation"
+ModuleProjectFolder <- "EGLL PWS"
 # --------------------------------------------------------------------------- #
 #
 FileFlag <- "global.R"
@@ -48,6 +49,7 @@ if (rstudioapi::isAvailable()) {
   }
 } else {
   Global_Dir <- getwd()
+  if (exists("ModuleProjectFolder")){ModuleSubfolder <- file.path(ModuleSubfolder, ModuleProjectFolder)}
   Script_Dir <- file.path(Global_Dir, ModulesFolder, ModuleFolder, ModuleSubfolder)
 }
 
@@ -75,22 +77,8 @@ source(file.path(Algo_Func_Dir, "ORD Functions (DB).R"), local = T) # ORD Functi
 source(file.path(Algo_Func_Dir, "TBSC Functions (PWS).R"), local = T)
 #source(file.path(Algo_Func_Dir, "GWCS Functions (DB).R"), local = T) # GWCS Functions for Wind Forecasting
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
-source(file.path(DB_Module_Dir, "All Pair Reference Data.R"), local = T) # All Pair Reference Data Functions
-source(file.path(DB_Module_Dir, "ORD-WAD Observation.R"), local = T) # ORD Observation Functions
-source(file.path(DB_Module_Dir, "ORD Aircraft Profile.R"), local= T) # ORD Aircraft Profile Functions
-source(file.path(DB_Module_Dir, "ORD IAS-GSPD Profile.R"), local= T) # ORD Segment/IAS/GS Profile Functions
-source(file.path(DB_Module_Dir, "ORD-WAD Prediction.R"), local= T) # ORD Prediction Functions
-source(file.path(DB_Module_Dir, "Setup IA Performance Model.R"), local= T) # Setup Performance Model Functions
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
-# ----------------------------------------------------------------------------------------------------------------------------------------- #
-# Configuration (## TODO: SETUP FOR SHINY)
-# ----------------------------------------------------------------------------------------------------------------------------------------- #
-Database <- "EGLL_PWS"
-IP <- "192.168.1.23"
-# ----------------------------------------------------------------------------------------------------------------------------------------- #
-# Database Connection
-con <- Get_DBI_Connection(IP, Database)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -152,6 +140,58 @@ T2F_IAS_Summary_Table <- function(Data, Groupings){
 }
 
 # ---------------------------------------------------------------------------------- #
+# Configuration ----
+# ---------------------------------------------------------------------------------- #
+# 
+# ---------------------------------------------------------------------------------- #
+
+# Database Setup.
+Database <- "EGLL_PWS"
+IP <- "192.168.1.23"
+
+# Database Connection
+con <- Get_DBI_Connection(IP, Database)
+
+# Give the users initials.
+User_Initials <- "GC"
+
+# Set PRoject Code (3 for EGLL PWS)
+Project_Code <- 3
+
+# Set Base Output Directory
+Base_Dir <- GetSaveDirectory(Project = Project_Code, "Flying Time Analysis", "Outputs")
+
+# Output Version
+Version <- "v0.0.1"
+Version_Folder <- paste0(Sys.Date(), " ", Version, " (", User_Initials, ")")
+
+# Get Base Input Directory
+Base_Dir_Input <- GetSaveDirectory(Project = Project_Code, "Flying_Time_Analysis_Input", "Inputs")
+
+# Input Version (and are we using?)
+Version_Folder_Input <- "Prototyping v0.0"
+
+# Create Directories 
+Out_Dir <- file.path(Base_Dir, Version_Folder)
+Create_Directory(Out_Dir)
+Adaptation_Dir <- file.path(Out_Dir, "Adaptation")
+Create_Directory(Adaptation_Dir)
+Plot_Dir <- file.path(Out_Dir, "Plots")
+Create_Directory(Plot_Dir)
+Inp_Dir <- file.path(Base_Dir_Input, Version_Folder_Input)
+Create_Directory(Inp_Dir)
+Compare_Dir <- file.path(Out_Dir, "Comparisons")
+Create_Directory(Compare_Dir)
+
+# Get the Intention Code
+Code_or_Airfield <- "Code" # "Code" | "Airfield" -- Decides whether to use the 2 or 4 character suffix for adaptation files.
+if (Code_or_Airfield == "Code"){AdapSuffix <- as.character(Load_Adaptation_Table(con, "tbl_Airfield")$Destination_Code)}
+if (Code_or_Airfield == "Airfield"){AdapSuffix <- as.character(Load_Adaptation_Table(con, "tbl_Airfield")$Airfield_Name)}
+
+# If Prototyping set to T, save the Legacy adaptation as the same as the Recat.
+Prototyping <- T
+
+# ---------------------------------------------------------------------------------- #
 # Adaptation ----
 # ---------------------------------------------------------------------------------- #
 # 
@@ -161,7 +201,7 @@ T2F_IAS_Summary_Table <- function(Data, Groupings){
 MikesOutputs <- F
 
 # Adaptable Maximum Separation Accuracy Parameter
-Use_Sep_Acc <- F
+Use_Sep_Acc <- T
 Remove_Neg_Sep_Acc <- T
 Sep_Accuracy_Max <- 3
 
@@ -182,19 +222,35 @@ Min_Count_Min <- 30
 Avg_Count_Min <- 50
 
 # Speed variable used ("Median_IAS" | "Mean_IAS")
-Speed_Used <- "Median_IAS"
+Speed_Used <- "Mean_IAS"
 
 # Use Procedural Speed past Applied_From Range To Threshold?
-Procedural_Applied <- T # Turn on/Off
+Procedural_Applied <- F # Turn on/Off
 Procedural_Cap <- 160 # Minimum PRocedural Speed
 Applied_From <- 6 # Range To Threshold at which above will be max(Procedural_Cap, Average_Speed @ Applied_From DME)
 
 # Do we want to Calibrate AC Types by Cluster?
 Use_Clusters <- T
-Num_Clusters <- 8
+Num_Clusters <- 6
 Cluster_Max_DME <- 6
 Use_Ref_Wind_Clusters <- T
 Min_Count_Min_Cluster <- 5
+
+# Create Adaptation Table
+Adaptation <- data.frame(
+  Filter = c("Separation Accuracy Filter Active", "Filter Negative Separation Accuracy", "Maximum Separation Accuracy (NM)", 
+             "Speed up to FAF Filter Active", "Min Speed to FAF (kts)", "Max Speed to FAF (kts)", "Min RTT for FAF Filter (NM)", "Max RTT for FAF Filter (NM)", "Speed Used for FAF Filter",
+             "Min Seg in T2F Adaptation", "Max Seg in T2F Adaptation", "Overall Minimum Seg Count for AC Type", "Average Minimum Seg Count for AC Type", "Speed Used for Adaptation",
+             "Profile cut at Procedural Speed?", "Procedural Speed Capped Value", "Segment at which PS Cap Applies from", 
+             "Clustering for Extra AC Types Active", "Number of Clusters used", "Maximum DME Distance for Clustering", "Clustering in Reference Winds Only?", "Minimum Count for Clustering"),
+  Value = c(Use_Sep_Acc, ifelse(Use_Sep_Acc, Remove_Neg_Sep_Acc, NA), ifelse(Use_Sep_Acc, Sep_Accuracy_Max, NA), Use_FAF_Speed, ifelse(Use_FAF_Speed, Min_Speed_To_FAF, NA), 
+            ifelse(Use_FAF_Speed, Max_Speed_To_FAF, NA), ifelse(Use_FAF_Speed, Min_FAF_RTT, NA), ifelse(Use_FAF_Speed, Max_FAF_RTT, NA), ifelse(Use_FAF_Speed, FAF_Speed_Used, NA),
+            Min_Seg, Max_Seg, Min_Count_Min, Avg_Count_Min, Speed_Used, Procedural_Applied, ifelse(Procedural_Applied, Procedural_Cap, NA), ifelse(Procedural_Applied, Applied_From, NA),
+            Use_Clusters, ifelse(Use_Clusters, Num_Clusters, NA), ifelse(Use_Clusters, Cluster_Max_DME, NA), ifelse(Use_Clusters, Use_Ref_Wind_Clusters, NA), ifelse(Use_Clusters, Min_Count_Min_Cluster, NA))
+)
+
+# Filter out NA values for clarity.
+Adaptation <- filter(Adaptation, !is.na(Value))
 
 # ---------------------------------------------------------------------------------- #
 # Data Loading ----
@@ -203,7 +259,16 @@ Min_Count_Min_Cluster <- 5
 # ---------------------------------------------------------------------------------- #
 
 # Load the T2F Calibration View.
-T2FView <- dbGetQuery(con, "SELECT * FROM vw_T2F_Calibration_View")
+View_Path <- file.path(Inp_Dir, "vw_T2F_Calibration_View.csv")
+
+if (file.exists(View_Path)){
+  T2FView <- fread(View_Path)
+  message("Loaded in T2F Calibration View, Version ", Version_Folder_Input, ".")
+} else {
+    message("Tried to use local input but none found. Will take view from database and save into ", Version_Folder_Input, " directory.")
+    T2FView <- dbGetQuery(con, "SELECT * FROM vw_T2F_Calibration_View")
+    fwrite(T2FView, View_Path)
+}
 
 # ---------------------------------------------------------------------------------- #
 # Initial Maniuplation ----
@@ -343,19 +408,28 @@ if (Use_Clusters){
   # Join the Cluster Numbers onto the main dataset.
   T2FDataFilt <- left_join(T2FDataFilt, DataClusterAC, by = c("Follower_Aircraft_Type"))
   
-  # ## PLOTS
-  # seg2_long <- pivot_longer(seg2_wide, DME0:DME6, names_to = "DME_Seg", values_to = "Median_IAS") %>% mutate(cluster = as.factor(cluster), DME_Dist = as.numeric(substr(DME_Seg,4,4)))
-  # 
-  # ggplot(seg2_long)+
-  #   geom_line(aes(x = DME_Dist, y = Median_IAS, group = Follower_Aircraft_Type, color = cluster))+
-  #   geom_text(data = filter(seg2_long, DME_Dist ==0), mapping = aes(x = DME_Dist, y = Median_IAS, label = Follower_Aircraft_Type), size = 3)+
-  #   labs(title = "Clustering of Median IAS Profiles", x = "Range to Threshold (NM)", y = "Median IAS (kt)")+
-  #   theme_classic()
+  ## PLOTS
+  
+  # Put into Long Format for plotting. Note that currently only works for DME Distances < 10.
+  DataClusterLong <- pivot_longer(DataClusterWide, DME0:!!sym(paste0("DME", Cluster_Max_DME)), names_to = "DME_Seg", values_to = "Average_IAS") %>% 
+    mutate(Cluster = as.factor(Cluster), DME_Dist = as.numeric(substr(DME_Seg,4,4)))
+  
+  # Generate Cluster Visualisations 
+  ClusterPlot <- ggplot(DataClusterLong)+
+     geom_line(aes(x = DME_Dist, y = Average_IAS, group = Follower_Aircraft_Type, color = Cluster))+
+     geom_text(data = filter(DataClusterLong, DME_Dist ==0), mapping = aes(x = DME_Dist, y = Average_IAS, label = Follower_Aircraft_Type), size = 3)+
+     labs(title = "Clustering of Median IAS Profiles", x = "Range to Threshold (NM)", y = "Median IAS (kt)")+
+     theme_classic()
+  
+  # Save plot to File.
+  png(file.path(Plot_Dir, paste0("Aircraft Cluster Profiles ", Version_Folder, ".png")), width = 1200, height = 960)
+  print(ClusterPlot)
+  dev.off()
   
 }
 
 # ---------------------------------------------------------------------------------- #
-# Calibration ----
+# Speed Calibration ----
 # ---------------------------------------------------------------------------------- #
 # Calibration for Wake, Aircraft Type, and Cluster if Available
 # ---------------------------------------------------------------------------------- #
@@ -381,9 +455,9 @@ ACOutput <- filter(AC, Flag == 1) %>%
 # If using Clustering, 
 if (Use_Clusters){
   ACClusterAircraft <- unique(filter(AC, Flag == 0)$Follower_Aircraft_Type)
-  TableCluster <- T2F_IAS_Summary_Table(T2FDataFilt, Groupings = c("Cluster", "Surface_Headwind_Group", "DME_Seg")) %>%
-    GenerateBaseline("Cluster", Segs, Min_Seg, Max_Seg)
-  ACOutput2 <- left_join(DataClusterAC, TableCluster, by = c("Cluster")) %>%
+  TableCluster <- T2F_IAS_Summary_Table(T2FDataFilt, Groupings = c("Cluster", "Surface_Headwind_Group", "DME_Seg"))
+  ACOutput2 <- GenerateBaseline(TableCluster, "Cluster", Segs, Min_Seg, Max_Seg)
+  ACOutput2 <- left_join(DataClusterAC, ACOutput2, by = c("Cluster")) %>%
     filter(Follower_Aircraft_Type %in% ACClusterAircraft) %>%
     select(Aircraft_Type = Follower_Aircraft_Type, Range_To_Threshold = DME_Seg, Average_IAS = !!sym(Speed_Used)) %>% mutate(Average_IAS = round(Average_IAS, 0)) %>%
     mutate(Used_Clustering = 1)
@@ -407,7 +481,149 @@ if (Procedural_Applied){
 }
 
 # Remove Unrequired Data.
-rm(TableWake, TableAC, TableFull)
+rm(TableFull)
+
+# ---------------------------------------------------------------------------------- #
+# Time Calibration ----
+# ---------------------------------------------------------------------------------- #
+# Calibration for Wake and Aircraft Type
+# ---------------------------------------------------------------------------------- #
+
+# ---------------------------------------------------------------- #
+# For Wake Level
+# ---------------------------------------------------------------- #
+
+# Load in the Wake Distances (Currently only from database
+Distances_Wake_WTC <- Load_Adaptation_Table(con, "tbl_Reference_Recat_Separation_Dist")
+
+# Create a shorter DF for Follower WTC/Distance Pairs
+Distances_Wake_WTC_Unique <- select(Distances_Wake_WTC, -Leader_WTC) %>% unique()
+
+# Make a copy of the Wake Speeds Output and put the end of the DME Seg on (TEMP: Assumes Seg Size = 1NM)
+WakeOutputTime <- WakeOutput %>% mutate(Range_To_Threshold = Range_To_Threshold * 1852, Range_To_Threshold_End = Range_To_Threshold + 1852, Average_IAS = Average_IAS * (1852/3600))
+
+# Join on the Distances so we can do all the processing at once.
+WakeOutputTime <- left_join(WakeOutputTime, Distances_Wake_WTC_Unique, by = c("Wake_Cat" = "Follower_WTC"))
+
+# Add a Flag to determine the segments the distances cover and filter
+WakeOutputTime <- WakeOutputTime %>%
+  mutate(Segment_Flag = ifelse(Reference_Wake_Separation_Distance > Range_To_Threshold, 1, 0)) %>%
+  filter(Segment_Flag == 1) %>% select(-Segment_Flag)
+
+# Get the weighted speed
+WakeOutputTime <- WakeOutputTime %>%
+  mutate(Weight = ifelse(Reference_Wake_Separation_Distance <= Range_To_Threshold_End, (Range_To_Threshold_End - Range_To_Threshold) - (Range_To_Threshold_End - Reference_Wake_Separation_Distance), (Range_To_Threshold_End - Range_To_Threshold)),
+         Weight = Weight / Reference_Wake_Separation_Distance,
+         SpeedProduct = Average_IAS * Weight)
+
+# Sum the SpeedProduct field to get the Average Speed across the Separation Distance and then find the time.
+WakeOutputTime <- WakeOutputTime %>%
+  group_by(Wake_Cat, Reference_Wake_Separation_Distance) %>%
+  summarise(Assumed_Wake_Separation_IAS = sum(SpeedProduct, na.rm=T)) %>%
+  ungroup() %>%
+  mutate(Reference_Wake_Separation_Time = Reference_Wake_Separation_Distance / Assumed_Wake_Separation_IAS)
+
+# Round to 0DP and convert back to aviation units.
+WakeOutputTime <- WakeOutputTime %>%
+  mutate(Assumed_Wake_Separation_IAS = round(Assumed_Wake_Separation_IAS * (3600/1852), 0),
+         Reference_Wake_Separation_Time = round(Reference_Wake_Separation_Time, 0))
+
+# Join back onto original distances just in case there were any duplicates.
+Wake_Adaptation_Output <- left_join(Distances_Wake_WTC, WakeOutputTime, by = c("Follower_WTC" = "Wake_Cat", "Reference_Wake_Separation_Distance")) %>%
+  arrange(Leader_WTC, Follower_WTC)
+
+# Separate the Times and Speeds
+WakeOutputTimes <- select(Wake_Adaptation_Output, Leader_WTC, Follower_WTC, Reference_Wake_Separation_Time)
+WakeOutputSpeeds <- select(Wake_Adaptation_Output, Leader_WTC, Follower_WTC, Assumed_Wake_Separation_IAS)
+  
+
+# ---------------------------------------------------------------- #
+# For Aircraft Level
+# ---------------------------------------------------------------- #
+
+# Load in the Wake Distances (Currently only from database
+Distances_Wake_AC <- Load_Adaptation_Table(con, "tbl_Reference_ACTP_Wake_Separation_Dist")
+
+# Create a shorter DF for Follower WTC/Distance Pairs
+Distances_Wake_AC_Unique <- select(Distances_Wake_AC, -Leader_Aircraft_Type) %>% unique()
+
+# Make a copy of the Wake Speeds Output and put the end of the DME Seg on (TEMP: Assumes Seg Size = 1NM)
+ACOutputTime <- ACOutput %>% mutate(Range_To_Threshold = Range_To_Threshold * 1852, Range_To_Threshold_End = Range_To_Threshold + 1852, Average_IAS = Average_IAS * (1852/3600))
+
+# Join on the Distances so we can do all the processing at once.
+ACOutputTime <- left_join(ACOutputTime, Distances_Wake_AC_Unique, by = c("Aircraft_Type" = "Follower_Aircraft_Type"))
+
+# Add a Flag to determine the segments the distances cover and filter
+ACOutputTime <- ACOutputTime %>%
+  mutate(Segment_Flag = ifelse(Reference_Wake_Separation_Distance > Range_To_Threshold, 1, 0)) %>%
+  filter(Segment_Flag == 1) %>% select(-Segment_Flag)
+
+# Get the weighted speed
+ACOutputTime <- ACOutputTime %>%
+  mutate(Weight = ifelse(Reference_Wake_Separation_Distance <= Range_To_Threshold_End, (Range_To_Threshold_End - Range_To_Threshold) - (Range_To_Threshold_End - Reference_Wake_Separation_Distance), (Range_To_Threshold_End - Range_To_Threshold)),
+         Weight = Weight / Reference_Wake_Separation_Distance,
+         SpeedProduct = Average_IAS * Weight)
+
+# Sum the SpeedProduct field to get the Average Speed across the Separation Distance and then find the time.
+ACOutputTime <- ACOutputTime %>%
+  group_by(Aircraft_Type, Reference_Wake_Separation_Distance) %>%
+  summarise(Assumed_Wake_Separation_IAS = sum(SpeedProduct, na.rm=T)) %>%
+  ungroup() %>%
+  mutate(Reference_Wake_Separation_Time = Reference_Wake_Separation_Distance / Assumed_Wake_Separation_IAS)
+
+# Round to 0DP and convert back to aviation units.
+ACOutputTime <- ACOutputTime %>%
+  mutate(Assumed_Wake_Separation_IAS = round(Assumed_Wake_Separation_IAS * (3600/1852), 0),
+         Reference_Wake_Separation_Time = round(Reference_Wake_Separation_Time, 0))
+
+# Join back onto original distances just in case there were any duplicates.
+AC_Adaptation_Output <- left_join(Distances_Wake_AC, ACOutputTime, by = c("Follower_Aircraft_Type" = "Aircraft_Type", "Reference_Wake_Separation_Distance")) %>%
+  arrange(Leader_Aircraft_Type, Follower_Aircraft_Type) %>% filter(!is.na(Reference_Wake_Separation_Time))
+
+# Separate the Times and Speeds
+ACOutputTimes <- select(AC_Adaptation_Output, Leader_Aircraft_Type, Follower_Aircraft_Type, Reference_Wake_Separation_Time)
+ACOutputSpeeds <- select(AC_Adaptation_Output, Leader_Aircraft_Type, Follower_Aircraft_Type, Assumed_Wake_Separation_IAS)
+
+# Get the Updated Distance matrix. Only consider those with valid Times/Speeds
+ACOutputDists <- select(AC_Adaptation_Output, Leader_Aircraft_Type, Follower_Aircraft_Type, Reference_Wake_Separation_Distance) %>%
+  mutate(Reference_Wake_Separation_Distance = Reference_Wake_Separation_Distance)
+
+# Remove unrequired tables
+rm(ACOutputTime, WakeOutputTime)
+
+# ---------------------------------------------------------------- #
+# Save Outputs
+# ---------------------------------------------------------------- #
+
+# Save Local Adaptation to base version directory
+fwrite(Adaptation, file.path(Out_Dir, paste0("Local Adaptation ", Version_Folder, ".csv")))
+
+# Save Summary Tables if required for further analysis.
+fwrite(TableWake, file.path(Summary_Dir, paste0("Wake Level Summary ", Version_Folder, ".csv")))
+fwrite(TableAC, file.path(Summary_Dir, paste0("Aircraft Level Summary ", Version_Folder, ".csv")))
+fwrite(TableCluster, file.path(Summary_Dir, paste0("Cluster Level Summary ", Version_Folder, ".csv")))
+
+# New T2F Profile Adaptation
+fwrite(WakeOutput, file.path(Adaptation_Dir, paste0("Populate_tbl_T2F_Wake_Adaptation_", AdapSuffix, ".csv")))
+fwrite(ACOutput, file.path(Adaptation_Dir, paste0("Populate_tbl_T2F_Aircraft_Adaptation_", AdapSuffix, ".csv")))
+
+# Reference Times (and Speeds if required)
+fwrite(WakeOutputTimes, file.path(Adaptation_Dir, paste0("Populate_tbl_Reference_Recat_Separation_Time_", AdapSuffix, ".csv")))
+fwrite(WakeOutputSpeeds, file.path(Adaptation_Dir, paste0("Populate_tbl_Assumed_Recat_Separation_IAS_", AdapSuffix, ".csv")))
+fwrite(ACOutputTimes, file.path(Adaptation_Dir, paste0("Populate_tbl_Reference_ACTP_Wake_Separation_Time_", AdapSuffix, ".csv")))
+fwrite(ACOutputSpeeds, file.path(Adaptation_Dir, paste0("Populate_tbl_Assumed_ACTP_Wake_Separation_IAS_", AdapSuffix, ".csv")))
+fwrite(ACOutputDists, file.path(Adaptation_Dir, paste0("Populate_tbl_Reference_ACTP_Wake_Separation_Dist_", AdapSuffix, ".csv")))
+
+# Legacy Reference Times and Speeds if Prototyping.
+if (Prototyping){
+  fwrite(WakeOutput, file.path(Adaptation_Dir, paste0("Populate_tbl_T2F_Wake_Adaptation_Legacy_", AdapSuffix, ".csv")))
+  fwrite(ACOutput, file.path(Adaptation_Dir, paste0("Populate_tbl_T2F_Aircraft_Adaptation_Legacy_", AdapSuffix, ".csv")))
+  fwrite(WakeOutputTimes, file.path(Adaptation_Dir, paste0("Populate_tbl_Reference_Wake_Separation_Time_Legacy_", AdapSuffix, ".csv")))
+  fwrite(WakeOutputSpeeds, file.path(Adaptation_Dir, paste0("Populate_tbl_Assumed_Wake_Separation_IAS_Legacy_", AdapSuffix, ".csv")))
+  fwrite(ACOutputTimes, file.path(Adaptation_Dir, paste0("Populate_tbl_Reference_ACTP_Wake_Separation_Time_Legacy_", AdapSuffix, ".csv")))
+  fwrite(ACOutputSpeeds, file.path(Adaptation_Dir, paste0("Populate_tbl_Assumed_ACTP_Wake_Separation_IAS_Legacy_", AdapSuffix, ".csv")))
+  fwrite(ACOutputDists, file.path(Adaptation_Dir, paste0("Populate_tbl_Reference_ACTP_Wake_Separation_Dist_Legacy_", AdapSuffix, ".csv")))
+}
 
 # ---------------------------------------------------------------------------------- #
 # Analysis ----
@@ -415,29 +631,41 @@ rm(TableWake, TableAC, TableFull)
 # 
 # ---------------------------------------------------------------------------------- #
 
-test <- filter(Full, Follower_Recat_Wake_Cat == "B") %>% mutate(Flag = ifelse(Min_Count >= Min_Count_Min & Avg_Count >= Avg_Count_Min, 1, 0)) %>% filter(Flag == 1)
-ggplot(data = test, mapping = aes(x = DME_Seg, y = Median_IAS)) + geom_point() + geom_line(mapping = aes(color = as.factor(Flag))) + facet_wrap(~Follower_Aircraft_Type)
+# Create Copy of Data exclusively for plotting
+T2FDataPlot <- filter(T2FDataFilt, DME_Seg <= 8)
 
-Full <- rbind(AC, Wake) %>% arrange(Follower_Recat_Wake_Cat)
+# Boxplot of All Aircraft IAS across Separation Distance and Surface Headwind Group
+SHWPlotAll <- ggplot(data = T2FDataPlot) + geom_boxplot(mapping = aes(x = as.factor(DME_Seg), y = Ave_Mode_S_IAS, group = as.factor(DME_Seg))) + facet_wrap(~Surface_Headwind_Group) +
+  labs(x = "Range To Threshold (NM)", y = "Mode S IAS (kts)", title = "Mode S IAS by Separation Distance and Surface Headwind Group") + theme_light()
+png(file.path(Plot_Dir, paste0("Overall Mode S IAS by Sep Dist & SHW Group ", Version_Folder, ".png")), width = 800, height = 480)
+print(SHWPlotAll)
+dev.off()
 
-for (Wake in c("A", "B", "C", "D", "E", "F")){
-  #print(ggplot(data = filter(T2FData, Follower_Recat_Wake_Cat == Wake & DME_Seg < 11), mapping = aes(x = as.factor(DME_Seg), y = Ave_Mode_S_IAS)) + geom_boxplot() + facet_wrap(~Follower_Aircraft_Type))
-  print(ggplot(data = filter(T2FData, Follower_Recat_Wake_Cat == Wake & DME_Seg < 10), mapping = aes(x = as.factor(DME_Seg), y = Ave_Mode_S_IAS)) + geom_boxplot() + facet_wrap(~Surface_Headwind_Group))
-}
+# ---------------------------------------------------------------------------------- #
+# Comparisons ----
+# ---------------------------------------------------------------------------------- #
+# 
+# ---------------------------------------------------------------------------------- #
 
-# 
-# s1 <- dbGetQuery(con, "SELECT * FROM tbl_ORD_Prediction")
-# s2 <- dbGetQuery(con, "SELECT * FROM tbl_ORD_Prediction_Legacy")
-# 
-# p1 <- ggplot() + geom_histogram(data = s1, mapping = aes(x = ORD_Leader_IAS_Error, y = ..density..))
-# p2 <- ggplot() + geom_histogram(data = s2, mapping = aes(x = ORD_Leader_IAS_Error, y = ..density..))
-# grid.arrange(p1, p2)
-# 
-# 
-# 
-# s3 <- left_join(select(s1, Landing_Pair_ID, ORD_Leader_IAS_New = ORD_Mean_Leader_IAS), select(s2, Landing_Pair_ID, ORD_Leader_IAS_Old = ORD_Mean_Leader_IAS), by = c("Landing_Pair_ID"))
-# 
-# 
+# Choose the version for Comparison.
+Version_Folder_Compare <- "2021-07-22 v0.0 (GC)"
+
+# Get the Comparison Output Directories.
+Out_Dir_Compare <- file.path(Base_Dir, Version_Folder_Compare)
+Adaptation_Dir_Compare <- file.path(Out_Dir_Compare, "Adaptation")
+
+# Local Adaptation Comparison
+Adaptation_Compare <- fread(file.path(Out_Dir_Compare, paste0("Local Adaptation ", Version_Folder_Compare, ".csv"))) %>% rename(Old_Value = Value)
+Adaptation_Compare <- full_join(Adaptation, Adaptation_Compare, by = c("Filter"))
+Adaptation_Compare_Diff <- filter(Adaptation_Compare, Old_Value != Value)
+fwrite(Adaptation_Compare, file.path(Compare_Dir, paste0("Local Adaptation Comparison (vs. ", Version_Folder_Compare, ").csv")))
+fwrite(Adaptation_Compare_Diff, file.path(Compare_Dir, paste0("Local Adaptation Differences (vs. ", Version_Folder_Compare, ").csv")))
+
+# Sample Size Comparison
+
+
+# T2F Adaptation Comparison
+
 
 
 

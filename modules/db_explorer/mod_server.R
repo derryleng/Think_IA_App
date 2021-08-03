@@ -7,7 +7,7 @@ db_explorer_server <- function(input, output, session, con, dbi_con) {
   
   # Render custom query table
   output$db_output <- DT::renderDataTable({
-    datatable_customised_1(query())
+    datatable_customised_3(query())
   }, server = T)
   
   # Clear query textbox

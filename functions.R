@@ -929,7 +929,13 @@ pickerInput_customised <- function(
   choices = NULL,
   selected = NULL,
   multiple = T,
-  options = list(`actions-box` = T, `live-search` = T),
+  options = pickerOptions(
+    container = "body",
+    actionsBox = T,
+    liveSearch = T,
+    virtualScroll = T,
+    width = "auto"
+  ),
   choicesOpt = NULL,
   width = "220px",
   inline = F,
@@ -989,6 +995,36 @@ datatable_customised_2 <- function(
     buttons = c('copy', 'csv', 'excel')
   ),
   extensions = c("Buttons"),
+  ...
+){
+  datatable(
+    data = data,
+    rownames = rownames,
+    selection = selection,
+    style = style,
+    options = options,
+    extensions = extensions,
+    ...
+  )
+}
+
+
+# datatable function with customised styling, download buttons and scrollY
+datatable_customised_3 <- function(
+  data,
+  rownames = F,
+  selection = "multiple",
+  style = "bootstrap4",
+  options = list(
+    columnDefs = list(list(className = 'dt-center', targets = "_all")),
+    scrollX = T,
+    dom = '<"dataTables_row"lBf>rt<"dataTables_row"ip>',
+    buttons = c('copy', 'csv', 'excel'),
+    deferRender = F,
+    scrollY = 600,
+    scroller = T
+    ),
+  extensions = c("Buttons", "Scroller"),
   ...
 ){
   datatable(

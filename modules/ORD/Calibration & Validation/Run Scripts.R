@@ -26,14 +26,16 @@ library(getPass)
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
-version <- "2021-07-16 V1.0 (AH)"
+#version <- "2021-07-16 V1.0 (AH)"
+version <- "2021-07-21 V1.0 (GC)"
 
-use_same_input_version <- T
+use_same_input_version <- F
 
 if (use_same_input_version == T) {
   input_version <- version
 } else if (use_same_input_version == F) {
-  input_version <- "2021-05-13 V1.0 (AH)"   #Manually define this if you want different input output version numbers
+  #input_version <- "2021-05-13 V1.0 (AH)"   #Manually define this if you want different input output version numbers
+  input_version <- "2021-07-16 V1.0 (AH)" # Changed to use AHs Outputs from 16/07. Change made 21/07/2021.
 }
 
 #Set server  with IP then tied to this
@@ -221,6 +223,12 @@ d_filter <- F
 d_min <- 0
 d_max <- 50
 
+# Procedural Speed Options (Added 21/07/21)
+Steady_Proc_Speed_Base <- 160
+Steady_Proc_Speed_Foll_Add <- 0
+Initial_Proc_Speed_Base <- 180
+Initial_Proc_Speed_Foll_Add <- 0
+
 # Initialising output tables and set parameters
 # type_adaptation_input_table <- data.table(
 #   Aircraft_Type = "ALL",
@@ -302,14 +310,14 @@ type_adaptation_input_table <- data.table(
   Apply_Gusting_Follower = 1,
   Local_Stabilisation_Distance_Lead = 4,
   Local_Stabilisation_Distance_Follower = 4,
-  Steady_Procedural_Speed_Lead = 160,
-  Steady_Procedural_Speed_Follower = 162,
+  Steady_Procedural_Speed_Lead = Steady_Proc_Speed_Base,
+  Steady_Procedural_Speed_Follower = Steady_Proc_Speed_Base + Steady_Proc_Speed_Foll_Add,
   Final_Deceleration_Lead = NA,
   Final_Deceleration_Follower = NA,
   End_Initial_Deceleration_Distance_Lead = 12,
   End_Initial_Deceleration_Distance_Follower = 12,
-  Initial_Procedural_Speed_Lead = 160,
-  Initial_Procedural_Speed_Follower = 162,
+  Initial_Procedural_Speed_Lead = Initial_Proc_Speed_Base,
+  Initial_Procedural_Speed_Follower = Initial_Proc_Speed_Base + Initial_Proc_Speed_Foll_Add,
   Initial_Deceleration_Lead = 10,
   Initial_Deceleration_Follower = 10
 )
@@ -325,14 +333,14 @@ wake_adaptation_input_table <- data.table(
   Apply_Gusting_Follower = 1,
   Local_Stabilisation_Distance_Lead = 4,
   Local_Stabilisation_Distance_Follower = 4,
-  Steady_Procedural_Speed_Lead = 160,
-  Steady_Procedural_Speed_Follower = 162,
+  Steady_Procedural_Speed_Lead = Steady_Proc_Speed_Base,
+  Steady_Procedural_Speed_Follower = Steady_Proc_Speed_Base + Steady_Proc_Speed_Foll_Add,
   Final_Deceleration_Lead = NA,
   Final_Deceleration_Follower = NA,
   End_Initial_Deceleration_Distance_Lead = 12,
   End_Initial_Deceleration_Distance_Follower = 12,
-  Initial_Procedural_Speed_Lead = 160,
-  Initial_Procedural_Speed_Follower = 162,
+  Initial_Procedural_Speed_Lead = Initial_Proc_Speed_Base,
+  Initial_Procedural_Speed_Follower = Initial_Proc_Speed_Base + Initial_Proc_Speed_Foll_Add,
   Initial_Deceleration_Lead = 10,
   Initial_Deceleration_Follower = 10
 )
@@ -349,14 +357,14 @@ dbs_adaptation_input_table <- data.table(
   Apply_Gusting_Follower = 1,
   Local_Stabilisation_Distance_Lead = 4,
   Local_Stabilisation_Distance_Follower = 4,
-  Steady_Procedural_Speed_Lead = 160,
-  Steady_Procedural_Speed_Follower = 162,
+  Steady_Procedural_Speed_Lead = Steady_Proc_Speed_Base,
+  Steady_Procedural_Speed_Follower = Steady_Proc_Speed_Base + Steady_Proc_Speed_Foll_Add,
   Final_Deceleration_Lead = NA,
   Final_Deceleration_Follower = NA,
   End_Initial_Deceleration_Distance_Lead = 12,
   End_Initial_Deceleration_Distance_Follower = 12,
-  Initial_Procedural_Speed_Lead = 160,
-  Initial_Procedural_Speed_Follower = 162,
+  Initial_Procedural_Speed_Lead = Initial_Proc_Speed_Base,
+  Initial_Procedural_Speed_Follower = Initial_Proc_Speed_Base + Initial_Proc_Speed_Foll_Add,
   Initial_Deceleration_Lead = 10,
   Initial_Deceleration_Follower = 10
 )
@@ -373,13 +381,12 @@ use_weighted_average <- T
 # Parameter to use additional time base Vref/decel adjustmenet (To account for
 # 1000ft gate limitation)
 
-use_Vref_Adjust <- T
+use_Vref_Adjust <- T 
 
 # Run Parameter Summary ------------------------------------------------- #
 # source("Parameter Summary.R", local = T)
-source(file.path(Script_Dir, "Parameter Summary.R"), local = F)
-
-
+#source(file.path(Script_Dir, "Parameter Summary.R"), local = F)
+source(file.path(Script_Dir, "Parameter Summary EGLL PWS.R"), local = F) # Switched to PWS Version 21/07/2021.
 
 
 # ----------------------------------------------------------------------- #
