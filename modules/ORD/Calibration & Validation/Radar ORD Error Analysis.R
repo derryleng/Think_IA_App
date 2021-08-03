@@ -22,19 +22,19 @@ library(gridExtra)
 library(lubridate)
 library(ggforce)
 library(getPass)
-
+library(tidyverse)
 
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
-version <- "2021-07-16 V1.0 (AH)"
+version <- "2021-07-26 V1.0 (DB)"
 
-use_same_input_version <- T
+use_same_input_version <- F
 
 if (use_same_input_version == T) {
   input_version <- version
 } else if (use_same_input_version == F) {
-  input_version <- "2021-05-13 V1.0 (AH)"   #Manually define this if you want different input output version numbers
+  input_version <- "2021-07-16 V1.0 (AH)"   #Manually define this if you want different input output version numbers
 }
 
 #Set server  with IP then tied to this
@@ -108,6 +108,12 @@ Create_Directory(out_data)
 plots_data <- file.path(out_data, "Plots")
 Create_Directory(plots_data)
 
+plots_data_ac_type <- file.path(plots_data, "AC Type")
+Create_Directory(plots_data_ac_type)
+
+plots_data_lss_type <- file.path(plots_data, "LSS Type")
+Create_Directory(plots_data_lss_type)
+
 speed_prof_dir <- file.path(ord_dir, "Speed Profiles", input_version)
 
 con <- Get_DBI_Connection(IP = ip, Database = database)
@@ -117,9 +123,17 @@ con <- Get_DBI_Connection(IP = ip, Database = database)
 
 RTT_Bin_Width <-  0.5
 Wind_Bin_Width <- 5
+Baro_Bin_Width <- 5
+Gust_Bin_Width <- 5
 
 Max_RTT <- 6
 
+#set to T if wanting to run the linear regression model by AC/LSS type respectively
+ML_Model_AC <- F
+ML_Model_LSS <- F
+
+#if T, filters Radar data to only flights with >200s track duration per segment (as done in GWCS Performance)
+flight_greater_200_filter <- T
 
 ###############################################################################
 # Functions
@@ -233,9 +247,12 @@ Generate_ORD_Profile_Radar_Point_Error <- function(Radar, GS_Profile, LorF, Incl
 }
 
 Bin_Radar_Data <- function(Radar_Data, Grouping, BinWidth) {
-
-  segments <- seq(floor(min(Radar1[[Grouping]], na.rm = T)), ceiling(max(Radar1[[Grouping]], na.rm = T)), BinWidth)
-
+  ##should this not be Radar_Data rather than Radar1?
+  #segments <- seq(floor(min(Radar1[[Grouping]], na.rm = T)), ceiling(max(Radar1[[Grouping]], na.rm = T)), BinWidth)
+  segments <- seq(floor(min(Radar_Data[[Grouping]], na.rm = T)), ceiling(max(Radar_Data[[Grouping]], na.rm = T)), BinWidth)
+  
+  
+  
   Radar_Binned <- cut(Radar_Data[[Grouping]],
                       na.bucket = NA,
                       breaks = segments,
@@ -340,6 +357,25 @@ WHERE LP.Landing_Pair_Type != 'Not_In_Trail'"
 Radar <- dbGetQuery(con, Radar_Query, stringsAsFactors = F)
 GS_Profile <- dbGetQuery(con, GS_Query, stringsAsFactors = F)
 
+## added 22/07/2021 - adds option to filter out flights with track duration >200s long
+if(flight_greater_200_filter){
+  rawsegs <- as.data.table(dbGetQuery(con, "SELECT Mode_S_Wind_Seg_ID, FP_Date, Min_Track_Time, Max_Track_Time, Callsign FROM vw_Mode_S_Wind_Seg"))
+  rawsegs_FPID <-  unique(as.data.table(dbGetQuery(con, "SELECT [Flight_Plan_ID], [Mode_S_Wind_Seg_ID] FROM tbl_Mode_S_Wind_Seg")))
+  
+  rawsegs <- merge(rawsegs,rawsegs_FPID, by = "Mode_S_Wind_Seg_ID" )
+  
+  rawsegs$FP_Date <- as.character(rawsegs$FP_Date)
+  
+  rawsegs$track_dur <- rawsegs$Max_Track_Time - rawsegs$Min_Track_Time
+  #rawsegs_copy <- rawsegs
+  
+  # find all flights with anomaly (difference in track min, max > 200)
+  flights_greater_200 <- unique(rawsegs[track_dur > 200, c("Flight_Plan_ID", "FP_Date","Callsign")])
+  Radar <- Radar %>% filter(!(Flight_Plan_ID %in% flights_greater_200$Flight_Plan_ID))
+  GS_Profile <- GS_Profile %>% filter(!(Leader_Flight_Plan_ID %in% flights_greater_200$Flight_Plan_ID)) %>%
+                               filter(!(Follower_Flight_Plan_ID %in% flights_greater_200$Flight_Plan_ID))
+}
+
 
 # keep this commented out, just wastes memory
 # Radar_o <- Radar
@@ -413,7 +449,7 @@ Prof_FPIDS <- Speed_Prof %>% select(Follower_Flight_Plan_ID) %>%
 # FPID_Query <- sprintf(FPID_Query, Prof_FPIDS_String)
 # FP_Times <- dbGetQuery(con, FPID_Query)
 
-FP_Times <- dbGetQuery(con, "SELECT Flight_Plan_ID, FP_Time FROM tbl_Flight_Plan")
+FP_Times <- dbGetQuery(con, "SELECT main.Flight_Plan_ID, der.Time_At_1DME FROM tbl_Flight_Plan as main LEFT JOIN tbl_Flight_Plan_Derived as der ON main.Flight_Plan_ID = der.Flight_Plan_ID")
 
 #Joins FP_Time onto Speed Prof by FPID
 Speed_Prof <- left_join(Speed_Prof, FP_Times, by = c("Follower_Flight_Plan_ID" = "Flight_Plan_ID"))
@@ -425,10 +461,21 @@ rm(FP_Times)
 tbl_Baro <- dbGetQuery(con, "SELECT Baro_Date, Baro_Time, Baro_Pressure FROM tbl_Baro")
 
 #Rolling join, exact match on date, nearest match on time
-Speed_Prof <- rolling_join(Speed_Prof, tbl_Baro, c("FP_Date", "FP_Time"), c("Baro_Date", "Baro_Time"), "nearest")
+Speed_Prof <- rolling_join(Speed_Prof, tbl_Baro, c("FP_Date", "Time_At_1DME"), c("Baro_Date", "Baro_Time"), "nearest")
+
+#bins QNH
+Speed_Prof <- Bin_Radar_Data(Speed_Prof, "Baro_Pressure", Baro_Bin_Width)
+
+#Getting all Gusting data to join Gusting on as a grouping for errors
+tbl_Gusting <- dbGetQuery(con, "SELECT Gust_Date, Gust_Time, Gust, Gust_Valid, Runway FROM tbl_Gusting")
+
+tbl_Gusting <- tbl_Gusting %>% mutate(Gust_Date = gsub("/20","/",Gust_Date)) %>% #crude way to replace 20xx dates with just xx (to match FP_Date)
+                               mutate(Gust_Date_Runway = paste(Gust_Date,Runway, sep=":")) #creates a date/runway variable for use in rolling join
+Speed_Prof <- Speed_Prof %>% mutate(FP_Date_Runway = paste(FP_Date,Landing_Runway,sep=":"))
 
 #Rolling join gusting data
-# Speed_Prof <- rolling_join(Speed_Prof, tbl_Gust, c("FP_Date", "FP_Time"), c("Gust_Date", "Gust_Time"), "nearest")
+Speed_Prof <- rolling_join(Speed_Prof, tbl_Gusting, c("FP_Date_Runway", "Time_At_1DME"), c("Gust_Date_Runway", "Gust_Time"), "nearest")
+Speed_Prof <- Bin_Radar_Data(Speed_Prof,"Gust",Gust_Bin_Width)
 
 # Filtering the speed profiles fitted parameters, replaces out of range
 # values with NA so the flight can be used if other parameters are good
@@ -445,6 +492,8 @@ n2_min <- 0; n2_max <- 14
 
 d_min <- 0; d_max <- 50
 
+AC_Type_To_Wake <- dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake")
+
 Speed_Prof <- Speed_Prof %>% mutate(a1 = ifelse(a1 >= a1_min & a1 <= a1_max, a1, NA), 
                                     a2 = ifelse(a2 >= a2_min & a2 <= a2_max, a2, NA),
                                     b = ifelse(b >= b_min & b <= b_max, b, NA),
@@ -452,8 +501,10 @@ Speed_Prof <- Speed_Prof %>% mutate(a1 = ifelse(a1 >= a1_min & a1 <= a1_max, a1,
                                     n2 = ifelse(n2 >= n2_min & n2 <= n2_max, n2, NA),
                                     d = ifelse(d >= d_min & d <= d_max, d, NA)) %>%
                                     select(-wake) %>%
-                                    left_join(dbGetQuery(con, "SELECT Aircraft_Type, Wake FROM tbl_Aircraft_Type_To_Wake"), by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
+                                    left_join(AC_Type_To_Wake, by = c("Follower_Aircraft_Type" = "Aircraft_Type"))
 
+#add Carrier Column to Speed_Prof
+Speed_Prof <- Speed_Prof %>% mutate(Follower_Carrier = substr(Follower_Callsign, start = 1, stop = 3))
 
 
 ###############################################################################
@@ -674,29 +725,41 @@ plot_error_all_ac(Radar1, "Leader_Forecast_IAS_Error", 25, 3, 3)
 plot_error_specific_ac_type(Radar1, "Leader_Forecast_IAS_Error", Inf, "A333")
 
 Plot_profile_error <- function(dat, Error_Var, Grouping_Var, Max_Error_Val, Facet) {
-
+  #filters out NA values from graphs
+  dat <- dat %>% filter(!is.na(!!sym(Grouping_Var)))%>%
+    group_by(!!sym(Grouping_Var))%>%
+    #filter(n()>10)%>%
+    ungroup()
+  
   m <- ggplot(dat %>% filter(abs(!!sym(Error_Var)) < Max_Error_Val)) +
-       geom_boxplot(aes(x = !!sym(Grouping_Var), y = !!sym(Error_Var))) +
-       theme_bw() +
-       theme(axis.text.x = element_text(angle = 90)) +
-       ggtitle(paste(Error_Var, "by", Grouping_Var, sep = " "))
-
+    geom_boxplot(aes(x = !!sym(Grouping_Var), y = !!sym(Error_Var))) +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90)) +
+    ggtitle(paste(Error_Var_Name(Error_Var,F), " by ", Grouping_Var_Name(Grouping_Var,F), " (",count(dat %>% filter(abs(!!sym(Error_Var)) < Max_Error_Val))," observations)", sep = "")) +
+    labs(x=Grouping_Var_Name(Grouping_Var,T), y=Error_Var_Name(Error_Var,T))
+  
   if (!missing(Facet)) {
     m <- m + facet_wrap(as.formula(paste("~", Facet)), scales = "free")
   }
-
+  
   return(m)
-
+  
 }
 
 Plot_profile_error_no_group <- function(dat, Error_Var, Grouping_Var, Max_Error_Val, Facet) {
-
-  
+  #filters out NA values from graphs
+  if(Grouping_Var != "NONE"){
+    dat <- dat %>% filter(!is.na(!!sym(Grouping_Var))) %>%
+      group_by(!!sym(Grouping_Var))%>%
+      #filter(n()>10)%>%
+      ungroup()
+  }
   m <- ggplot(dat %>% filter(abs(!!sym(Error_Var)) < Max_Error_Val)) +
     geom_boxplot(aes(x = ifelse(Grouping_Var == "NONE", factor(0), !!sym(Grouping_Var)), y = !!sym(Error_Var))) +
     theme_bw() +
     theme(axis.text.x = element_text(angle = 90)) +
-    ggtitle(paste(Error_Var, "lss type", sep = " "))
+    ggtitle(paste(Error_Var_Name(Error_Var,F), "(",count(dat %>% filter(abs(!!sym(Error_Var)) < Max_Error_Val))," observations)", sep = "")) +
+    labs(y=Error_Var_Name(Error_Var,T))
   
   if (!missing(Facet)) {
     m <- m + facet_wrap(as.formula(paste("~", Facet)), scales = "free")
@@ -704,6 +767,24 @@ Plot_profile_error_no_group <- function(dat, Error_Var, Grouping_Var, Max_Error_
   
   return(m)
   
+}
+
+#Changes var name for readability
+Error_Var_Name <- function(ev, units){
+  if(units){
+    ifelse(ev=="e1","Landing Speed Prediction Error (kts)", ifelse(ev=="e2","Deceleration End Point Error(nm)",ifelse(ev=="e3","Deceleration Rate Error",ifelse(ev=="e4","Deceleration Start Point Error(nm)",ifelse(ev=="e5","Procedural Speed Error",ev)))))
+  }else{
+    ifelse(ev=="e1","Landing Speed Prediction Error", ifelse(ev=="e2","Deceleration End Point Error",ifelse(ev=="e3","Deceleration Rate Error",ifelse(ev=="e4","Deceleration Start Point Error",ifelse(ev=="e5","Procedural Speed Error",ev)))))
+  }
+}
+
+#Changes var name for readability
+Grouping_Var_Name <- function(gv, units){
+  if(units){
+    ifelse(gv=="Follower_Carrier","Aircraft Carrier",ifelse(gv=="Gust_Bins","Gust Value (kts)",ifelse(gv=="Gust_Valid","Gusting Flag",ifelse(gv=="Follower_Aircraft_Type","Aircraft Type",ifelse(gv=="Baro_Pressure_Bins","QNH Value (mbar)",ifelse(gv=="Wake","Wake Category",gv))))))
+  } else{
+    ifelse(gv=="Follower_Carrier","Aircraft Carrier",ifelse(gv=="Gust_Bins","Gust Value",ifelse(gv=="Gust_Valid","Gusting Flag",ifelse(gv=="Follower_Aircraft_Type","Aircraft Type",ifelse(gv=="Baro_Pressure_Bins","QNH Value",ifelse(gv=="Wake","Wake Category",gv))))))
+  }
 }
 
 # Here you can define the facet or leave argument blank (last argument of the function).
@@ -719,6 +800,10 @@ error_types <- c("e1", "e2", "e4","e3", "e5")
 # Filter values c(e1, e2, e3, e4, e5)
 filters <- c(25, 3, 20, 3, 30)
 
+ac_types <- unique(Speed_Prof$Follower_Aircraft_Type)
+lss_types <- unique(Speed_Prof$lss_type)
+
+Speed_Prof_Errors <- mutate(Speed_Prof_Errors, `LSS Type` = as.character(lss_type))
 
 
 # Plot_profile_error(Speed_Prof_Errors, "e3", "Follower_Aircraft_Type", 50, "lss_type")
@@ -745,6 +830,67 @@ for (i in 1:length(error_types)) {
   print(n)
   dev.off()
   
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_carrier_facet.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Follower_Carrier", filters[i], "Wake")
+  print(n)
+  dev.off()  
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_carrier.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Follower_Carrier", filters[i])
+  print(n)
+  dev.off()
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_QNH_and_LSS.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Baro_Pressure_Bins", filters[i], "lss_type")
+  print(n)
+  dev.off()
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_Gusting.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Gust_Bins", filters[i])
+  print(n)
+  dev.off()
+  
+  png(filename = file.path(plots_data, paste0(error_types[i], "_by_Gusting_Valid.png")), width = 1920, height = 1080)
+  n <- Plot_profile_error(Speed_Prof_Errors, error_types[i], "Gust_Valid", filters[i])
+  print(n)
+  dev.off()
+  
+  #plot by AC type for gusting, recommended to leave this off unless definitely needed, otherwise creates 780 new plots
+  by_AC_type <- F
+  if (by_AC_type){
+    for (j in 1:length(ac_types)){
+      Speed_Prof_Errors_AC <- Speed_Prof_Errors %>% filter(Follower_Aircraft_Type==ac_types[j])
+      
+      png(filename = file.path(plots_data_ac_type, paste0(error_types[i], "_by_Gusting_",ac_types[j],".png")), width = 1920, height = 1080)
+      n <- Plot_profile_error(Speed_Prof_Errors_AC, error_types[i], "Gust_Bins", filters[i])
+      print(n)
+      dev.off()
+      
+      png(filename = file.path(plots_data_ac_type, paste0(error_types[i], "_by_Gusting_Valid",ac_types[j],".png")), width = 1920, height = 1080)
+      n <- Plot_profile_error(Speed_Prof_Errors_AC, error_types[i], "Gust_Valid", filters[i])
+      print(n)
+      dev.off()
+    }
+  }
+  
+  #plot by LSS Type for gusting
+  by_LSS_type <- T
+  if (by_LSS_type){
+    for (j in 1:length(lss_types)){
+      Speed_Prof_Errors_LSS <- Speed_Prof_Errors %>% filter(lss_type==lss_types[j])
+      
+      png(filename = file.path(plots_data_lss_type, paste0(error_types[i], "_by_Gusting_LSS_",lss_types[j],".png")), width = 1920, height = 1080)
+      n <- Plot_profile_error(Speed_Prof_Errors_LSS, error_types[i], "Gust_Bins", filters[i])
+      print(n)
+      dev.off()
+      
+      png(filename = file.path(plots_data_lss_type, paste0(error_types[i], "_by_Gusting_Valid_LSS_",lss_types[j],".png")), width = 1920, height = 1080)
+      n <- Plot_profile_error(Speed_Prof_Errors_LSS, error_types[i], "Gust_Valid", filters[i])
+      print(n)
+      dev.off()
+      
+    }
+  }
 }
 
 
@@ -772,7 +918,8 @@ make_summary_table <- function(dat, Error_Var) {
                                    'median' = quantile(!!sym(Error_Var), 0.50, na.rm = T),
                                    '95%' = quantile(!!sym(Error_Var), 0.95, na.rm = T),
                                    'Standard Dev' = sd(!!sym(Error_Var), na.rm = T),
-                                   'Mean' = mean(!!sym(Error_Var), na.rm = T))
+                                   'Mean' = mean(!!sym(Error_Var), na.rm = T),
+                                   'Sample Size' = sum(!is.na(!!sym(Error_Var))))
                         
 }
 
@@ -816,12 +963,16 @@ ORD_Prof_Foll <- Auto_Unit_Conversion(dbGetQuery(con, ORD_Profile_Query_Foll), "
 Mean_IAS_Lead <- left_join(Radar1, ORD_Prof_Lead, by = c("Flight_Plan_ID" = "Leader_Flight_Plan_ID")) %>% 
                  filter(Start_Final_Deceleration_Distance >= Range_To_Threshold) %>%
                  group_by(Aircraft_Type) %>%
-                 summarise(Mean_Foll_IAS_Error = mean(Leader_Forecast_IAS_Error))
+                 summarise(Mean_Lead_IAS_Error = mean(Leader_Forecast_IAS_Error),
+                           Std_Dev_Lead_IAS_Error = sd(Leader_Forecast_IAS_Error),
+                           Sample_Size_Lead_IAS_Error = sum(!is.na(Leader_Forecast_IAS_Error)))
                 
 Mean_IAS_Foll <- left_join(Radar2, ORD_Prof_Foll, by = c("Flight_Plan_ID" = "Follower_Flight_Plan_ID")) %>% 
                  filter(Start_Final_Deceleration_Distance >= Range_To_Threshold) %>%
                  group_by(Aircraft_Type) %>%
-                 summarise(Mean_Lead_IAS_Error = mean(Follower_Forecast_IAS_Error))
+                 summarise(Mean_Foll_IAS_Error = mean(Follower_Forecast_IAS_Error),
+                           Std_Def_Foll_IAS_Error = sd(Follower_Forecast_IAS_Error),
+                           Sample_Size_Foll_IAS_Error = sum(!is.na(Follower_Forecast_IAS_Error)))
 
 Mean_IAS_Error <- full_join(Mean_IAS_Lead, Mean_IAS_Foll, by = "Aircraft_Type")
 
@@ -851,6 +1002,118 @@ for (i in 1:n_page) {
 }
 
 
+#-----------------------------------------------------------------------------#
+## ML Model ------------------------------------------------------------------#
+####-- Model trains per category specified (AC Type or LSS) and outputs how --#
+####-- Significant each variable is (QNH, Gust, Carrier, Surface Headwind) ---#
+#-----------------------------------------------------------------------------#
+
+
+#function to create linear regression model based on the data
+AC_Model <- function(df) {
+  
+  #checks for if values are applicable in lm model
+  Gust_lm <- F
+  Baro_lm <- F
+  Carrier_lm <- F
+  Surface_Headwind_lm <- F
+  
+  if(length(unique(df$Gust))>1){Gust_lm <- T} #Gust check
+  if(length(unique(df$Baro_Pressure))>1){Baro_lm <- T} #Baro check
+  if(length(unique(df$Follower_Carrier))>1){Carrier_lm <- T} #Carrier check
+  if(length(unique(df$Surface_Headwind))>1){Surface_Headwind_lm <- T} #Headwind check
+  
+  #makes the model if there is enough data to not cause factoring issues
+  if(Gust_lm & Baro_lm & Carrier_lm & Surface_Headwind_lm){
+    lm(e1 ~ Gust + Baro_Pressure + Follower_Carrier + Surface_Headwind, data=df)
+  }
+}
+
+#gets the significance levels for a given model (this is output as a % that variance seen over this variable was down to random chance, i.e. lower=more significant)
+Get_P_Values <- function(model) {
+  if(!is_null(model)){
+    coef(summary(model))[,"Pr(>|t|)"]
+  }
+}
+
+#gets the significance levels for a given model (this is output as a % that variance seen over this variable was down to random chance, i.e. lower=more significant)
+Get_Coeff_Values <- function(model) {
+  if(!is_null(model)){
+    model$coefficients
+  }
+}
+
+#linear regression model by AC type
+if(ML_model_AC){
+  #nests data by aircraft type
+  AC_Speed_Profile_Errors <- Speed_Prof_Errors %>% group_by(Follower_Aircraft_Type) %>% filter(!is.na(Gust)) %>% nest()
+  
+  #creates lm model for each aircraft type
+  AC_Speed_Profile_Errors <- AC_Speed_Profile_Errors %>%
+    mutate(model = map(data,AC_Model))
+  
+  #gets significance values for each model
+  AC_Speed_Profile_Errors <- AC_Speed_Profile_Errors %>%
+    mutate(P_Values = map(model, Get_P_Values))
+  
+  #gets coefficients for each model
+  AC_Speed_Profile_Errors <- AC_Speed_Profile_Errors %>%
+    mutate(Co_Effs = map(model, Get_Coeff_Values))
+  
+  #collates the relevant data from the models
+  P_Value_Output <- AC_Speed_Profile_Errors %>% select(Follower_Aircraft_Type, P_Values) %>% unnest_wider(P_Values) %>% relocate(Surface_Headwind, .after=Baro_Pressure)
+  Co_Eff_Value_Output <- AC_Speed_Profile_Errors %>% select(Follower_Aircraft_Type, Co_Effs) %>% unnest_wider(Co_Effs) %>% relocate(Surface_Headwind, .after=Baro_Pressure)
+  
+  
+  #gets counts of each aircraft
+  Aircraft_Counts <- Speed_Prof_Errors %>% select(Follower_Aircraft_Type) %>% group_by(Follower_Aircraft_Type) %>% mutate(Sample_Size = n()) %>% distinct(Follower_Aircraft_Type, Sample_Size)
+  
+  #joins the counts onto the significance values
+  P_Value_Output <- left_join(P_Value_Output, Aircraft_Counts, by=c("Follower_Aircraft_Type"="Follower_Aircraft_Type")) %>%
+    relocate(Sample_Size, .after=Follower_Aircraft_Type)
+  Co_Eff_Value_Output <- left_join(Co_Eff_Value_Output, Aircraft_Counts, by=c("Follower_Aircraft_Type"="Follower_Aircraft_Type")) %>%
+    relocate(Sample_Size, .after=Follower_Aircraft_Type)
+  
+  #writes to file
+  fwrite(P_Value_Output, file.path(out_data, "P_values_AC_Type.csv"))
+  fwrite(Co_Eff_Value_Output, file.path(out_data, "Coefficients_AC_Type.csv"))
+}
+
+#linear regression model by LSS type
+if(ML_model_LSS){
+  #nests data by lss type
+  AC_Speed_Profile_Errors <- Speed_Prof_Errors %>% group_by(lss_type) %>% filter(!is.na(Gust)) %>% nest()
+  
+  #creates lm model for each lss type
+  AC_Speed_Profile_Errors <- AC_Speed_Profile_Errors %>%
+    mutate(model = map(data,AC_Model))
+  
+  #gets significance values for each model
+  AC_Speed_Profile_Errors <- AC_Speed_Profile_Errors %>%
+    mutate(P_Values = map(model, Get_P_Values))
+  
+  #gets coefficients for each model
+  AC_Speed_Profile_Errors <- AC_Speed_Profile_Errors %>%
+    mutate(Co_Effs = map(model, Get_Coeff_Values))
+  
+  #collates the relevant data from the models
+  P_Value_Output <- AC_Speed_Profile_Errors %>% select(lss_type, P_Values) %>% unnest_wider(P_Values) %>% relocate(Surface_Headwind, .after=Baro_Pressure)
+  Co_Eff_Value_Output <- AC_Speed_Profile_Errors %>% select(lss_type, Co_Effs) %>% unnest_wider(Co_Effs) %>% relocate(Surface_Headwind, .after=Baro_Pressure)
+  
+  
+  #gets counts of each lss type
+  LSS_Counts <- Speed_Prof_Errors %>% select(lss_type) %>% group_by(lss_type) %>% mutate(Sample_Size = n()) %>% distinct(lss_type, Sample_Size)
+  
+  #joins the counts onto the significance values
+  P_Value_Output <- left_join(P_Value_Output, LSS_Counts, by=c("lss_type"="lss_type")) %>%
+    relocate(Sample_Size, .after=lss_type)
+  Co_Eff_Value_Output <- left_join(Co_Eff_Value_Output, LSS_Counts, by=c("lss_type"="lss_type")) %>%
+    relocate(Sample_Size, .after=lss_type)
+  
+  #writes to file
+  fwrite(P_Value_Output, file.path(out_data, "P_values_LSS_Type.csv"))
+  fwrite(Co_Eff_Value_Output, file.path(out_data, "Coefficients_LSS_Type.csv"))
+}
 
 ###############################################################################
 # Unused manual plots
