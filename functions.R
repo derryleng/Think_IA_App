@@ -955,6 +955,10 @@ pickerInput_customised <- function(
   )
 }
 
+pickerInput_customised2 <- function(...) {
+  pickerInput_customised(..., width = "100%")
+}
+
 # datatable function with customised styling
 datatable_customised_1 <- function(
   data,

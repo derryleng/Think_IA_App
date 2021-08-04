@@ -190,6 +190,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     d$`Base Leg Lateral Distance V1` <- round(d$`Base Leg Lateral Distance V1`, 2)
     d$`Base Leg Lateral Distance V2` <- round(d$`Base Leg Lateral Distance V2`, 2)
     d$`Base Leg Lateral Distance V3` <- round(d$`Base Leg Lateral Distance V3`, 2)
+    if ("Landing Runway" %in% names(d)) {
+      d$`Landing Runway` <- d$`Landing Runway`
+    }
     return(d)
   })
   
@@ -240,6 +243,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     return(x)
   })
   
+  
+  # PLT Adaptation Editor | Load UI elements --------------------------------
+
   tbl <- reactiveValues(
     loaded = F,
     tbl_Runway = tbl_template$tbl_Runway,
@@ -253,8 +259,6 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     tbl_Path_Leg_Transition_2 = tbl_template$tbl_Path_Leg_Transition,
     tbl_Path_Leg_Transition_3 = tbl_template$tbl_Path_Leg_Transition
   )
-
-  # Load UI elements --------------------------------------------------------   
 
   observe({
     
@@ -377,8 +381,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     })
     
   })
+
   
-  # Create New Adaptation ---------------------------------------------------
+  # PLT Adaptation Editor | Create New Adaptation ---------------------------
   
   observeEvent(input$editor_template, {
     tbl$loaded <- T
@@ -394,7 +399,8 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     tbl$tbl_Path_Leg_Transition_3 <- tbl_template$tbl_Path_Leg_Transition
   })
   
-  # Load Existing Adaptation ------------------------------------------------
+  
+  # PLT Adaptation Editor | Load Existing Application -----------------------
   
   shinyDirChoose(input, "editor_load", roots=getVolumes()(), session=session, restrictions = system.file(package = 'base'))
   
@@ -494,8 +500,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     
   })
   
-  # Export ------------------------------------------------------------------
   
+  # PLT Adaptation Editor | Export ------------------------------------------
+
   shinyDirChoose(input, "editor_export", roots=getVolumes()(), session=session, restrictions = system.file(package = 'base'))
   
   export_dir <- eventReactive(input$editor_export, {
@@ -545,8 +552,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     
   })
   
-  # Show/hide additional variant tables -------------------------------------
-  
+
+  # PLT Adaptation Editor | Show/Hide Variant Tables ------------------------
+
   observeEvent(input$plt_variants, {
     if (input$plt_variants == 0) {
       shinyjs::hide("DT_tbl_Volumes_2")
@@ -580,7 +588,8 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }
   })
   
-  # Hots --------------------------------------------------------------------
+  
+  # PLT Adaptation Editor | Hot Tables --------------------------------------
 
   hot_tbl_Volumes <- reactive({
     req(input$DT_tbl_Volumes)
@@ -597,8 +606,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     return(hot_to_r(input$DT_tbl_Volumes_3))
   })
   
-  # Update map toggles based on hots ----------------------------------------
   
+  # PLT Adaptation Editor | Hot Tables Map Toggle Update --------------------
+
   observeEvent(hot_tbl_Volumes(), {
     req(hot_tbl_Volumes())
     updatePickerInput(session, "toggle_tbl_Volumes", choices = hot_tbl_Volumes()$Volume_Name)
@@ -614,8 +624,9 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     updatePickerInput(session, "toggle_tbl_Volumes_3", choices = hot_tbl_Volumes_3()$Volume_Name)
   })
   
-  # Hot volume preview map --------------------------------------------------
   
+  # PLT Adaptation Editor | Hot Tables Volume Preview Map -------------------
+
   output$map <- renderLeaflet({
     map_template(1)
   })
@@ -680,196 +691,8 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     }
   })
   
-  # PLT Analysis Tools | General UI -----------------------------------------
   
-  output$analysis_view <- renderUI({
-    detailed_filter_3_range1 <- c(
-      min(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V2`, na.rm = T),
-      max(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V2`, na.rm = T)
-    )
-    
-    detailed_filter_3_range2 <- c(
-      min(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V3`, na.rm = T),
-      max(vw_PLT_Detailed_Analysis()$`Activation Time Difference V1 V3`, na.rm = T)
-    )
-    
-    div(
-      h3("PLT Running"),
-      
-      checkboxGroupInput(
-        ns("plt_analysis_variants"), label = "Variant Selection", 
-        choices = list("Variant 1" = 1, "Variant 2" = 2, "Variant 3" = 3),
-        selected = 1
-      ),
-      
-      actionButton(ns("plt_analysis_run"), "Run PLT Analysis"),
-      
-      hr(),
-      
-      h3("Summary Stats"),
-      
-      actionButton(ns("summary_show"), "Output summary stats"),
-      
-      uiOutput(ns("summary_stats_ui")),
-      
-      hr(),
-      
-      h3("Detailed Analysis"),
-      
-      radioButtons(
-        ns("detailed_filter_1"),
-        "Options",
-        c("All Flights" = 1, "Changed Non-Standard Transitions" = 2)
-      ),
-      
-      checkboxInput(ns("pltvis_g0_sep"), "Separate Non-Standard Transition Filters"),
-      
-      uiOutput(ns("pltvis_g0_ui")),
-      
-      sliderInput(
-        ns("detailed_filter_3"),
-        "Filter Activation Time Difference (V1 vs V2)",
-        value = detailed_filter_3_range1,
-        min = detailed_filter_3_range1[1],
-        max = detailed_filter_3_range1[2]
-      ),
-      
-      sliderInput(
-        ns("detailed_filter_4"),
-        "Filter Activation Time Difference (V1 vs V3)",
-        value = detailed_filter_3_range2,
-        min = detailed_filter_3_range2[1],
-        max = detailed_filter_3_range2[2]
-      ),
-      
-      actionButton(ns("detailed_show"), "Update table"),
-      
-      div(
-        div(style = "height: 15px;"),
-        
-        DT::dataTableOutput(outputId = ns("plt_detailed_table")),
-        
-        actionButton(ns("pltvis_flights_view"), "View selected flights"),
-        
-        hr(),
-        checkboxInput(ns("pltvis_vol_sep"), "Toggle separate volume display"),
-        uiOutput(ns("pltvis_vol_ui")),
-        div(
-          style = "display: flex",
-          leafletOutput(ns("pltvis_map_1"), height = "940px"),
-          leafletOutput(ns("pltvis_map_2"), height = "940px"),
-          leafletOutput(ns("pltvis_map_3"), height = "940px")
-        ),
-        
-        hr(),
-        checkboxInput(ns("pltvis_g1_zeros"), "Remove zero values"),
-        checkboxInput(ns("pltvis_g1_sep"), "Separate Non-Standard Transition Filters"),
-        uiOutput(ns("pltvis_g1_ui")),
-        plotlyOutput(ns("pltvis_g1")),
-        
-        hr(),
-        plotlyOutput(ns("pltvis_g2")),
-        
-        hr(),
-        checkboxInput(ns("pltvis_g3_sep"), "Separate Non-Standard Transition Filters"),
-        uiOutput(ns("pltvis_g3_ui")),
-        plotlyOutput(ns("pltvis_g3")),
-        
-        hr(),
-        checkboxInput(ns("pltvis_g4_sep"), "Separate Non-Standard Transition Filters"),
-        uiOutput(ns("pltvis_g4_ui")),
-        plotlyOutput(ns("pltvis_g4"))
-      )
-      
-    )
-  })
-  
-  # Filter Non-Standard Transitions
-  
-  output$pltvis_g0_ui <- renderUI({
-    x <- c(
-      "No Non-Standard Transitions",
-      "Aircraft not tracked",
-      "Abnormal Final Path Leg",
-      "Go around or ILS circuit detected",
-      "Missed approach detected",
-      "No base leg detected",
-      "No base or intercept leg detected",
-      "Probable low level crosser",
-      "Probable premature base or intercept detection",
-      "Probable turn on inside FAF",
-      "Unusual transition to null"
-    )
-    if (input$pltvis_g0_sep) {
-      div(
-        pickerInput_customised(ns("pltvis_g0_trans1_1"), "Filter Non-Standard Transitions V1 - Stage 1", choices = x, selected = x[-c(1,2)]),
-        pickerInput_customised(ns("pltvis_g0_trans1_2"), "Filter Non-Standard Transitions V1 - Stage 2"),
-        pickerInput_customised(ns("pltvis_g0_trans2_1"), "Filter Non-Standard Transitions V2 - Stage 1", choices = x, selected = x[-c(1,2)]),
-        pickerInput_customised(ns("pltvis_g0_trans2_2"), "Filter Non-Standard Transitions V2 - Stage 2"),
-        pickerInput_customised(ns("pltvis_g0_trans3_1"), "Filter Non-Standard Transitions V3 - Stage 1", choices = x, selected = x[-c(1,2)]),
-        pickerInput_customised(ns("pltvis_g0_trans3_2"), "Filter Non-Standard Transitions V3 - Stage 2")
-      )
-    } else {
-      div(
-        pickerInput_customised(ns("pltvis_g0_trans_1"), "Filter Non-Standard Transitions - Stage 1", choices = x, selected = x[-c(1,2)]),
-        pickerInput_customised(ns("pltvis_g0_trans_2"), "Filter Non-Standard Transitions - Stage 2")
-      )
-    }
-  })
-  
-  observeEvent(input$pltvis_g0_trans1_1, {
-    if (is.null(input$pltvis_g0_trans1_1)) {
-      filt_choices <- NULL
-    } else {
-      all_choices <- unlist(strsplit(unique(vw_PLT_Detailed_Analysis()$`Non Standard Transition V1`), ", "))
-      filt_choices <- sort(unique(unlist(sapply(input$pltvis_g0_trans1_1, function(x) {
-        grep(x, all_choices, ignore.case = T, value = T)
-      }))))
-    }
-    updatePickerInput(session, "pltvis_g0_trans1_2", choices = filt_choices, selected = filt_choices)
-  }, ignoreNULL = F)
-  
-  observeEvent(input$pltvis_g0_trans2_1, {
-    if (is.null(input$pltvis_g0_trans2_1)) {
-      filt_choices <- NULL
-    } else {
-      all_choices <- unlist(strsplit(unique(vw_PLT_Detailed_Analysis()$`Non Standard Transition V2`), ", "))
-      filt_choices <- sort(unique(unlist(sapply(input$pltvis_g0_trans2_1, function(x) {
-        grep(x, all_choices, ignore.case = T, value = T)
-      }))))
-    }
-    updatePickerInput(session, "pltvis_g0_trans2_2", choices = filt_choices, selected = filt_choices)
-  }, ignoreNULL = F)
-  
-  observeEvent(input$pltvis_g0_trans3_1, {
-    if (is.null(input$pltvis_g0_trans3_1)) {
-      filt_choices <- NULL
-    } else {
-      all_choices <- unlist(strsplit(unique(vw_PLT_Detailed_Analysis()$`Non Standard Transition V3`), ", "))
-      filt_choices <- sort(unique(unlist(sapply(input$pltvis_g0_trans3_1, function(x) {
-        grep(x, all_choices, ignore.case = T, value = T)
-      }))))
-    }
-    updatePickerInput(session, "pltvis_g0_trans3_2", choices = filt_choices, selected = filt_choices)
-  }, ignoreNULL = F)
-  
-  observeEvent(input$pltvis_g0_trans_1, {
-    if (is.null(input$pltvis_g0_trans_1)) {
-      filt_choices <- NULL
-    } else {
-      all_choices <- unlist(strsplit(unique(c(
-        vw_PLT_Detailed_Analysis()$`Non Standard Transition V1`,
-        vw_PLT_Detailed_Analysis()$`Non Standard Transition V2`,
-        vw_PLT_Detailed_Analysis()$`Non Standard Transition V3`
-      )), ", "))
-      filt_choices <- sort(unique(unlist(sapply(input$pltvis_g0_trans_1, function(x) {
-        grep(x, all_choices, ignore.case = T, value = T)
-      }))))
-    }
-    updatePickerInput(session, "pltvis_g0_trans_2", choices = filt_choices, selected = filt_choices)
-  }, ignoreNULL = F)
-  
-  # PLT Analysis Tools | Run PLT Analysis -----------------------------------
+  # PLT Analysis Run --------------------------------------------------------
 
   observeEvent(input$plt_analysis_run, {
     showModal(modalDialog(
@@ -964,29 +787,76 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
     
   })
   
-  # PLT Analysis Tools | Summary Stats --------------------------------------
-
-  observeEvent(input$summary_show, {
-    output$summary_stats_ui <- renderUI({
-      div(
-        div(style = "height: 15px;"),
-        
-        DT::dataTableOutput(outputId = ns("plt_summary_table"))
-      )
-    })
-    output$plt_summary_table <- DT::renderDataTable({
-      datatable_customised_2(Output_Summary_Stats(dbi_con))
-    }, server = T)
-  })
   
-  # PLT Analysis Tools | Detailed Analysis Table ----------------------------
+  # PLT Summary Stats -------------------------------------------------------
+  
+  output$plt_summary_table <- DT::renderDataTable({
+    datatable_customised_2(Output_Summary_Stats(dbi_con))
+  }, server = T)
 
-  plt_dat <- eventReactive(input$detailed_show, {
+
+  # PLT Detailed Analysis | Level 1 -----------------------------------------
+
+  output$analysis_view_1 <- renderUI({div(
+    div(
+      style = "padding: 5px; background-color: #f5f5f5; border: 1px solid #e3e3e3; height: 58px;",
+      radioButtons(
+        ns("filt_change"),
+        NULL,
+        c("Show all flights" = 1, "Only show flights with changed non-standard transitions" = 2)
+      ),
+    ),
+    
+    div(style = "height: 25px"),
+    
+    uiOutput(ns("analysis_view_2")),
+    
+    div(style = "height: 25px;"),
+    
+    DT::dataTableOutput(outputId = ns("plt_detailed_table")),
+    
+    div(
+      class = "centered",
+      actionButton(ns("pltvis_flights_view"), "View selected flights")
+    ),
+    
+    hr(),
+    checkboxInput(ns("pltvis_vol_sep"), "Toggle separate volume display"),
+    uiOutput(ns("pltvis_vol_ui")),
+    div(
+      style = "display: flex",
+      leafletOutput(ns("pltvis_map_1"), height = "940px"),
+      leafletOutput(ns("pltvis_map_2"), height = "940px"),
+      leafletOutput(ns("pltvis_map_3"), height = "940px")
+    ),
+    
+    hr(),
+    checkboxInput(ns("pltvis_g1_zeros"), "Remove zero values"),
+    checkboxInput(ns("pltvis_g1_sep"), "Separate Non-Standard Transition Filters"),
+    uiOutput(ns("pltvis_g1_ui")),
+    plotlyOutput(ns("pltvis_g1")),
+    
+    hr(),
+    plotlyOutput(ns("pltvis_g2")),
+    
+    hr(),
+    checkboxInput(ns("pltvis_g3_sep"), "Separate Non-Standard Transition Filters"),
+    uiOutput(ns("pltvis_g3_ui")),
+    plotlyOutput(ns("pltvis_g3")),
+    
+    hr(),
+    checkboxInput(ns("pltvis_g4_sep"), "Separate Non-Standard Transition Filters"),
+    uiOutput(ns("pltvis_g4_ui")),
+    plotlyOutput(ns("pltvis_g4"))
+  )})
+
+  plt_dat_1 <- reactive({
     d <- vw_PLT_Detailed_Analysis()
-    if (input$detailed_filter_1 == 2) {
-      consider_V2 <- any(d$`Non Standard Transition V2` != "None")
-      consider_V3 <- any(d$`Non Standard Transition V3` != "None")
-      
+    if (input$filt_change == 1) {
+      return(d)
+    } else if (input$filt_change == 2) {
+      consider_V2 <- any(d$`Non Standard Transition V2` != "No Non-Standard Transitions")
+      consider_V3 <- any(d$`Non Standard Transition V3` != "No Non-Standard Transitions")
       if (consider_V2 & !consider_V3) {
         d <- d[`Non Standard Transition V1` != `Non Standard Transition V2`]
       } else if (!consider_V2 & consider_V3) {
@@ -996,36 +866,217 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
                  `Non Standard Transition V1` != `Non Standard Transition V3` | 
                  `Non Standard Transition V2` != `Non Standard Transition V3`]
       }
+      return(d)
     }
-    
-    if (input$pltvis_g0_sep) {
-      d <- d[grepl(paste(input$pltvis_g0_trans1_2, collapse = "|"), `Non Standard Transition V1`) |
-               grepl(paste(input$pltvis_g0_trans2_2, collapse = "|"), `Non Standard Transition V2`) |
-               grepl(paste(input$pltvis_g0_trans3_2, collapse = "|"), `Non Standard Transition V3`)]
-    } else {
-      d <- d[grepl(paste(input$pltvis_g0_trans_2, collapse = "|"), `Non Standard Transition V1`) |
-               grepl(paste(input$pltvis_g0_trans_2, collapse = "|"), `Non Standard Transition V2`) |
-               grepl(paste(input$pltvis_g0_trans_2, collapse = "|"), `Non Standard Transition V3`)]
-    }
-    
-    d <- d[`Activation Time Difference V1 V2` >= input$detailed_filter_3[1] &
-             `Activation Time Difference V1 V2` <= input$detailed_filter_3[2] &
-             `Activation Time Difference V1 V3` >= input$detailed_filter_4[1] &
-             `Activation Time Difference V1 V3` <= input$detailed_filter_4[2]]
+  })
+
   
+  # PLT Detailed Analysis | Level 2 -----------------------------------------
+
+  output$analysis_view_2 <- renderUI({div(
+    pickerInput_customised2(
+      ns("filt_rwy"),
+      "Filter Runway",
+      choices = tbl_Runway()$Runway_Name,
+      selected = tbl_Runway()$Runway_Name
+    ),
+    div(style = "height: 5px"),
+    checkboxInput(ns("filt_trans_sep"), "Separate non-standard transition filters"),
+    uiOutput(ns("analysis_view_3"))
+  )})
+  
+  plt_dat_2 <- reactive({
+    d <- plt_dat_1()
+    if ("Landing Runway" %in% names(plt_dat_1())) {
+      d <- d[`Landing Runway` %in% input$filt_rwy]
+    }
     return(d)
   })
 
+  
+  # PLT Detailed Analysis | Level 3 -----------------------------------------
+
+  transition_types <- reactive({
+    d <- unique(c(
+      plt_dat_2()$`Non Standard Transition V1`,
+      plt_dat_2()$`Non Standard Transition V2`,
+      plt_dat_2()$`Non Standard Transition V3`
+    ))
+    d <- unique(unlist(strsplit(d, split = ", ")))
+    d <- sort(unique(gsub("^([A-z0-9 \\-]+)[:=\\(\\)]?.*$", "\\1", d)))
+    d <- gsub("^(.*)[ ]{1,}$", "\\1", d)
+    return(d)
+  })
+  
+  output$analysis_view_3 <- renderUI({
+    if (input$filt_trans_sep) {
+      div(
+        pickerInput_customised2(
+          ns("filt_trans_v1_s1"),
+          "Filter Non-Standard Transitions V1 - Stage 1",
+          choices = transition_types(),
+          selected = transition_types()[transition_types() %!in% c("No Non-Standard Transitions", "Aircraft not tracked")]
+        ),
+        uiOutput(ns("filt_trans_v1_s2_ui")),
+        
+        pickerInput_customised2(
+          ns("filt_trans_v2_s1"),
+          "Filter Non-Standard Transitions V2 - Stage 1",
+          choices = transition_types(),
+          selected = transition_types()[transition_types() %!in% c("No Non-Standard Transitions", "Aircraft not tracked")]
+        ),
+        uiOutput(ns("filt_trans_v2_s2_ui")),
+        
+        pickerInput_customised2(
+          ns("filt_trans_v3_s1"), 
+          "Filter Non-Standard Transitions V3 - Stage 1",
+          choices = transition_types(),
+          selected = transition_types()[transition_types() %!in% c("No Non-Standard Transitions", "Aircraft not tracked")]
+        ),
+        uiOutput(ns("filt_trans_v3_s2_ui")),
+        
+        uiOutput(ns("analysis_view_4"))
+      )
+    } else {
+      div(
+        pickerInput_customised2(
+          ns("filt_trans_s1"),
+          "Filter Non-Standard Transitions - Stage 1",
+          choices = transition_types(),
+          selected = transition_types()[transition_types() %!in% c("No Non-Standard Transitions", "Aircraft not tracked")]
+        ),
+        uiOutput(ns("filt_trans_s2_ui")),
+        
+        uiOutput(ns("analysis_view_4"))
+      )
+    }
+  })
+  
+  output$filt_trans_v1_s2_ui <- renderUI({
+    all_choices <- unique(unlist(strsplit(plt_dat_2()$`Non Standard Transition V1`, ", ")))
+    filt_choices <- sort(unique(unlist(
+      sapply(input$filt_trans_v1_s1, function(x) grep(x, all_choices, ignore.case = T, value = T))
+    )))
+    pickerInput_customised2(
+      ns("filt_trans_v1_s2"),
+      "Filter Non-Standard Transitions V1 - Stage 2",
+      choices = filt_choices,
+      selected = filt_choices
+    )
+  })
+  
+  output$filt_trans_v2_s2_ui <- renderUI({
+    all_choices <- unique(unlist(strsplit(plt_dat_2()$`Non Standard Transition V2`, ", ")))
+    filt_choices <- sort(unique(unlist(
+      sapply(input$filt_trans_v2_s1, function(x) grep(x, all_choices, ignore.case = T, value = T))
+    )))
+    pickerInput_customised2(
+      ns("filt_trans_v2_s2"),
+      "Filter Non-Standard Transitions V2 - Stage 2",
+      choices = filt_choices,
+      selected = filt_choices
+    )
+  })
+  
+  output$filt_trans_v3_s2_ui <- renderUI({
+    all_choices <- unique(unlist(strsplit(plt_dat_2()$`Non Standard Transition V3`, ", ")))
+    filt_choices <- sort(unique(unlist(
+      sapply(input$filt_trans_v3_s1, function(x) grep(x, all_choices, ignore.case = T, value = T))
+    )))
+    pickerInput_customised2(
+      ns("filt_trans_v3_s2"),
+      "Filter Non-Standard Transitions V3 - Stage 2",
+      choices = filt_choices,
+      selected = filt_choices
+    )
+  })
+  
+  output$filt_trans_s2_ui <- renderUI({
+    all_choices <- unlist(strsplit(unique(c(
+      plt_dat_2()$`Non Standard Transition V1`,
+      plt_dat_2()$`Non Standard Transition V2`,
+      plt_dat_2()$`Non Standard Transition V3`
+    )), ", "))
+    filt_choices <- sort(unique(unlist(
+      sapply(input$filt_trans_s1, function(x) grep(x, all_choices, ignore.case = T, value = T))
+    )))
+    pickerInput_customised2(
+      ns("filt_trans_s2"),
+      "Filter Non-Standard Transitions - Stage 2",
+      choices = filt_choices,
+      selected = filt_choices
+    )
+  })
+  
+  plt_dat_3 <- reactive({
+    d <- plt_dat_2()
+    if (input$filt_trans_sep) {
+      d <- d[grepl(paste(input$filt_trans_v1_s2, collapse = "|"), `Non Standard Transition V1`) |
+               grepl(paste(input$filt_trans_v2_s2, collapse = "|"), `Non Standard Transition V2`) |
+               grepl(paste(input$filt_trans_v3_s2, collapse = "|"), `Non Standard Transition V3`)]
+    } else {
+      d <- d[grepl(paste(input$filt_trans_s2, collapse = "|"), `Non Standard Transition V1`) |
+               grepl(paste(input$filt_trans_s2, collapse = "|"), `Non Standard Transition V2`) |
+               grepl(paste(input$filt_trans_s2, collapse = "|"), `Non Standard Transition V3`)]
+    }
+    return(d)
+  })
+  
+  # PLT Detailed Analysis | Level 4 -----------------------------------------
+
+  output$analysis_view_4 <- renderUI({
+    filt_atd12_range <- c(
+      min(plt_dat_3()$`Activation Time Difference V1 V2`, na.rm = T),
+      max(plt_dat_3()$`Activation Time Difference V1 V2`, na.rm = T)
+    )
+    filt_atd13_range <- c(
+      min(plt_dat_3()$`Activation Time Difference V1 V3`, na.rm = T),
+      max(plt_dat_3()$`Activation Time Difference V1 V3`, na.rm = T)
+    )
+    div(
+      div(style = "height: 25px;"),
+      sliderInput(
+        ns("filt_atd12"),
+        "Filter Activation Time Difference (V1 vs V2)",
+        value = filt_atd12_range,
+        min = filt_atd12_range[1],
+        max = filt_atd12_range[2]
+      ),
+      sliderInput(
+        ns("filt_atd13"),
+        "Filter Activation Time Difference (V1 vs V3)",
+        value = filt_atd13_range,
+        min = filt_atd13_range[1],
+        max = filt_atd13_range[2]
+      ),
+      div(style = "height: 25px;"),
+      div(
+        class = "centered",
+        actionButton(ns("filt_update"), "Update table")
+      )
+    )
+  })
+  
+  plt_dat_4 <- reactive({
+    d <- plt_dat_3()
+    d <- d[`Activation Time Difference V1 V2` >= input$filt_atd12[1] &
+             `Activation Time Difference V1 V2` <= input$filt_atd12[2] &
+             `Activation Time Difference V1 V3` >= input$filt_atd13[1] &
+             `Activation Time Difference V1 V3` <= input$filt_atd13[2]]
+    return(d)
+  })
+  
+  # PLT Analysis Tools | Detailed Analysis Map ------------------------------
+
   output$plt_detailed_table <- DT::renderDT({
-    datatable_customised_3(plt_dat())
+    req(input$filt_update)
+    datatable_customised_3(plt_dat_4())
   }, server = T)
   
   output$pltvis_map_1 <- renderLeaflet(map_template(2))
   output$pltvis_map_2 <- renderLeaflet(map_template(2))
   output$pltvis_map_3 <- renderLeaflet(map_template(2))
   
-  # PLT Analysis Tools | Detailed Analysis Map ------------------------------
-
   # Drawing Volumes
   
   observeEvent(input$pltvis_vol_sep, {
@@ -1092,7 +1143,7 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   
   # Get tracks from table
   plt_tracks <- eventReactive(input$pltvis_flights_view, {
-    fpid <- plt_dat()$`Flight Plan ID`[input$plt_detailed_table_rows_selected]
+    fpid <- plt_dat_4()$`Flight Plan ID`[input$plt_detailed_table_rows_selected]
     
     tracks <- as.data.table(dbGetQuery(dbi_con, sprintf(
       "SELECT * FROM vw_Radar_Track_Point_Derived WHERE Flight_Plan_ID IN ('%s')",
@@ -1308,8 +1359,8 @@ plt_tools_server <- function(input, output, session, con, dbi_con) {
   # PLT Analysis Tools | Detailed Analysis Plots ----------------------------
   
   plt_plotdat <- eventReactive(input$pltvis_flights_view, {
-    fpid <- plt_dat()$`Flight Plan ID`[input$plt_detailed_table_rows_selected]
-    return(plt_dat()[`Flight Plan ID` %in% fpid])
+    fpid <- plt_dat_4()$`Flight Plan ID`[input$plt_detailed_table_rows_selected]
+    return(plt_dat_4()[`Flight Plan ID` %in% fpid])
   })
   
   output$pltvis_g1_ui <- renderUI({
