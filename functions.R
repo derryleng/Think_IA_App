@@ -1053,7 +1053,7 @@ XML_Tag_Open <- function(tag_name, tag_attr = NA) {
         paste0(names(tag_attr)[i], "=\"", tag_attr[i], "\"")
       }
     })
-    return(paste0("<", tag_name, " ", paste(attrs, collapse = ", "), ">"))
+    return(paste0("<", tag_name, " ", paste(attrs, collapse = " "), ">"))
   }
 }
 
