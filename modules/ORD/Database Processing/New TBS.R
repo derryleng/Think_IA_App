@@ -105,7 +105,9 @@ Populate_Legacy <- T # Populate Legacy ORD Tables
 Date_List <- dbGetQuery(con, "SELECT DISTINCT(FP_Date) FROM tbl_Flight_Plan")
 Date_List <- Date_List$FP_Date
 #Date_List <- Date_List[1]
+#Date <- Date_List
 #for (PROC_Criteria in Date_List$Landing_Pair_Date){
+if (!Testing){Clear_Landing_Pair(con, PROC_Period = "All", NA)}
 for (Date in Date_List){
   message("Generating All TBS Data for, ", Date, "...")
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
@@ -114,6 +116,9 @@ for (Date in Date_List){
 # These should be set in Adaptation Tables. But for easy prototyping, keep internal.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
+# Are we joining on Gusting Data?
+Join_Gusting <- T
+  
 # Primary Key in use. Use Observation_ID to distibuish between Bolstered Samples with same LP.
 LP_Primary_Key <- "Observation_ID"
 
@@ -138,8 +143,14 @@ New_Constraints <- c("Wake", "ROT", "Non_Wake", "Runway_Dependent")
 
 # Levels to use for "New" Operation ORD, SASAI Wake and ROT adaptation grab. Must all be same length as Full_Level_Precedence.
 ORD_Levels <- c(F, T, T)
-TBS_Wake_Levels <- c(F, F, T)
+TBS_Wake_Levels <- c(F, T, T)
 TBS_ROT_Levels <- c(F, F, T)
+
+# "Symmetry" Switches for Wake TBS Calculations
+SymmetryWakeNew <- T
+
+# What era of ROT Adaptation to use? ("ROT" | "New_ROT") -- New ROT is PWS Specific.
+ROTTimeTypeNew <- "ROT" 
 
 # Switch for use of TBSC Time Buffers (If TRUE, Buffer in time adaptation files added to reference)
 TBSCBuffersNew <- F
@@ -148,7 +159,7 @@ TBSCBuffersNew <- F
 UseEFDDNew <- T
 
 # Decide the method of calculating TBS Distances. ("Original" | "ORD" | "T2F")
-TTBTypeNew <- "Original"
+TTBTypeNew <- "T2F"
 
 # Fix the Delivery Point for New Operations. Currently only supports one per operation, not one per constraint.
 New_Delivery_Point <- 0 * 1852
@@ -191,17 +202,23 @@ Old_Constraints <- c("Wake", "ROT", "Non_Wake", "Runway_Dependent")
 
 # Levels to use for "Old" Operation ORD, SASAI Wake and ROT adaptation grab. Must all be same length as Full_Level_Precedence.
 ORD_Levels_Legacy <- c(F, T, T)
-TBS_Wake_Levels_Legacy <- c(F, F, T)
+TBS_Wake_Levels_Legacy <- c(F, T, T)
 TBS_ROT_Levels_Legacy <- c(F, F, T)
+
+# "Symmetry" Switches for Wake TBS Calculations
+SymmetryWakeNew <- T
+
+# What era of ROT Adaptation to use? ("ROT" | "New_ROT") -- New ROT is PWS Specific.
+ROTTimeTypeOld <- "ROT" 
 
 # Switch for use of TBSC Time Buffers (If TRUE, Buffer in time adaptation files added to reference)
 TBSCBuffersOld <- F
 
 # Switch for use of Variable End Final Deceleration Distance, now in ORD Adaptation. eTBS/old IA should have this OFF.
-UseEFDDOld <- F
+UseEFDDOld <- T
 
 # Decide the method of calculating TBS Distances. ("Original" | "ORD" | "T2F")
-TTBTypeOld <- "Original"
+TTBTypeOld <- "ORD"
 
 # Fix the Delivery Point for New Operations. Currently only supports one per operation, not one per constraint.
 Old_Delivery_Point <- 0 * 1852
@@ -259,11 +276,12 @@ Radar <- Load_Radar_Data_ORD_Validation(con, PROC_Period, Date) # Radar Data
 FP <- Load_Flight_Data_ORD_Validation(con, PROC_Period, Date) # Flight Plan (Aircraft Level) Data
 Segments <- Load_Stage_2_Segment_Data(con, PROC_Period, Date) # GWCS Forecast Segment Data
 SW <- Load_Surface_Wind_Data(con, PROC_Period, Date) # Surface Wind data
+if (Join_Gusting){Gust <- Load_Gust_Data(con, PROC_Period, Date)}
 
 # If not in Testing Mode, Generate LAnding Pairs for this day and load to SQL
 if (!Testing){
   LP <- Generate_Landing_Pair(FP)
-  Clear_Landing_Pair(con, PROC_Period, Date)
+  #Clear_Landing_Pair(con, PROC_Period, Date)
   PopulateSQLTable(con, "tbl_Landing_Pair", select(LP, -Landing_Pair_ID))
 }
 
@@ -322,37 +340,48 @@ LP <- LP %>%
   mutate(Leader_Operator = substr(Leader_Callsign, 1, 3),
          Follower_Operator = substr(Follower_Callsign, 1, 3))
 
-# - RECAT (IA PWS Update) ### NOTE: Does not distinguish between nit pairs - but does remove nit ROT contraints.
+# Get Reference "Recat" Pair Parameters. Currently includes Wake and ROT adaptation.
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels, Param_Type = "Distance", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels, Param_Type = "Time", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels, Param_Type = "Speed", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Distance", TBSCBuffersNew, "Recat")
-LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Time", TBSCBuffersNew, "Recat")
+LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = ROTTimeTypeNew, Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Time", TBSCBuffersNew, "Recat")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels, Param_Type = "Speed", TBSCBuffersNew, "Recat")
 
-# - Legacy
+# Get Reference "Legacy" Pair Parameters. Currently includes Wake and ROT adaptation.
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels_Legacy, Param_Type = "Distance", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels_Legacy, Param_Type = "Time", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "Wake", Full_Level_Precedence, TBS_Wake_Levels_Legacy, Param_Type = "Speed", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Distance", TBSCBuffersOld, "Legacy")
-LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Time", TBSCBuffersOld, "Legacy")
+LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = ROTTimeTypeOld, Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Time", TBSCBuffersOld, "Legacy")
 LP <- Get_Reference_SASAI_Parameters_In_Precedence(con, LP_Primary_Key, LP, Use = "ROT", Full_Level_Precedence, TBS_ROT_Levels_Legacy, Param_Type = "Speed", TBSCBuffersOld, "Legacy")
 
-# Get the DBS All Sep Distance - ## Wake only for TBS Table for existing operations.
-
+# PRepare TBSC Extras (RNAV Flag, Non-Wake Spacing, Runway Dep Separation, TBS Service Level)
 LP <- LP %>% Get_RNAV_Flag() %>% Get_Non_Wake_Spacing() %>% Get_Runway_Dependent_Separation()
 LP <- Get_TBS_Service_Level(con, LP, LP_Primary_Key)
 
+# Get the DBS All Sep Distance - ## Wake only for TBS Table for existing operations.
 LP <- mutate(LP, 
-             Recat_DBS_All_Sep_Distance = pmax(Reference_Recat_ROT_Spacing_Distance, Reference_Recat_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T),
-             Legacy_DBS_All_Sep_Distance = pmax(Reference_Legacy_ROT_Spacing_Distance, Reference_Legacy_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T))
+             Recat_DBS_All_Sep_Distance = pmax(Reference_Recat_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T),
+             Legacy_DBS_All_Sep_Distance = pmax(Reference_Legacy_Wake_Separation_Distance, Non_Wake_Separation_Distance, na.rm = T))
 
+# Get the Forecast Surface Wind for the Leader
 LP <- Get_Surface_Wind(LP, SW, Runways,
                        Prefix = "Forecast_AGI",
                        ID_Var = "Observation_ID",
                        Date_Var = "Landing_Pair_Date",
                        Time_Var = "Prediction_Time",
                        Runway_Var = "Leader_Landing_Runway")
+
+# Get the Forecast Surface Gust for the Follower Runway.
+if (Join_Gusting){
+  
+  # Join on the Gust Values
+  LP <- LP %>%
+    rolling_join(Gust, c("Landing_Pair_Date", "Follower_Landing_Runway", "Prediction_Time"), c("Gust_Date", "Runway", "Gust_Time"), Roll = +Inf) %>%
+    rename(Forecast_AGI_Surface_Gust = Gust)
+  
+}
 
 # Find New Prediction Times ----
 
@@ -479,22 +508,26 @@ LP <- LP %>%
          Legacy_Observed_Leader_WAD_Flying_Distance = Legacy_Leader_CC_RTT - Leader_FAF_2_RTT,
          Legacy_Observed_Leader_ORD_Flying_Distance = Legacy_Leader_CC_RTT - Legacy_Leader_Delivery_RTT)
 
+LPOrig <- LP
+
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # 5. All ORD and TBS Calculations ----
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 # For both RECAT/LEGACY, Calculate the TBS Distances, Observed and Forecast ORD Metrics. Calculate the Actual/Perfect Speeds/Time Spacings.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
+# LP <- LPOrig
+# LegacyorRecat <- "Recat"
+
 for (LegacyorRecat in c("Recat", "Legacy")){
-  
-  #LP <- LP_Original
   
   All_Dist_Values <- c()
   
   if (LegacyorRecat == "Legacy"){
     Delivery_Column <- "Old_Delivery"
     Use_EFDD <- UseEFDDOld
-    ORD_Levels_Used <- ORD_Levels_Legacy
+    Wake_Levels_Used <- TBS_Wake_Levels_Legacy
+    ROT_Levels_Used <- TBS_ROT_Levels_Legacy
     TTB_Type <- TTBTypeOld
     Constraints <- Old_Constraints
     ORD_GS_Profile <- GSProfileLegacy
@@ -508,10 +541,12 @@ for (LegacyorRecat in c("Recat", "Legacy")){
     AllowedPathLegs <- AllowedPathLegsOld
     MaxUnderRep <- MaxUnderRepOld
     UnderSeps <- UnderSepsOld
+    SymmetryWake <- SymmetryWakeOld
   } else {
       Delivery_Column <- "New_Delivery"
       Use_EFDD <- UseEFDDNew
-      ORD_Levels_Used <- ORD_Levels
+      Wake_Levels_Used <- TBS_Wake_Levels
+      ROT_Levels_Used <- TBS_ROT_Levels
       TTB_Type <- TTBTypeNew
       Constraints <- New_Constraints
       ORD_GS_Profile <- GSProfile
@@ -525,16 +560,20 @@ for (LegacyorRecat in c("Recat", "Legacy")){
       AllowedPathLegs <- AllowedPathLegsNew
       MaxUnderRep <- MaxUnderRepNew
       UnderSeps <- UnderSepsNew
+      SymmetryWake <- SymmetryWakeNew
     }
   
   Dist_Values <- c()
   
-  TBSC_Profiles <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, ORD_Levels_Used, LegacyorRecat) 
+  # Setup the Profiles for Wake and ROT Constraints.
+  TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat, SymmetryWake)
+  TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat, Symmetry = F)
   
   LP <- mutate(LP, Delivery_Distance = !!sym(Delivery_Column))
   
   ## Generate the Distance for all Constraints at Threshold
   for (Constraint in Constraints){
+    if (Constraint == "ROT"){TBSC_Profiles <- TBSC_Profiles_ROT} else {TBSC_Profiles <- TBSC_Profiles_Wake}
     Constraint_Delivery <- filter(Delivery_Points, SASAI_Constraint == Constraint) %>% select(!!sym(Delivery_Column)) %>% as.character()
     LP <- Generate_Constraint_Spacing_All(con, LPR = LP, TBSC_Profile = TBSC_Profiles,
                                                     TTB_Type, Constraint_Type = Constraint,
@@ -588,6 +627,7 @@ for (LegacyorRecat in c("Recat", "Legacy")){
   # Now get the Distances + Compression (If viable!)
   Dist_Values <- c()
   for (Constraint in Constraints){
+    if (Constraint == "ROT"){TBSC_Profiles <- TBSC_Profiles_ROT} else {TBSC_Profiles <- TBSC_Profiles_Wake}
     Constraint_Delivery <- filter(Delivery_Points, SASAI_Constraint == Constraint) %>% select(!!sym(Delivery_Column)) %>% as.character()
     LP <- Generate_Constraint_Spacing_All(con, LPR = LP, TBSC_Profile = TBSC_Profiles,
                                                     TTB_Type, Constraint_Type = Constraint,
@@ -1227,10 +1267,12 @@ Time2-Time1
 # Temporary Section for result visualisation and sense checking.
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
-# ORD Compression Error distribution
-ggplot(ORD_Prediction) + geom_histogram(mapping = aes(x = ORD_Compression_Error, y = ..density..))
-test <- filter(LP, Landing_Pair_Type == "Not_In_Trail")
-
+Analysis <- T
+if (Analysis){
+  
+  
+  
+}
 
 
 

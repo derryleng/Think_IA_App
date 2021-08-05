@@ -764,6 +764,38 @@ Load_Surface_Wind_Data <- function(con, PROC_Period, PROC_Criteria){
   
 }
 
+Load_Gust_Data <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading Surface Gust data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Surface Wind Query
+  Surface_Wind_Query <- "SELECT
+                         Runway,
+                         Gust_Date,
+                         Gust_Time,
+                         Gust AS Gust * dbo.fnc_GI_Kts_To_M_Per_Sec(),
+                       FROM tbl_Gusting"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Gust_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Surface_Wind_Query <- paste0(Surface_Wind_Query, " WHERE Gust_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Surface_Wind <- dbGetQuery(con, Surface_Wind_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  message(paste0("Completed Surface Gust Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+                 seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Surface_Wind)
+  
+}
+
 Load_Flight_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
   
   # Get Start Time
@@ -1108,6 +1140,18 @@ Get_Reference_ORD_Parameter_Table_Name <- function(Level, LegacyorRecat, ORD_Pro
   
 }
 
+# Function that provides the correct T2F Adaptation table name based on it's "Level".
+Get_Reference_T2F_Parameter_Table_Name <- function(Level, LegacyorRecat){
+  
+  if (Level == "Operator"){Middle <- "AC_Operator"} else {Middle <- Level}
+  String <- paste0("tbl_T2F_", Middle, "_Adaptation")
+  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
+  message(paste0("Returning Table name ", String))
+  
+  return(String)
+  
+}
+
 # Function that returns the Identifiers of a given ORD Adaptation level.
 Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, LegacyorRecat, ReforData, LorF){
   
@@ -1125,7 +1169,92 @@ Get_Reference_ORD_Parameter_ID_Names <- function(Level, ORD_Profile_Selection, L
   
 }
 
+# Function that returns the Identifiers of a given ORD Adaptation level.
+Get_Reference_T2F_Parameter_ID_Names <- function(Level, LegacyorRecat, ReforData, LorF){
+  
+  if (ReforData == "Ref"){
+    if (Level == "Operator"){return(c("Aircraft_Type", "Operator"))}
+    else if (Level == "Aircraft"){return(c("Aircraft_Type"))}
+    else {return(c("Wake_Cat"))}
+  } else {
+    if (Level == "Operator"){return(paste0(LorF, "_", c("Aircraft_Type", "Operator")))}
+    else if (Level == "Aircraft"){return(paste0(LorF, "_", c("Aircraft_Type")))}
+    else {return(paste0(LorF, "_", LegacyorRecat, "_", c("Wake_Cat")))}
+  }
+  
+}
 
+
+# T2F Adaptation Joining.
+Get_T2F_Adaptation_In_Precedence <- function(con, LP_Primary_Key, LP, Precedences, Values, LegacyorRecat, LorF){
+  
+  # Create the Precedence Table
+  Precedence_Table <- data.frame(Scheme = Precedences, Switch = Values) %>%
+    mutate(ID = row_number()) %>% select(ID, everything())
+  
+  # Initialise a counter: counts how many tables have been matched.
+  Counter <- 0
+  
+  # Loop across all level precedences.
+  for (i in 1:nrow(Precedence_Table)){
+    
+    # Get the parameter name, the "level" and its activity status.
+    Constr <- filter(Precedence_Table, ID == i)
+    Level = Constr$Scheme
+    Active = Constr$Switch
+    
+    # If this level is to be considered...
+    if (Active){
+      
+      # Get the adaptation table name, given it's use/constraint, level, recat/legacy status and desired parameter type
+      Table_Name <- Get_Reference_T2F_Parameter_Table_Name(Level, LegacyorRecat)
+      
+      # If the desired table exists in the database, load table and increment counter.
+      if (dbExistsTable(con, Table_Name)){
+        Counter <- Counter + 1
+        Adaptation <- Load_Adaptation_Table(con, Table_Name)
+        
+        # If IDs already have adaptation assigned, remove them.
+        if (Counter > 1){LP <- filter(LP, !!sym(LP_Primary_Key) %!in% CompleteIDs)}
+        
+        # Find/isolate the relevant columns from the data and the adaptation.
+        Join_Names_Adaptation <- Get_Reference_T2F_Parameter_ID_Names(Level, LegacyorRecat, ReforData = "Ref", LorF)
+        Join_Names_LP <- Get_Reference_T2F_Parameter_ID_Names(Level, LegacyorRecat, ReforData = "Data", LorF)
+        Select_Names_LP <- append(c(LP_Primary_Key), Join_Names_LP)
+        
+        # Get the relevant LP Data
+        LPLevel <- select(LP, all_of(Select_Names_LP)) %>% mutate(Level_Used = Level)
+        
+        # Join on the adaptation
+        LPLevel <- inner_join(LPLevel, Adaptation, by = setNames(Join_Names_Adaptation, Join_Names_LP))
+        
+        # Remove the Level identifiers.
+        LPLevel <- select(LPLevel, -all_of(Join_Names_LP))
+        
+        # Bind the data together. If first valid table, data must be initalised.
+        if (Counter == 1){LPNew <- LPLevel} else {LP <- rbind(LPNew, LPLevel)}
+        
+        # Get the LPIDs that have been successfully joined for removal later.
+        CompleteIDs <- select(LPNew, !!sym(LP_Primary_Key)) %>% rename(ID := !!sym(LP_Primary_Key))
+        CompleteIDs <- unique(CompleteIDs$ID)
+        
+        # If Adaptation table doesn't exist: display message.
+      } else {message(paste0("The table ", Table_Name, " does not exist."))}
+      
+      message("---------------------------------------")
+    }
+    
+  }
+  
+  if (LorF == "Leader"){Sub <- "L"} else {Sub <- "F"}
+  LPNew <- mutate(LPNew, This_Pair_Role = Sub) %>%
+    select(!!sym(LP_Primary_Key), This_Pair_Role, everything())
+  
+  return(LPNew)
+  
+}
+
+# SASAI Reference parameter joining
 Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP, Use, Precedences, Values, Param_Type, TBSCBuffers, LegacyorRecat){
   
   # Create the Precedence Table
@@ -1219,6 +1348,11 @@ Get_Reference_SASAI_Parameters_In_Precedence <- function(con, LP_Primary_Key, LP
 
 Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, LegacyorRecat){
   
+  # If using new ROT methodology, get the new ROT table(s).
+  if (Use == "New_ROT" & Param_Type == "Time"){
+    return(Get_Reference_ROT_Time_Table_Name(Level, LegacyorRecat))
+  }
+  
   String <- "tbl"
   
   if (Param_Type == "Speed"){
@@ -1255,6 +1389,26 @@ Get_Reference_SASAI_Parameter_Table_Name <- function(Use, Level, Param_Type, Leg
   
 }
 
+Get_Reference_ROT_Time_Table_Name <- function(Level, LegacyorRecat){
+  
+  # Initislaise the table name string
+  String <- "tbl_ROT_Time_"
+  
+  # Add on the level element
+  if (Level == "Operator"){S2 <- "AC_Operator"}
+  if (Level == "Aircraft"){S2 <- "Aircraft"}
+  if (Level == "Wake"){S2 <- "Wake"}
+  
+  # Put the backend on.
+  String <- paste0(String, S2, "_Adaptation")
+  
+  # If Legacy adaptation, add on Legacy suffix.
+  if (LegacyorRecat == "Legacy"){String <- paste0(String, "_Legacy")}
+  
+  return(String)
+  
+}
+
 Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
   
   if (Param_Type == "Speed"){
@@ -1273,14 +1427,37 @@ Get_Reference_SASAI_Parameter_Name <- function(Use, Param_Type){
   }
   
   if (Use == "Wake"){Middle <- "Wake_Separation"}
-  if (Use == "ROT"){Middle <- "ROT_Spacing"}
+  if (Use %in% c("ROT", "New_ROT")){Middle <- "ROT_Spacing"}
   
   String <- paste0(Prefix, "_", Middle, "_", Suffix)
   return(String)
   
 }
 
+Get_Reference_ROT_Time_ID_Names <- function(Level, ReforData, LegacyorRecat){
+  
+  if (ReforData == "Ref"){
+    Vars <- c("Runway")
+    if (Level == "Wake"){Vars <- append(Vars, "Wake_Cat")}
+    if (Level == "Aircraft"){Vars <- append(Vars, "Aircraft_Type")}
+    if (Level == "Operator"){Vars <- append(Vars, "Aircraft_Type", "Operator")}
+  } else if (ReforData == "Data"){
+    Vars <- c("Leader_Landing_Runway")
+    if (Level == "Wake"){Vars <- append(Vars, paste0("Leader_", LegacyorRecat, "_Wake_Cat"))}
+    if (Level == "Aircraft"){Vars <- append(Vars, "Leader_Aircraft_Type")}
+    if (Level == "Operator"){Vars <- append(Vars, "Leader_Aircraft_Type", "Leader_Operator")}
+  }
+  
+  return(Vars)
+  
+}
+
 Get_Reference_SASAI_Parameter_ID_Names <- function(Use, Level, ReforData, LegacyorRecat){
+  
+  # If using New ROT, use that function instead.
+  if (Use == "New_ROT"){
+    return(Get_Reference_ROT_Time_ID_Names(Level, ReforData, LegacyorRecat))
+  }
   
   Vars <- c()
   
@@ -2042,6 +2219,7 @@ Get_Average_Forecast_Wind_Effect <- function(Data, Segment_Forecast, Prefix, ID_
 Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, LegacyorRecat){
 
   # Get Variable Names
+  Use_Gust_Data <- F
   ID_Var <- LPID_Var
   FPID <- paste0(LorF, "_Flight_Plan_ID") # Not Currently Used - Need to Add to Verification
   AC_Type_Var <- paste0(LorF, "_Aircraft_Type")
@@ -2061,6 +2239,12 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
                              "DBS_All_Sep_Distance" := !!sym(paste0(LegacyorRecat, "_DBS_All_Sep_Distance")),
                              "Surface_Headwind" := !!sym(SW_Var),
                              "Landing_Runway" := !!sym(RW_Var))
+  
+  # acquire and join on the real gust data if we use it
+  if (Use_Gust_Data){
+    Gust <- select(Landing_Pair, !!sym(ID_Var), Forecast_AGI_Surface_Gust)
+    Aircraft_Profile <- left_join(Aircraft_Profile, Gust, by = setNames(ID_Var, ID_Var))
+  }
 
   # Add "This_Pair_Role" Column
   Aircraft_Profile <- mutate(Aircraft_Profile, This_Pair_Role = TPR_Var)
@@ -2079,6 +2263,7 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
   if (!Use_EFDD){Aircraft_Profile <- mutate(Aircraft_Profile, End_Final_Deceleration_Distance = Thousand_Ft_Gate)}
 
   # Update Gust Adjustment Value based on Apply Gusting: Set former to 0 if latter is 0
+  if (Use_Gust_Data){Aircraft_Profile <- mutate(Aircraft_Profile, Gust_Adjustment = Forecast_AGI_Surface_Gust)}
   Aircraft_Profile <- mutate(Aircraft_Profile, Gust_Adjustment = ifelse(Apply_Gusting == 1, Gust_Adjustment, 0))
 
   return(Aircraft_Profile)

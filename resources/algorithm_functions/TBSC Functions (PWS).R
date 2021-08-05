@@ -65,11 +65,11 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat){
+Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Precedences, Levels, LegacyorRecat, SymmetryWake){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat)}
-  if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(Full_Wind_Forecast)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, Levels, LegacyorRecat, SymmetryWake)}
+  if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size = 1852, Precedences, Levels, LegacyorRecat, SymmetryWake)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
     message(paste0("TBS Calculation Type (", TTB_Type, ") Not Supported! No profile returned."))
@@ -99,7 +99,7 @@ Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out
   
   if (TTB_Type == "Original"){TTB_Results <- Calculate_Perfect_TBS_Distance_Original(LPR, TBSC_Profile, Out_Prefix, ID_Var, Time_Var = "TTB_Reference_Time", Speed_Var, Seg_Size)}
   if (TTB_Type == "ORD"){TTB_Results <- Calculate_Perfect_TBS_Distance_TTB_ORD(LPR, TBSC_Profile, ID_Var, Dist_Var, Speed_Var, WE_Var)}
-  if (TTB_Type == "T2F"){TTB_Results <- Calculate_Perfect_TBS_Distance_TTB_T2F(LPR, Full_Wind_Forecast = Other_Data, ID_Var, Dist_Var, Speed_Var, WE_Var)}
+  if (TTB_Type == "T2F"){TTB_Results <- Calculate_Perfect_TBS_Distance_TTB_T2F(LPR, TBSC_Profile, ID_Var, Dist_Var, Speed_Var, WE_Var)}
   
   LPR <- LPR %>%
     select(-TTB_Reference_Time, -Sep_Dist_Buffer) 
@@ -165,13 +165,10 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
   
-  # ID_Var <- LP_Primary_Key
-  # LPR <- INT_Landing_Pairs
-  # Full_Wind_Forecast <- INT_Full_GWCS_Forecast
-  # Build an Aircraft Profile without ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat)
+  # Build an Aircraft Profile with ORD Buffers
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile_Symmetric(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)
@@ -185,41 +182,145 @@ Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, 
   
 }
 
-
-Generate_TTB_T2F_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size){
+Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
   
-  # Get T2F Model Adaptation
-  T2F_Aircraft <- Load_Adaptation_Table(con, "tbl_T2F_Aircraft_Adaptation")
-  T2F_Wake <- Load_Adaptation_Table(con, "tbl_T2F_Wake_Adaptation")
-  T2F_DBS <- Load_Adaptation_Table(con, "tbl_T2F_DBS_Adaptation")
-  T2F_Operator <- NA
+  # Create standard aircraft profile if symmetry not required.
+  if (!Symmetry){
+    return(Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat))
+  }
   
-  # Rename Follower Aircraft Type/Wake Cat Temporarily
-  LPR <- LPR %>%
-    select(!!sym(ID_Var),
-      Wake_Cat = Follower_Recat_Wake_Cat,
-           Aircraft_Type = Follower_Aircraft_Type)
+  # Loop across all levels
+  for (LevelIndex in length(ORD_Levels)){
+    
+    # Make local copy of ORD_Levels to be edited.
+    ORD_Levels_Local <- ORD_Levels
+    
+    # If level is being used
+    if (ORD_Levels[LevelIndex]){
+      
+      # Turn off all other Levels.
+      for (LevelIndexLocal in length(ORD_Levels_Local)){
+        
+        if (LevelIndex != LevelIndexLocal){ORD_Levels_Local[LevelIndexLocal] <- F}
+        
+      }
+      
+      # Get Aircraft Profile for This Level only.
+      AircraftProfileLocal <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels_Local, LegacyorRecat)
+      
+      # Separate into Leader/Follower.
+      AircraftProfileLocalLeader <- filter(AircraftProfileLocal, This_Pair_Role == "L") %>% select(!!sym(ID_Var), VRef_Lead = VRef)
+      AircraftProfileLocalFollower <- filter(AircraftProfileLocal, This_Pair_Role == "F") %>% select(!!sym(ID_Var), VRef_Foll = VRef)
+      AircraftProfileLocalCheck <- full_join(AircraftProfileLocalLeader, AircraftProfileLocalFollower, by = setNames(ID_Var, ID_Var)) %>%
+        rename(ID = !!sym(ID_Var))
+      
+      # Check to see if both Leader/Follower values are populated. If not, remove from Landing Pair from AircraftProfileLocal.
+      AircraftProfileLocalCheck <- filter(AircraftProfileLocalCheck, !is.na(Vref_Lead) & !is.na(Vref_Foll))
+      AircraftProfileLocal <- filter(AircraftProfileLocal, !!sym(ID_Var) %in% AircraftProfileLocalCheck$ID)
+      LPR <- filter(LPR, !!sym(ID_Var) %!in% AircraftProfileLocalCheck$ID)
+      
+      # Add to Final Aircraft Profile Table.
+      if (exists("AircraftProfile")){AircraftProfile <- rbind(AircraftProfile, AircraftProfileLocal)} else {AircraftProfile <- AircraftProfileLocal}
+      
+    }
+    
+  }
   
-  # Join on Adaptation 
-  LPR <- Join_ORD_Adaptation(LPR, ORD_Profile_Selection = "Aircraft_Type", T2F_Operator, T2F_Aircraft, T2F_Wake, T2F_DBS)
+  # Order by ID again.
+  AircraftProfile <- arrange(AircraftProfile, !!sym(ID_Var))
   
-  # Return Variable Names
-  LPR <- LPR %>%
-    select(-Aircraft_Type, -Wake_Cat)
-  
-  # Get Wind Effects
-  Wind_Effects <- select(Full_Wind_Forecast, !!sym(ID_Var) := ID, Forecast_Wind_Effect_IAS)
-  
-  # Join on Wind Effects
-  LPR <- left_join(LPR, Wind_Effects, by = setNames(ID_Var, ID_Var))
-  
-  ### Use shift etc to get Start/End Distances/IAS/GSPD
-  
-  return(LPR)
+  return(AircraftProfile)
   
 }
 
+Generate_T2F_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, Symmetry){
+  
+  if (!Symmetry){
+    LPLead <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Leader")
+    LPFoll <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Follower")
+    Profile <- rbind(LPLead, LPFoll)
+    return(Profile)
+  }
+  
+  # Loop across all levels
+  for (LevelIndex in length(T2F_Levels)){
+    
+    # Make local copy of ORD_Levels to be edited.
+    T2F_Levels_Local <- T2F_Levels
+    
+    # If level is being used
+    if (T2F_Levels[LevelIndex]){
+      
+      # Turn off all other Levels.
+      for (LevelIndexLocal in length(T2F_Levels_Local)){
+        
+        if (LevelIndex != LevelIndexLocal){T2F_Levels_Local[LevelIndexLocal] <- F}
+        
+      }
+      
+      # Get T2F Model Adaptation
+      LPLead <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels_Local, LegacyorRecat, LorF = "Leader") 
+      LPLeadCheck <- LPLead %>% group_by(!!sym(ID_Var)) %>% summarise(Lead_Count = n()) %>% ungroup()
+      LPFoll <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels_Local, LegacyorRecat, LorF = "Follower")
+      LPFollCheck <- LPFoll %>% group_by(!!sym(ID_Var)) %>% summarise(Foll_Count = n()) %>% ungroup()
+      LPCheck <- full_join(LPLeadCheck, LPFollCheck, by = setNames(ID_Var, ID_Var)) %>% rename(ID := !!sym(ID_Var))
+      
+      # Check to see if both Leader/Follower values are populated. If not, remove from Landing Pair from AircraftProfileLocal.
+      LPCheck <- filter(LPCheck, !is.na(Foll_Count) & !is.na(Lead_Count))
+      LPLead <- filter(LPLead, !!sym(ID_Var) %in% LPCheck$ID)
+      LPFoll <- filter(LPLead, !!sym(ID_Var) %in% LPCheck$ID)
+      ProfileLocal <- rbind(LPLead, LPFoll)
+      LPR <- filter(LPR, !!sym(ID_Var) %!in% LPCheck$ID)
+      
+      # Add to Final Aircraft Profile Table.
+      if (exists("Profile")){Profile <- rbind(Profile, ProfileLocal)} else {Profile <- ProfileLocal}
+      
+    }
+    
+  }
+  
+  return(Profile)
+  
+}
 
+Generate_TTB_T2F_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size, Precedences, T2F_Levels, LegacyorRecat, Symmetry){
+  
+  # Get T2F Model Adaptation. Now compatible with Symmetry.
+  Profile <- Generate_T2F_Aircraft_Profile_Symmetric(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, Symmetry)
+  
+  # Build full Profile
+  Profile <- Profile %>% arrange(!!sym(ID_Var), This_Pair_Role, Range_To_Threshold) %>%
+    rename(End_Dist = Range_To_Threshold, End_IAS = Average_IAS)
+  
+  # Lag to get the End IAS of each section
+  Profile <- Profile %>% group_by(!!sym(ID_Var), This_Pair_Role) %>% mutate(Start_Dist = lead(End_Dist), Start_IAS = lead(End_IAS)) %>% ungroup() %>%
+    filter(!is.na(Start_Dist))
+  
+  # Get Wind Effects
+  Wind_Effects <- select(Full_Wind_Forecast, !!sym(ID_Var) := ID, DME_Seg, Forecast_Wind_Effect_IAS)
+  
+  # Get the Joiun Columns
+  ProfileColumns <- c(ID_Var, "End_Dist")
+  WindColumns <- c(ID_Var, "DME_Seg")
+  
+  # Join on Wind Effects
+  Profile <- left_join(Profile, Wind_Effects, by = setNames(WindColumns, ProfileColumns))
+  
+  ### Use shift etc to get Start/End Distances/IAS/GSPD
+  Profile <- Profile %>% mutate(Start_GS = Start_IAS + Forecast_Wind_Effect_IAS, End_GS = End_IAS + Forecast_Wind_Effect_IAS)
+  
+  # TEMP FIX: Add on 1/2 mile to all distances and set base distance as 0.
+  Profile <- Profile %>%
+    mutate(End_Dist = End_Dist + 0.5*Seg_Size, Start_Dist = Start_Dist + 0.5*Seg_Size, End_Dist = ifelse(End_Dist == 0.5*Seg_Size, 0, End_Dist))
+  
+  # Filter for Follower Only.
+  Profile <- filter(Profile, This_Pair_Role == "F")
+  
+  return(Profile)
+  
+}
+
+# Function to get the Service Level of the constraint. If IA is in DBS mode all constraints become DBS.
 Get_Constraint_Service_Level <- function(Constraint_Type, IA_Service_Level){
   
   if (IA_Service_Level == "DBS"){return("DBS")}
@@ -231,7 +332,7 @@ Get_Constraint_Service_Level <- function(Constraint_Type, IA_Service_Level){
 Get_Minimum_Constraint_Distances <- function(LPR, Constraint_Type, Delivery, Runway_Rule, Runway_Pair_Rule, Wake_Sep_Min){
   
   # TEMP: Set Minimum to 2.5
-  LPR <- LPR %>% mutate(Minimum_Constraint_Distance = (2)*1852)
+  LPR <- LPR %>% mutate(Minimum_Constraint_Distance = (0)*1852)
   
   return(LPR)
 }
