@@ -45,7 +45,7 @@ library(getPass)
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
-# version <- "2021-05-04 V1.0 (AH)"
+version <- "2021-07-16 V1.0 (AH)"
 
 use_same_input_version <- T
 
@@ -56,7 +56,7 @@ if (use_same_input_version == T) {
 }
 
 #Set server  with IP then tied to this
-Server <- "Goose" #or Maverick
+Server <- "Maverick" #or Maverick
 
 if (Server == "Maverick") {ip <- "192.168.1.23"}
 if (Server == "Goose") {ip <- "192.168.1.39"}
@@ -108,7 +108,7 @@ ref_data <- GetSaveDirectory(project, "Sample_Weighting_Reference_Data", "Inputs
 out_data <- Base_Dir
 
 #Set the database name for SQL connection
-database <- "NavCan_UTMA_Validation_DB2"
+database <- "EGLL_PWS"
 
 con <- Get_DBI_Connection(IP = ip, Database = database)
 
@@ -236,8 +236,9 @@ fp_data <- mutate(fp_data, Date = dmy(FP_Date))
 # MC Add 25/01
 # Stage 0: Filter between a prescribed set of dates
 
-fp_data <- filter(fp_data, Date %within% interval(date_min, date_max))
-
+if (database == "NavCan_UTMA_Validation_DB2") {
+  fp_data <- filter(fp_data, Date %within% interval(date_min, date_max))
+}
 # Stage 1: Use Flight plan information only from those who have landed.
 # - Filters for those that have an "original runway" (a track point close to 4DME/1DME of any runway)
 # - Uses "Landing_Runway" as sometimes these runways differ due to late circling approaches

@@ -233,7 +233,7 @@ for (i in missing_lss_type$Follower_Aircraft_Type) {
 
 }
 
-landing_adjustments <- modeldata %>% select(Follower_Flight_Plan_ID, Follower_Aircraft_Type, Surface_Headwind)
+landing_adjustments <- modeldata %>% select(Follower_Flight_Plan_ID, Follower_Aircraft_Type, Surface_Headwind, Gust)
 landing_adjustments <- left_join(landing_adjustments, lss_types, by = c("Follower_Aircraft_Type" = "aircraft_type"))
 
 landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment = NA)
@@ -246,7 +246,7 @@ landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment_boe
 #
 # }
 
-landing_adjustments <- calc_landing_adjustment_vect(landing_adjustments)
+landing_adjustments <- calc_landing_adjustment_vect(landing_adjustments, ifelse(Operation == "PWS", T, F))
 
 modeldata <- select(modeldata, c(-landing_adjustment, -landing_adjustment_boeing, -lss_type))
 
@@ -1853,7 +1853,7 @@ if (Operation == 'PWS') {
   # fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_", Airport_Code, ".csv")))
   # fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", Airport_Code, ".csv")))
   # fwrite(dbs_out, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", Airport_Code, ".csv")))
-  
+
   fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_","LL", ".csv")))
   fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", "LL", ".csv")))
   fwrite(dbs_out, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", "LL", ".csv")))
