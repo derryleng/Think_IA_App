@@ -112,7 +112,9 @@ if (!dir.exists(out_plot4)) dir.create(out_plot4)
 # Import Data -------------------------------------------------------------
 # ----------------------------------------------------------------------- #
 
-modeldata <- fread(file.path(ord_dir, speed_profile_folder, "Approach_Speed_Profiles.csv"))
+modeldata <- fread(file.path(ord_dir, speed_profile_folder, "Approach_Speed_Profiles.csv")) %>%
+             mutate(Gust = ifelse(is.na(Gust), 0, Gust))
+
 modeldata$a1 <- as.numeric(modeldata$a1)
 modeldata$a2 <- as.numeric(modeldata$a2)
 modeldata$b <- as.numeric(modeldata$b)
@@ -234,7 +236,7 @@ for (i in missing_lss_type$Follower_Aircraft_Type) {
 
 }
 
-landing_adjustments <- modeldata %>% dplyr::select(Follower_Flight_Plan_ID, Follower_Aircraft_Type, Surface_Headwind)
+landing_adjustments <- modeldata %>% dplyr::select(Follower_Flight_Plan_ID, Follower_Aircraft_Type, Surface_Headwind, Gust)
 landing_adjustments <- left_join(landing_adjustments, lss_types, by = c("Follower_Aircraft_Type" = "aircraft_type"))
 
 landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment = NA)
