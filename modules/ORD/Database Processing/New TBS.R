@@ -161,6 +161,9 @@ UseEFDDNew <- T
 # Decide the method of calculating TBS Distances. ("Original" | "ORD" | "T2F")
 TTBTypeNew <- "T2F"
 
+# Use Real Gusting Data.
+UseGustingDataNew <- T
+
 # Fix the Delivery Point for New Operations. Currently only supports one per operation, not one per constraint.
 New_Delivery_Point <- 0 * 1852
 
@@ -219,6 +222,9 @@ UseEFDDOld <- T
 
 # Decide the method of calculating TBS Distances. ("Original" | "ORD" | "T2F")
 TTBTypeOld <- "ORD"
+
+# Use Real Gusting Data.
+UseGustingDataOld <- F
 
 # Fix the Delivery Point for New Operations. Currently only supports one per operation, not one per constraint.
 Old_Delivery_Point <- 0 * 1852
@@ -542,6 +548,7 @@ for (LegacyorRecat in c("Recat", "Legacy")){
     MaxUnderRep <- MaxUnderRepOld
     UnderSeps <- UnderSepsOld
     SymmetryWake <- SymmetryWakeOld
+    Use_Gust_Data <- UseGustingDataOld
   } else {
       Delivery_Column <- "New_Delivery"
       Use_EFDD <- UseEFDDNew
@@ -561,13 +568,14 @@ for (LegacyorRecat in c("Recat", "Legacy")){
       MaxUnderRep <- MaxUnderRepNew
       UnderSeps <- UnderSepsNew
       SymmetryWake <- SymmetryWakeNew
+      Use_Gust_Data <- UseGustingDataNew
     }
   
   Dist_Values <- c()
   
   # Setup the Profiles for Wake and ROT Constraints.
-  TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat, SymmetryWake)
-  TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat, Symmetry = F)
+  TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_Gust_Data, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat, SymmetryWake)
+  TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, USe_Gust_Data, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat, Symmetry = F)
   
   LP <- mutate(LP, Delivery_Distance = !!sym(Delivery_Column))
   

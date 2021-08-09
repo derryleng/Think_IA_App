@@ -43,7 +43,7 @@ Generate_Full_ORD_GWCS_Forecast <- function(con, LP_Primary_Key, Forecast_Seg, L
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message("Generating GWCS Forecast Segment Data for ORD...")
+  #message("Generating GWCS Forecast Segment Data for ORD...")
 
   # Load Adaptation Tables
   GWCS_Adaptation <- Load_Adaptation_Table(con, "tbl_Mode_S_Wind_Adaptation")
@@ -76,7 +76,7 @@ Generate_Full_ORD_GWCS_Forecast <- function(con, LP_Primary_Key, Forecast_Seg, L
 
   # How long did it take?
   Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Generated GWCS Segment Data for ORD in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  #message(paste0("Generated GWCS Segment Data for ORD in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
 
   return(ORD_Segment_Forecast)
 
@@ -99,7 +99,7 @@ Generate_ORD_IAS_Profile <- function(con, LP_Primary_Key, Aircraft_Profile, Land
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message("Generating ORD IAS Profile Data...")
+  #message("Generating ORD IAS Profile Data...")
 
   # For the purposes of IAS Profile, Surface Headwind must be min 10kts.
   Aircraft_Profile <- mutate(Aircraft_Profile, Surface_Headwind = ifelse(Surface_Headwind < 10 * kts_To_mps, 10 * kts_To_mps, Surface_Headwind))
@@ -141,7 +141,7 @@ Generate_ORD_IAS_Profile <- function(con, LP_Primary_Key, Aircraft_Profile, Land
 
   # How long did it take?
   Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Generated ORD IAS Profile Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  #message(paste0("Generated ORD IAS Profile Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
 
   return(IAS_Profile)
 
@@ -328,7 +328,7 @@ Generate_ORD_GSPD_Profile <- function(con, LP_Primary_Key, IAS_Profile, ORD_Segm
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message("Generating ORD GSPD Profile Data...")
+  #message("Generating ORD GSPD Profile Data...")
 
   # Make the start and end dist from DME_Seg + Seg_Size
   ORD_Segment_Forecast <- rename(ORD_Segment_Forecast, End_Dist_Wind = DME_Seg) %>%
@@ -348,7 +348,7 @@ Generate_ORD_GSPD_Profile <- function(con, LP_Primary_Key, IAS_Profile, ORD_Segm
 
   # How long did it take?
   Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
-  message(paste0("Generated ORD GSPD Profile Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+ # message(paste0("Generated ORD GSPD Profile Data in ", seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
 
   return(ORD_GS_Profile)
 

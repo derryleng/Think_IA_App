@@ -65,10 +65,10 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Precedences, Levels, LegacyorRecat, SymmetryWake){
+Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_Gust_Data, Precedences, Levels, LegacyorRecat, SymmetryWake){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, Levels, LegacyorRecat, SymmetryWake)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_Gust_Data, Precedences, Levels, LegacyorRecat, SymmetryWake)}
   if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size = 1852, Precedences, Levels, LegacyorRecat, SymmetryWake)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
@@ -82,11 +82,6 @@ Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Typ
 # Time Buffers are added at this stage 
 # Currently only supports TBS Wake/ROT
 Calculate_Perfect_TBS_Distance <- function(con, LPR, TBSC_Profile, TTB_Type, Out_Prefix, Constraint_Type, ID_Var, Time_Var, Speed_Var, Seg_Size){
-  
-  # LPR <- Landing_Pair
-  # Out_Prefix <- "Test"
-  # ID_Var <- "Landing_Pair_ID"
-  # Time_Var <- Get_Reference_Variable_Name("Wake", "Time")
   
   Dist_Var <- paste0(Out_Prefix, "_Distance")
   WE_Var <- paste0(Out_Prefix, "_Wind_Effect")
@@ -165,10 +160,10 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
   
   # Build an Aircraft Profile with ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile_Symmetric(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry)
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile_Symmetric(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat, Symmetry)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)
@@ -182,31 +177,43 @@ Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, 
   
 }
 
-Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
+Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
+
+  # ID_Var <- LP_Primary_Key
+  # LPR <- LP
+  # ORDBuffers <- T
+  # Precedences <- Full_Level_Precedence
+  # ORD_Levels <- Wake_Levels_Used
+  # Symmetry <- T
   
   # Create standard aircraft profile if symmetry not required.
   if (!Symmetry){
-    return(Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels, LegacyorRecat))
+    #message("Symmetry not required!")
+    return(Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat))
   }
   
+  if (exists("AircraftProfile")){rm(AircraftProfile)}
+  
   # Loop across all levels
-  for (LevelIndex in length(ORD_Levels)){
+  for (LevelIndex in 1:length(ORD_Levels)){
     
-    # Make local copy of ORD_Levels to be edited.
-    ORD_Levels_Local <- ORD_Levels
+    #LevelIndex <- 3
     
     # If level is being used
     if (ORD_Levels[LevelIndex]){
+
+      # Make local copy of ORD_Levels to be edited.
+      ORD_Levels_Local <- ORD_Levels
       
       # Turn off all other Levels.
-      for (LevelIndexLocal in length(ORD_Levels_Local)){
+      for (LevelIndexLocal in 1:length(ORD_Levels_Local)){
         
         if (LevelIndex != LevelIndexLocal){ORD_Levels_Local[LevelIndexLocal] <- F}
         
       }
       
       # Get Aircraft Profile for This Level only.
-      AircraftProfileLocal <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Precedences, ORD_Levels_Local, LegacyorRecat)
+      AircraftProfileLocal <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels_Local, LegacyorRecat)
       
       # Separate into Leader/Follower.
       AircraftProfileLocalLeader <- filter(AircraftProfileLocal, This_Pair_Role == "L") %>% select(!!sym(ID_Var), VRef_Lead = VRef)
@@ -215,7 +222,7 @@ Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers
         rename(ID = !!sym(ID_Var))
       
       # Check to see if both Leader/Follower values are populated. If not, remove from Landing Pair from AircraftProfileLocal.
-      AircraftProfileLocalCheck <- filter(AircraftProfileLocalCheck, !is.na(Vref_Lead) & !is.na(Vref_Foll))
+      AircraftProfileLocalCheck <- filter(AircraftProfileLocalCheck, !is.na(VRef_Lead) & !is.na(VRef_Foll))
       AircraftProfileLocal <- filter(AircraftProfileLocal, !!sym(ID_Var) %in% AircraftProfileLocalCheck$ID)
       LPR <- filter(LPR, !!sym(ID_Var) %!in% AircraftProfileLocalCheck$ID)
       
@@ -235,6 +242,7 @@ Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers
 
 Generate_T2F_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, Symmetry){
   
+  # If symmetry not required, determine T2F Profile as normal
   if (!Symmetry){
     LPLead <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Leader")
     LPFoll <- Get_T2F_Adaptation_In_Precedence(con, ID_Var, LPR, Precedences, T2F_Levels, LegacyorRecat, LorF = "Follower")
@@ -243,7 +251,7 @@ Generate_T2F_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, Precedence
   }
   
   # Loop across all levels
-  for (LevelIndex in length(T2F_Levels)){
+  for (LevelIndex in 1:length(T2F_Levels)){
     
     # Make local copy of ORD_Levels to be edited.
     T2F_Levels_Local <- T2F_Levels
@@ -252,7 +260,7 @@ Generate_T2F_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, Precedence
     if (T2F_Levels[LevelIndex]){
       
       # Turn off all other Levels.
-      for (LevelIndexLocal in length(T2F_Levels_Local)){
+      for (LevelIndexLocal in 1:length(T2F_Levels_Local)){
         
         if (LevelIndex != LevelIndexLocal){T2F_Levels_Local[LevelIndexLocal] <- F}
         
@@ -382,7 +390,6 @@ Get_Constraint_Prefix <- function(Constraint_Type, Constraint_Delivery, Service_
   
   Legal <- Get_Legal_Spacing_Name(Constraint_Type)
   Constraint_Delivery <- ifelse(Constraint_Delivery == "THRESHOLD", "Threshold", "FAF")
-  #return(paste0(Constraint_Delivery, "_", Service_Level, "_", Constraint_Type, "_", Legal))
   return(paste0(LegacyorRecat, "_", Constraint_Delivery, "_", Constraint_Type, "_", Legal))
   
 }
@@ -459,12 +466,12 @@ Generate_Constraint_Spacing_All <- function(con, LPR, TBSC_Profile,
                                             Time_Var, Speed_Var,
                                             Seg_Size, LegacyorRecat){
   
-  LPR_DBS <- filter(LPR, TBS_Service_Level == "DBS")
-  LPR_DBS <- Generate_Constraint_Spacing(con, LPR_DBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "DBS", ID_Var, Time_Var, Speed_Var, Seg_Size, LegacyorRecat)
+  # LPR_DBS <- filter(LPR, TBS_Service_Level == "DBS")
+  # LPR_DBS <- Generate_Constraint_Spacing(con, LPR_DBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "DBS", ID_Var, Time_Var, Speed_Var, Seg_Size, LegacyorRecat)
   LPR_TBS <- filter(LPR, TBS_Service_Level == "TBS")
   LPR_TBS <- Generate_Constraint_Spacing(con, LPR_TBS, TBSC_Profile, TTB_Type, Constraint_Type, Constraint_Delivery, Evaluated_Delivery, IA_Service_Level = "TBS", ID_Var, Time_Var, Speed_Var, Seg_Size, LegacyorRecat)
   
-  LPR <- rbind(LPR_DBS, LPR_TBS) %>%
+  LPR <- LPR_TBS %>%
     arrange(!!sym(ID_Var))
   
   return(LPR)

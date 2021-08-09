@@ -95,7 +95,7 @@ con <- Get_DBI_Connection(IP, Database)
 # ----------------------------------------------------------------------------------------------------------------------------------------- #
 
 # Choose mode of analysis
-Mode <- c("EFDD", "TTB", "Profile Analysis")[3]
+Mode <- c("EFDD", "TTB", "Profile Analysis")[2]
 
 # Function for EFDD Plot.
 Generate_EFDD_Plot <- function(Data, Group){
@@ -210,7 +210,7 @@ if (Mode == "TTB"){
   
   # Optional: filter out the 2NM minimum distances. 
   PM_TTBFilt <- PM_TTB
-  PM_TTBFilt <- filter(PM_TTBFilt, Reference_Recat_Wake_Separation_Distance <= 1852*6 & 
+  PM_TTBFilt <- filter(PM_TTBFilt,  
                          !is.na(Surface_Headwind_Group) & Surface_Headwind_Group != "(30, Inf]")
   
   # Summary Tables
@@ -315,47 +315,51 @@ if (Mode == "TTB"){
   MinComp <- 1
   Plots <- 6
   
-  for (minhw in HWs){
-    
-    Test1 <- mutate(PM_TTBFilt, Compare_Abs = abs(ORD_Diff - T2F_Diff))
-    
-    Test1 <- filter(PM_TTBFilt, abs(ORD_Diff) < 0.5 & abs(T2F_Diff) > 2 & Reference_Recat_Wake_Separation_Distance == dist) %>% filter(Observed_AGI_Surface_Headwind >= minhw) %>%
-      arrange(Observed_AGI_Surface_Headwind)
-    
-    #Test1 <- filter(Test1, Compare_Abs > MinComp, Reference_Recat_Wake_Separation_Distance == dist & Observed_AGI_Surface_Headwind <= minhw) %>% arrange(Compare_Abs)
-    
-    for (i in 1:min(nrow(Test1), Plots)){
-      message("Plotting Graph ", i, " of ", min(nrow(Test1), Plots))
-      Test <- Test1[i,]
-      TestAC <- Test$Follower_Aircraft_Type
-      TestLPID <- Test$Landing_Pair_ID
-      TestSW <- round(Test$Observed_AGI_Surface_Headwind, 0)
-      TestFPID <- as.character(dbGetQuery(con, paste0("SELECT Follower_Flight_Plan_ID FROM tbl_Landing_Pair WHERE Landing_Pair_ID = ", TestLPID)))
-      TestT2F <- dbGetQuery(con, paste0("SELECT * FROM tbl_T2F_Aircraft_Adaptation WHERE Aircraft_Type = '", TestAC, "'")) %>% mutate(Range_To_Threshold = Range_To_Threshold / 1852, Average_IAS = Average_IAS * 3600/1852)
-      TestGS <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile_Legacy WHERE This_Pair_Role = 'F' AND Landing_Pair_ID = ", TestLPID)) %>% filter(Section_Number <= 9) %>% mutate(End_GS = End_GS * 3600/1852, End_IAS = End_IAS * 3600/1852, End_Dist = End_Dist / 1852)
-      TestRadar <- dbGetQuery(con, paste0("SELECT Mode_S_GSPD, Range_To_Threshold FROM tbl_Radar_Track_Point RTP INNER JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID WHERE Flight_Plan_ID = ", TestFPID)) %>% 
-        filter(Range_To_Threshold <= 7*1852) %>% filter(Mode_S_GSPD > 0) %>% mutate(Range_To_Threshold = Range_To_Threshold / 1852, Mode_S_GSPD = Mode_S_GSPD*3600/1852)
-      
-      ErrorT2F <- round(as.numeric(Test$T2F_Diff), 1)
-      ErrorORD <- round(as.numeric(Test$ORD_Diff), 1)
-      Wind_Effects <- TestGS %>% mutate(Forecast_Wind_Effect_IAS = End_GS - End_IAS) %>% select(Landing_Pair_ID, End_Dist, Forecast_Wind_Effect_IAS) 
-      
-      TestT2FGSPD <- data.frame(Landing_Pair_ID = TestLPID, ACT = TestAC) %>% left_join(TestT2F, by = c("ACT" = "Aircraft_Type")) %>% left_join(Wind_Effects, by = c("Landing_Pair_ID", "Range_To_Threshold"="End_Dist")) %>%
-        mutate(GSPD = (Average_IAS + Forecast_Wind_Effect_IAS)) %>% mutate(Range_To_Threshold = Range_To_Threshold + 0.5) %>% mutate(Range_To_Threshold = ifelse(Range_To_Threshold == 0.5, 0, Range_To_Threshold))
-      
-      a1 <- ggplot() + geom_line(TestGS, mapping = aes(x = End_Dist, y = End_GS)) + geom_point(TestRadar, mapping = aes(x = Range_To_Threshold, y = Mode_S_GSPD)) + 
-        xlim(0, dist + 0.5) + geom_vline(xintercept = dist) + labs(x = "Range To Threshold (NM)", y = "Mode S GSPD (kts)", title = paste0("Landing Pair ", TestLPID, ", Follower Aircraft Type ", TestAC, ": ORD TTB"), subtitle = paste0("Surface Headwind: ", TestSW, "kts, Time Delta = ", ErrorORD, "s"))
-      a2 <- ggplot() + geom_line(TestT2FGSPD, mapping = aes(x = Range_To_Threshold, y = GSPD)) + geom_point(TestRadar, mapping = aes(x = Range_To_Threshold, y = Mode_S_GSPD)) +
-        xlim(0, dist + 0.5) + geom_vline(xintercept = dist) + labs(x = "Range To Threshold (NM)", y = "Mode S GSPD (kts)", title = paste0("Landing Pair ", TestLPID, ", Follower Aircraft Type ", TestAC, ": AC Type TTB"), subtitle = paste0("Surface Headwind: ", TestSW, "kts, Time Delta = ", ErrorT2F, "s"))
-      
-      png(file.path("Example Compare Radar", paste0(TestLPID, " ", minhw, ".png")))
-      grid.arrange(a1, a2)
-      dev.off()
-      
-    }
-    
-  }
+  # for (minhw in HWs){
+  #   
+  #   Test1 <- mutate(PM_TTBFilt, Compare_Abs = abs(ORD_Diff - T2F_Diff))
+  #   
+  #   Test1 <- filter(PM_TTBFilt, abs(ORD_Diff) < 0.5 & abs(T2F_Diff) > 2 & Reference_Recat_Wake_Separation_Distance == dist) %>% filter(Observed_AGI_Surface_Headwind >= minhw) %>%
+  #     arrange(Observed_AGI_Surface_Headwind)
+  #   
+  #   #Test1 <- filter(Test1, Compare_Abs > MinComp, Reference_Recat_Wake_Separation_Distance == dist & Observed_AGI_Surface_Headwind <= minhw) %>% arrange(Compare_Abs)
+  #   
+  #   for (i in 1:min(nrow(Test1), Plots)){
+  #     message("Plotting Graph ", i, " of ", min(nrow(Test1), Plots))
+  #     Test <- Test1[i,]
+  #     TestAC <- Test$Follower_Aircraft_Type
+  #     TestLPID <- Test$Landing_Pair_ID
+  #     TestSW <- round(Test$Observed_AGI_Surface_Headwind, 0)
+  #     TestFPID <- as.character(dbGetQuery(con, paste0("SELECT Follower_Flight_Plan_ID FROM tbl_Landing_Pair WHERE Landing_Pair_ID = ", TestLPID)))
+  #     TestT2F <- dbGetQuery(con, paste0("SELECT * FROM tbl_T2F_Aircraft_Adaptation WHERE Aircraft_Type = '", TestAC, "'")) %>% mutate(Range_To_Threshold = Range_To_Threshold / 1852, Average_IAS = Average_IAS * 3600/1852)
+  #     TestGS <- dbGetQuery(con, paste0("SELECT * FROM tbl_ORD_GS_Profile_Legacy WHERE This_Pair_Role = 'F' AND Landing_Pair_ID = ", TestLPID)) %>% filter(Section_Number <= 9) %>% mutate(End_GS = End_GS * 3600/1852, End_IAS = End_IAS * 3600/1852, End_Dist = End_Dist / 1852)
+  #     TestRadar <- dbGetQuery(con, paste0("SELECT Mode_S_GSPD, Range_To_Threshold FROM tbl_Radar_Track_Point RTP INNER JOIN tbl_Radar_Track_Point_Derived RTPD ON RTP.Radar_Track_Point_ID = RTPD.Radar_Track_Point_ID WHERE Flight_Plan_ID = ", TestFPID)) %>% 
+  #       filter(Range_To_Threshold <= 7*1852) %>% filter(Mode_S_GSPD > 0) %>% mutate(Range_To_Threshold = Range_To_Threshold / 1852, Mode_S_GSPD = Mode_S_GSPD*3600/1852)
+  #     
+  #     ErrorT2F <- round(as.numeric(Test$T2F_Diff), 1)
+  #     ErrorORD <- round(as.numeric(Test$ORD_Diff), 1)
+  #     Wind_Effects <- TestGS %>% mutate(Forecast_Wind_Effect_IAS = End_GS - End_IAS) %>% select(Landing_Pair_ID, End_Dist, Forecast_Wind_Effect_IAS) 
+  #     
+  #     TestT2FGSPD <- data.frame(Landing_Pair_ID = TestLPID, ACT = TestAC) %>% left_join(TestT2F, by = c("ACT" = "Aircraft_Type")) %>% left_join(Wind_Effects, by = c("Landing_Pair_ID", "Range_To_Threshold"="End_Dist")) %>%
+  #       mutate(GSPD = (Average_IAS + Forecast_Wind_Effect_IAS)) %>% mutate(Range_To_Threshold = Range_To_Threshold + 0.5) %>% mutate(Range_To_Threshold = ifelse(Range_To_Threshold == 0.5, 0, Range_To_Threshold))
+  #     
+  #     a1 <- ggplot() + geom_line(TestGS, mapping = aes(x = End_Dist, y = End_GS)) + geom_point(TestRadar, mapping = aes(x = Range_To_Threshold, y = Mode_S_GSPD)) + 
+  #       xlim(0, dist + 0.5) + geom_vline(xintercept = dist) + labs(x = "Range To Threshold (NM)", y = "Mode S GSPD (kts)", title = paste0("Landing Pair ", TestLPID, ", Follower Aircraft Type ", TestAC, ": ORD TTB"), subtitle = paste0("Surface Headwind: ", TestSW, "kts, Time Delta = ", ErrorORD, "s"))
+  #     a2 <- ggplot() + geom_line(TestT2FGSPD, mapping = aes(x = Range_To_Threshold, y = GSPD)) + geom_point(TestRadar, mapping = aes(x = Range_To_Threshold, y = Mode_S_GSPD)) +
+  #       xlim(0, dist + 0.5) + geom_vline(xintercept = dist) + labs(x = "Range To Threshold (NM)", y = "Mode S GSPD (kts)", title = paste0("Landing Pair ", TestLPID, ", Follower Aircraft Type ", TestAC, ": AC Type TTB"), subtitle = paste0("Surface Headwind: ", TestSW, "kts, Time Delta = ", ErrorT2F, "s"))
+  #     
+  #     png(file.path("Example Compare Radar", paste0(TestLPID, " ", minhw, ".png")))
+  #     grid.arrange(a1, a2)
+  #     dev.off()
+  #     
+  #   }
+  #   
+  # }
+  # 
   
+PM_TTBSum <- PM_TTBFilt %>% mutate(Large_New = ifelse(abs(T2F_Diff) > 10, 1, 0), Large_Old = ifelse(abs(ORD_Diff) > 10, 1, 0))
+t1 <- PM_TTBSum %>% group_by(Surface_Headwind_Group) %>% summarise(Count = n(), Large_Errors_New = sum(Large_New, na.rm=T), Large_Errors_Old = sum(Large_Old, na.rm=T))
+t0 <- PM_TTBSum %>% summarise(Count = n(), Large_Errors_New = sum(Large_New, na.rm=T), Large_Errors_Old = sum(Large_Old, na.rm=T))
 }
 
 if (Mode == "Profile Analysis"){
@@ -395,6 +399,7 @@ if (Mode == "Profile Analysis"){
   
   list <- c()
   ACTs <- unique(stats$Follower_Aircraft_Type) 
+  
   for (j in 1:length(ACTs)){
     ACT <- ACTs[j]
     Use_Gust <- T
