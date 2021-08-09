@@ -627,12 +627,14 @@ xml_airspace <- function(OutputPath, variant_tag, Use_Variants, dbi_con) {
     tbl_Path_Leg <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Path_Leg", variant_tag)))
     tbl_Volume <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Volume", variant_tag)))
     tbl_Polygon <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Polygon", variant_tag)))
+    tbl_Path_Leg_Transition <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Path_Leg_Transition", variant_tag)))
   } else {
     tbl_Path_Leg <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Path_Leg")))
     tbl_Volume <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Volume")))
     tbl_Polygon <- as.data.table(dbGetQuery(dbi_con, paste0("SELECT * FROM tbl_Polygon")))
+    tbl_Path_Leg_Transition <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Path_Leg_Transition"))
   }
-  tbl_Path_Leg_Transition <- as.data.table(dbGetQuery(dbi_con, "SELECT * FROM tbl_Path_Leg_Transition"))
+  
 
   area_of_interest <- data.table(
     Min_X = mean(tbl_Runway$Threshold_X_Pos) - tbl_Adaptation_Data$Load_X_Range[1],

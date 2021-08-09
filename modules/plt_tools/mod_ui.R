@@ -18,13 +18,38 @@ plt_tools_ui <- function(id) {
     ),
     
     box(
-      title = "PLT Analysis Tool",
+      title = "PLT Analysis Run",
+      status = "primary",
+      solidHeader = T,
+      width = NULL,
+      collapsible = T,
+      collapsed = T,
+      checkboxGroupInput(
+        ns("plt_analysis_variants"), label = "Variant Selection", 
+        choices = list("Variant 1" = 1, "Variant 2" = 2, "Variant 3" = 3),
+        selected = 1
+      ),
+      actionButton(ns("plt_analysis_run"), "Run PLT Analysis")
+    ),
+    
+    box(
+      title = "PLT Summary Stats",
+      status = "primary",
+      solidHeader = T,
+      width = NULL,
+      collapsible = T,
+      collapsed = T,
+      DT::dataTableOutput(outputId = ns("plt_summary_table"))
+    ),
+    
+    box(
+      title = "PLT Detailed Analysis",
       status = "primary",
       solidHeader = T,
       width = NULL,
       collapsible = T,
       collapsed = F,
-      uiOutput(ns("analysis_view"))
+      uiOutput(ns("analysis_view_1"))
     )
     
   )

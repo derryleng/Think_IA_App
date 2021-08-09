@@ -955,6 +955,10 @@ pickerInput_customised <- function(
   )
 }
 
+pickerInput_customised2 <- function(...) {
+  pickerInput_customised(..., width = "100%")
+}
+
 # datatable function with customised styling
 datatable_customised_1 <- function(
   data,
@@ -1053,7 +1057,7 @@ XML_Tag_Open <- function(tag_name, tag_attr = NA) {
         paste0(names(tag_attr)[i], "=\"", tag_attr[i], "\"")
       }
     })
-    return(paste0("<", tag_name, " ", paste(attrs, collapse = ", "), ">"))
+    return(paste0("<", tag_name, " ", paste(attrs, collapse = " "), ">"))
   }
 }
 

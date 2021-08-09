@@ -26,8 +26,7 @@ library(getPass)
 
 #Use a version number derived from date or define manually
 version <- paste0(Sys.Date(), " ","V1.0 (AH)")
-#version <- "2021-07-16 V1.0 (AH)"
-version <- "2021-07-21 V1.0 (GC)"
+# version <- "2021-07-16 V1.0 (AH)"
 
 use_same_input_version <- F
 
@@ -143,7 +142,8 @@ speed_type <- "Mode_S_IAS"
 
 # Airport altitude (ft asl) --------------------------------------------- #
 # NB: Used when speed_type != "Mode_S_IAS"
-airport_alt <- 550
+airport_alt <- 25
+# airport_alt <- 500
 
 # Set speed filtering parameters ---------------------------------------- #
 # NB: Used when speed_type == "Calculated_Speed"
@@ -252,7 +252,7 @@ Initial_Proc_Speed_Foll_Add <- 0
 #   Initial_Deceleration_Lead = 10,
 #   Initial_Deceleration_Follower = 10
 # )
-# 
+#
 # wake_adaptation_input_table <- data.table(
 #   Wake_Cat = "ALL",
 #   Compression_Commencement_Threshold = 10,
@@ -275,8 +275,8 @@ Initial_Proc_Speed_Foll_Add <- 0
 #   Initial_Deceleration_Lead = 10,
 #   Initial_Deceleration_Follower = 10
 # )
-# 
-# 
+#
+#
 # dbs_adaptation_input_table <- data.table(
 #   DBS_Distance = "ALL",
 #   Compression_Commencement_Threshold = 10,
@@ -381,7 +381,7 @@ use_weighted_average <- T
 # Parameter to use additional time base Vref/decel adjustmenet (To account for
 # 1000ft gate limitation)
 
-use_Vref_Adjust <- T 
+use_Vref_Adjust <- F
 
 # Run Parameter Summary ------------------------------------------------- #
 # source("Parameter Summary.R", local = T)

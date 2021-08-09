@@ -123,13 +123,21 @@ for (day in unique(flight_id$FP_Date) %>% .[start_day_num:length(.)]) {
     SELECT * FROM vw_ORD_Calibration_View WHERE FP_Date = '%s'
   ", as.character(day))) %>% as.data.table()
 
+  # Get Gusting data for the days
+  gust_day <- format(dmy(day), "%d/%m/%Y") ######## Remove this after reloading data with correct formats
+  gust <- dbGetQuery(con, sprintf("
+    SELECT Gust, Gust_Time, Runway FROM tbl_Gusting WHERE Gust_Date = '%s'
+  ", as.character(gust_day))) %>% as.data.table()
+
+  day_tracks <- rolling_join(day_tracks, gust, c("Landing_Runway", "Prediction_Time"), c("Runway", "Gust_Time"), +Inf)
+
   # Generate table of model outputs
   output_models <- list()
 
   for (i in 1:length(day_flight_id)) {
 
     # Get raw tracks for flight i
-    raw_tracks <- day_tracks[Follower_Flight_Plan_ID == day_flight_id[i]]
+    raw_tracks <- filter(day_tracks, Follower_Flight_Plan_ID == day_flight_id[i])
 
     # Get LSS type of flight
     lss <- lss_types[aircraft_type == unique(raw_tracks$Follower_Aircraft_Type)]$landing_stabilisation_speed_type %>% ifelse(length(.) > 0, ., 0)
@@ -138,7 +146,7 @@ for (day in unique(flight_id$FP_Date) %>% .[start_day_num:length(.)]) {
     surface_headwind <- suppressWarnings(min(raw_tracks$Follower_Threshold_Surface_Headwind, na.rm = T)) %>% ifelse(is.infinite(.), 0, .)
 
     # Filter track RTT for speed profile modelling
-    tracks <- raw_tracks[Follower_Range_To_Threshold >= 0 & Follower_Range_To_Threshold <= 6 & Track_Speed > 0][order(Track_Time)]
+    tracks <- filter(raw_tracks, Follower_Range_To_Threshold >= 0 & Follower_Range_To_Threshold <= 6 & Track_Speed > 0) %>% arrange(Track_Time)
 
     if (nrow(tracks) > 1) {
 
@@ -285,7 +293,8 @@ for (day in unique(flight_id$FP_Date) %>% .[start_day_num:length(.)]) {
       landing_adjustment_boeing = calc_landing_adjustment(0, surface_headwind),
       d = wake_i$final_deceleration_follower,
       model_type = model_type,
-      initial_deceleration_foll = wake_i$initial_deceleration_follower
+      initial_deceleration_foll = wake_i$initial_deceleration_follower,
+      Gust = unique(tracks$Gust)
     )
 
     output_models[[length(output_models)+1]] <- model_i

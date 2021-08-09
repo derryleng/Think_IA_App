@@ -247,7 +247,7 @@ landing_adjustments <- landing_adjustments %>% add_column(landing_adjustment_boe
 #
 # }
 
-landing_adjustments <- calc_landing_adjustment_vect(landing_adjustments)
+landing_adjustments <- calc_landing_adjustment_vect(landing_adjustments, ifelse(Operation == "PWS", T, F))
 
 modeldata <- dplyr::select(modeldata, c(-landing_adjustment, -landing_adjustment_boeing, -lss_type))
 
@@ -1574,7 +1574,7 @@ if (Operation != "PWS") {
 # ----------------------------------------------------------------------- #
 
 if (Operation == 'PWS') {
-  
+
   modeldata_filtered_a1 <- as.data.frame(modeldata_filtered_a1)
 
   modeldata_filtered_a1 <- modeldata_filtered_a1 %>% mutate(per_flight_vref = a1 - ifelse(is.na(landing_adjustment), 0, landing_adjustment)) %>%
@@ -1679,7 +1679,7 @@ if (Operation == 'PWS') {
   # fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_", Airport_Code, ".csv")))
   # fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", Airport_Code, ".csv")))
   # fwrite(dbs_out, file.path(out_dir, paste0("Populate_tbl_ORD_DBS_Adaptation_", Airport_Code, ".csv")))
-  
+
   fwrite(type_out, file.path(out_dir, paste0("Populate_tbl_ORD_Aircraft_Adaptation_","LL", ".csv")))
   fwrite(wake_out, file.path(out_dir, paste0("Populate_tbl_ORD_Wake_Adaptation_", "LL", ".csv")))
 
