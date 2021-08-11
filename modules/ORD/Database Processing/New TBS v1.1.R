@@ -169,6 +169,8 @@ AllowedPathLegsList <- list(c("Intercept", "Ext_Intercept", "ILS"), c("Intercept
 MaxUnderRepList <- list(2*NM_to_m, 2*NM_to_m)
 TimeorRangeList <- list("Time", "Time")
 UnderSepsList <- list(c(0, 0.5 * NM_to_m, 1.0 * NM_to_m), c(0, 0.5 * NM_to_m, 1.0 * NM_to_m))
+UseLSSModelList <- list(F, F)
+UseLSSModelTTBList <- list(F, F)
 
 # Performance Model adaptation lists
 ActDistInputsList <- list(c("Recat_FAF_Wake_Separation_Distance", "Recat_FAF_All_Separation_Distance"),
@@ -231,7 +233,8 @@ for (DayCount in 1:length(Date_List)){
   FP <- Load_Flight_Data_ORD_Validation(con, PROC_Period, Date) # Flight Plan (Aircraft Level) Data
   Segments <- Load_Stage_2_Segment_Data(con, PROC_Period, Date) # GWCS Forecast Segment Data
   SW <- Load_Surface_Wind_Data(con, PROC_Period, Date) # Surface Wind data
-  if (Join_Gusting){Gust <- Load_Gust_Data(con, PROC_Period, Date)}
+  if (Join_Gusting){Gust <- Load_Gust_Data(con, PROC_Period, Date)} # Gust Data
+  Baro <- Load_Baro_Data_ORD_Validation(con, PROC_Period, Date) # Baro Data
   
   # If not in Testing Mode, Generate LAnding Pairs for this day and load to SQL
   if (!Testing){
@@ -396,6 +399,8 @@ for (DayCount in 1:length(Date_List)){
     Use_Gust_Data <- UseGustingDataList[[VariantIndex]]
     TBSCBuffers <- TBSCBuffersList[[VariantIndex]]
     ROTTimeType <- ROTTimeTypeList[[VariantIndex]]
+    UseLSSModel <- UseLSSModelList[[VariantIndex]]
+    UseLSSModelTTB <- UseLSSModelTTBList[[VariantIndex]]
     PopTables <- PopTablesList[[VariantIndex]]
     ActDistInput <- ActDistInputsList[[VariantIndex]]
     ActDistOutput <- ActDistOutputsList[[VariantIndex]]
@@ -427,7 +432,7 @@ for (DayCount in 1:length(Date_List)){
     # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # -- # - # - # - # - # - # - # - # - # - # - #
     message("Generating the ", LegacyorRecat, " variant ORD Aircraft, IAS and GSPD Profile data for ", Date, "...")
     # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # -- # - # - # - # - # - # - # - # - # - # - #
-    ORD_AC_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, LP, ORDBuffers = F, Use_EFDD, Use_Gust_Data, Full_Level_Precedence, ORD_Levels_Used, LegacyorRecat)
+    ORD_AC_Profile <- Generate_ORD_Aircraft_Profile(con, LP_Primary_Key, LP, Baro, ORDBuffers = F, Use_EFDD, Use_Gust_Data, UseLSSModel, Full_Level_Precedence, ORD_Levels_Used, LegacyorRecat)
     ORD_IAS_Profile <- Generate_ORD_IAS_Profile(con, LP_Primary_Key, ORD_AC_Profile, LP, GWCS_Forecast)
     ORD_GS_Profile <- Generate_ORD_GSPD_Profile(con, LP_Primary_Key, ORD_IAS_Profile, GWCS_Forecast, Seg_Size)
     # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # -- # - # - # - # - # - # - # - # - # - # - #
@@ -449,8 +454,8 @@ for (DayCount in 1:length(Date_List)){
     # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # -- # - # - # - # - # - # - # - # - # - # - #
     message("Generating the ", LegacyorRecat, " variant ", TTB_Type, " TTB Wake/ROT Speed Profile data for ", Date, "...")
     # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # -- # - # - # - # - # - # - # - # - # - # - #
-    TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_Gust_Data, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat, SymmetryWake)
-    TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_Gust_Data, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat, Symmetry = F)
+    TBSC_Profiles_Wake <- Generate_TBSC_Profiles(con, LP, Baro, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_Gust_Data, UseLSSModelTTB, Full_Level_Precedence, Wake_Levels_Used, LegacyorRecat, SymmetryWake)
+    TBSC_Profiles_ROT <- Generate_TBSC_Profiles(con, LP, Baro, GWCS_Forecast, LP_Primary_Key, TTB_Type, Use_EFDD, Use_Gust_Data, UseLSSModelTTB, Full_Level_Precedence, ROT_Levels_Used, LegacyorRecat, Symmetry = F)
     # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # - # -- # - # - # - # - # - # - # - # - # - # - #
     # ============================================================================================================================================================== #
     

@@ -51,7 +51,7 @@
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 
-Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat){
+Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair, ORDBuffers, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, ORD_Levels, LegacyorRecat){
 
   # Get Initial Time
   Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
@@ -95,14 +95,14 @@ Generate_ORD_Aircraft_Profile <- function(con, LP_Primary_Key, Landing_Pair, ORD
   # ----------------------------------------------- #
   
   # Build Leader Aircraft Profile
-  Aircraft_Profile_Leader <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, LorF = "Leader", ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, Use_Gust_Data, LegacyorRecat) %>%
-    Calculate_Landing_Stabilisation_Speed(LPID_Var) %>%
+  Aircraft_Profile_Leader <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, LorF = "Leader", ORD_Profile_Selection, ORDBuffers, UseLSSModel, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, Use_Gust_Data, LegacyorRecat) %>%
+    Calculate_Landing_Stabilisation_Speed(LPID_Var, UseLSSModel) %>%
     Calculate_Start_Initial_Decel_Distance() %>%
     Calculate_Final_Decel_Distance()
   
   # Build Follower Aircraft Profile
-  Aircraft_Profile_Follower <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, LorF = "Follower", ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, Use_Gust_Data, LegacyorRecat) %>%
-    Calculate_Landing_Stabilisation_Speed(LPID_Var) %>%
+  Aircraft_Profile_Follower <- Build_Aircraft_Profile(Landing_Pair, LPID_Var, LorF = "Follower", ORD_Profile_Selection, ORDBuffers, UseLSSModel, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, Use_Gust_Data, LegacyorRecat) %>%
+    Calculate_Landing_Stabilisation_Speed(LPID_Var, UseLSSModel) %>%
     Calculate_Start_Initial_Decel_Distance() %>%
     Calculate_Final_Decel_Distance()
 

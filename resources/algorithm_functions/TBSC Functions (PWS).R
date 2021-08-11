@@ -65,10 +65,10 @@ Generate_TBSC_Time_Buffers <- function(con, LPR, ID_Var, Active){
 # "ORD" and "T2F" TTB variants require calculation of a GSPD profile 
 # Not yet completed but: These two should use different methods to provide similar outputs
 # This way the Distances can be calculated using the ORD Follower calculations as mentioned in Sprints.
-Generate_TBSC_Profiles <- function(con, LPR, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_Gust_Data, Precedences, Levels, LegacyorRecat, SymmetryWake){
+Generate_TBSC_Profiles <- function(con, LPR, Baro, Full_Wind_Forecast, ID_Var, TTB_Type, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, Levels, LegacyorRecat, SymmetryWake){
   
   if (TTB_Type == "Original"){TBSC_Profile <- Full_Wind_Forecast}
-  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_Gust_Data, Precedences, Levels, LegacyorRecat, SymmetryWake)}
+  if (TTB_Type == "ORD"){TBSC_Profile <- Generate_TTB_ORD_GSPD_Profile(con, LPR, Baro, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, Levels, LegacyorRecat, SymmetryWake)}
   if (TTB_Type == "T2F"){TBSC_Profile <- Generate_TTB_T2F_GSPD_Profile(con, LPR, Full_Wind_Forecast, ID_Var, Seg_Size = 1852, Precedences, Levels, LegacyorRecat, SymmetryWake)}
   
   if (exists("TBSC_Profile")){return(TBSC_Profile)} else {
@@ -160,10 +160,10 @@ Calculate_Perfect_TBS_Distance_TTB_T2F <- function(LPR, TBSC_Profile, ID_Var, Di
   
 }
 
-Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
+Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Baro, Full_Wind_Forecast, ID_Var, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
   
   # Build an Aircraft Profile with ORD Buffers
-  Aircraft_Profile <- Generate_ORD_Aircraft_Profile_Symmetric(con, ID_Var, LPR, ORDBuffers = T, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat, Symmetry)
+  Aircraft_Profile <- Generate_ORD_Aircraft_Profile_Symmetric(con, ID_Var, LPR, Baro, ORDBuffers = T, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, ORD_Levels, LegacyorRecat, Symmetry)
   
   # Build a Normal IAS Profile
   IAS_Profile <- Generate_ORD_IAS_Profile(con, ID_Var, Aircraft_Profile, LPR, Full_Wind_Forecast)
@@ -177,7 +177,7 @@ Generate_TTB_ORD_GSPD_Profile <- function(con, LPR, Full_Wind_Forecast, ID_Var, 
   
 }
 
-Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
+Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, Baro, ORDBuffers, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, ORD_Levels, LegacyorRecat, Symmetry){
 
   # ID_Var <- LP_Primary_Key
   # LPR <- LP
@@ -189,7 +189,7 @@ Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers
   # Create standard aircraft profile if symmetry not required.
   if (!Symmetry){
     #message("Symmetry not required!")
-    return(Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels, LegacyorRecat))
+    return(Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, Baro, ORDBuffers, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, ORD_Levels, LegacyorRecat))
   }
   
   if (exists("AircraftProfile")){rm(AircraftProfile)}
@@ -213,7 +213,7 @@ Generate_ORD_Aircraft_Profile_Symmetric <- function(con, ID_Var, LPR, ORDBuffers
       }
       
       # Get Aircraft Profile for This Level only.
-      AircraftProfileLocal <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, ORDBuffers, Use_EFDD, Use_Gust_Data, Precedences, ORD_Levels_Local, LegacyorRecat)
+      AircraftProfileLocal <- Generate_ORD_Aircraft_Profile(con, ID_Var, LPR, Baro, ORDBuffers, Use_EFDD, Use_Gust_Data, UseLSSModel, Precedences, ORD_Levels_Local, LegacyorRecat)
       
       # Separate into Leader/Follower.
       AircraftProfileLocalLeader <- filter(AircraftProfileLocal, This_Pair_Role == "L") %>% select(!!sym(ID_Var), VRef_Lead = VRef)

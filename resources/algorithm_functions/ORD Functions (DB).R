@@ -850,6 +850,39 @@ Load_Gust_Data <- function(con, PROC_Period, PROC_Criteria){
   
 }
 
+Load_Baro_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
+  
+  # Get Start Time
+  message(paste0("Loading ORD Validation Barometer Pressure data for the ", PROC_Period, " of ", PROC_Criteria, "..."))
+  Proc_Initial_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  
+  # Original Flight Plan Query
+  Baro_Query <- "SELECT
+                         Baro_Date,
+                         Baro_Time,
+                         Baro_Pressure
+                       FROM tbl_Baro"
+  
+  # Edit Based on Data Loading Criteria
+  if (PROC_Period == "Day"){
+    Baro_Query <- paste0(Baro_Query, " WHERE Baro_Date = '", PROC_Criteria, "'")}
+  if (PROC_Period == "Month"){
+    Baro_Query <- paste0(Baro_Query, " WHERE Baro_Date LIKE '%", PROC_Criteria, "%'")}
+  
+  # Acquire the Data
+  Flight_Plan <- dbGetQuery(con, Flight_Plan_Query, stringsAsFactors = F)
+  
+  # How long did it take?
+  Proc_End_Time <- Convert_Time_String_to_Seconds(substr(Sys.time(), 12, 19))
+  #message(paste0("Completed ORD Validation Flight Plan data Loading for the ", PROC_Period, " of ", PROC_Criteria, " in ",
+  #               seconds_to_period(Proc_End_Time - Proc_Initial_Time), "."))
+  
+  return(Flight_Plan)
+  
+  
+}
+
+
 Load_Flight_Data_ORD_Validation <- function(con, PROC_Period, PROC_Criteria){
   
   # Get Start Time
@@ -990,7 +1023,10 @@ Get_LF_Ref_Parameters <- function(Landing_Pair, Flight_Plan, Runways, ACTW, ACTW
 }
 
 # Selects the correct Adaptation from ORD Tables based on Level
-Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD){
+Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD, UseLSSModel){
+  
+  # Temp Switch for using LSS Linear Model instead of Types. (Will make parsed argument)
+  #UseLSSModel <- F
   
   # Change "Leader" to "Lead" For Variable Compatibility
   if(LorF == "Leader"){LorF <- "Lead"}
@@ -1006,6 +1042,11 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
   End_Init_Decel_Var <- paste0("End_Initial_Deceleration_Distance_", LorF)
   IPS_Var <- paste0("Initial_Procedural_Speed_", LorF)
   Init_Decel_Var <- paste0("Initial_Deceleration_", LorF)
+  
+  # LSS Linear Model Coefficient Variables
+  LSSQNH <- "LSS_QNH_Coeff"
+  LSSSHW <- "LSS_Headwind_Coeff"
+  LSSGust <- "LSS_Gust_Coeff"
   
   ## Temporary Fix for Discrepancy in Init_Decel_Var Names across Files ---------------------------- #
   # if (Level == "DBS" & LorF == "Lead"){Init_Decel_Var <- "Initial_Deceleration_Lead"}
@@ -1062,6 +1103,9 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
   Buffer_Vars_1 <- c("VRef_Buffer", "SPS_Buffer", "IPS_Buffer")
   Buffer_Vars_2 <- c(paste0("Min_Safe_Landing_Speed_Buffer", LorF), paste0("Steady_Procedural_Speed_Buffer", LorF), paste0("Initial_Procedural_Speed_Buffer", LorF))
   
+  # If using LSS Linear Model, add these values
+  LSSVars <- c(LSSQNH, LSSSHW, LSSGust)
+  
   # If The input buffer parameter exists, add the input and corresponding outp[ut parameter to final selection
   if (ORDBuffers){
     for (i in 1:length(Buffer_Vars_2)){
@@ -1078,7 +1122,15 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
   # Build the string by selecting the output vars as the input vars
   for (j in 1: length(All_Vars_1)){
     Language_String <- paste0(Language_String, ", ", All_Vars_1[j], " = ", All_Vars_2[j])
-    if (j == length(All_Vars_1)){Language_String <- paste0(Language_String, ")")}
+    if (j == length(All_Vars_1) & UseLSSModel == F){Language_String <- paste0(Language_String, ")")}
+  }
+  
+  # Add the LSS Model Coefficients if using them
+  if (UseLSSModel){
+    for (k in 1:length(LSSVars)){
+      Language_String <- paste0(Language_String, ", ", LSSVars[k])
+      if (k == length(LSSVars)){Language_String <- paste0(Language_String, ")")}
+    }
   }
   
   # evaluate this string as "language" -> executes the string as code
@@ -1097,7 +1149,7 @@ Select_ORD_LF_Adaptation <- function(Ref_Data, Level, LorF, ORDBuffers, Use_EFDD
 }
 
 # Function to join the correct ORD adaptation. Current version for IAC TBS v1.0. Need to add connection as an argument.
-Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat){
+Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORDBuffers, UseLSSModel, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat){
   
   # If ORD_Profile_Selection is TBS_Table, skip the Precedence checks and just join 
   if (ORD_Profile_Selection == "TBS_Table" & LegacyorRecat == "Recat"){
@@ -1143,7 +1195,7 @@ Join_ORD_Adaptation <- function(LP, ORD_Profile_Selection, ORDBuffers, Precedenc
         # Find/isolate the relevant columns from the data and the adaptation.
         Join_Names_Adaptation <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Ref", LorF)
         Join_Names_LP <- Get_Reference_ORD_Parameter_ID_Names(Level, ORD_Profile_Selection, LegacyorRecat, ReforData = "Data", LorF)
-        Adaptation <- Select_ORD_LF_Adaptation(Adaptation, Level, LorF, ORDBuffers, Use_EFDD)
+        Adaptation <- Select_ORD_LF_Adaptation(Adaptation, Level, LorF, ORDBuffers, Use_EFDD, UseLSSModel)
         Select_Names_Adaptation <- setdiff(names(Adaptation), Join_Names_Adaptation)
         
         # If Parameters already joined to non usccessful data, remove and rejoin based on new level.
@@ -2270,8 +2322,11 @@ Get_Average_Forecast_Wind_Effect <- function(Data, Segment_Forecast, Prefix, ID_
 # ------------------------------------------------------------------------------------------------------------------------------------------ #
 
 # Function to grab and arrange all relevant ORD adaptation into the Aircraft Profile format. Doesn't include LSS or Decel Distance calcs.
-Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, Use_Gust_Data, LegacyorRecat){
-
+Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Selection, ORDBuffers, UseLSSModel, Precedences, ORD_Levels, ORD_Runway, Use_EFDD, Use_Gust_Data, LegacyorRecat){
+  
+  # Temp Switch for using LSS Linear Model instead of Types. (Will make parsed argument)
+  #UseLSSModel <- F
+  
   # Get Variable Names
   ID_Var <- LPID_Var
   FPID <- paste0(LorF, "_Flight_Plan_ID") # Not Currently Used - Need to Add to Verification
@@ -2291,7 +2346,9 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
                              "Wake_Cat" := !!sym(Wake_Var),
                              "DBS_All_Sep_Distance" := !!sym(paste0(LegacyorRecat, "_DBS_All_Sep_Distance")),
                              "Surface_Headwind" := !!sym(SW_Var),
-                             "Landing_Runway" := !!sym(RW_Var))
+                             "Landing_Runway" := !!sym(RW_Var),
+                             "Prediction_Time",
+                             "Landing_Pair_Date") # Prediction Time/Date added for obtaining QNH. Not currently used
   
   # acquire and join on the real gust data if we use it
   if (Use_Gust_Data & "Forecast_AGI_Surface_Gust" %in% names(Landing_Pair)){
@@ -2301,6 +2358,11 @@ Build_Aircraft_Profile <- function(Landing_Pair, LPID_Var, LorF, ORD_Profile_Sel
 
   # Add "This_Pair_Role" Column
   Aircraft_Profile <- mutate(Aircraft_Profile, This_Pair_Role = TPR_Var)
+  
+  # TEMP: Add QNH Diff as Standard PRessure - Standard PRessure (0)
+  #Aircraft_Profile <- mutate(Aircraft_Profile, Baro_Pressure = 101325) ## NEED TO REPLACE WITH A ROLLING JOIN ON PREDICTION TIME +INF
+  Aircraft_Profile <- rolling_join(Aircraft_Profile, Baro, c("Landing_Pair_Date", "Prediction_Time"), c("Baro_Date", "Baro_Time"), Roll = +Inf)
+  Aircraft_Profile <- mutate(Aircraft_Profile, Baro_Pressure_Diff = Baro_Pressure - 101325)
 
   # Join on the ORD Adaptation using Join_ORD_Adaptation
   Aircraft_Profile <- Join_ORD_Adaptation(Aircraft_Profile, ORD_Profile_Selection, ORDBuffers, Precedences, ORD_Levels, LorF, Use_EFDD, LegacyorRecat)
@@ -2368,12 +2430,25 @@ Get_ORD_Runway_Parameters <- function(Aircraft_Profile, Landing_Pair, LPID_Var, 
 # ----------------------------------------------- #
 
 # General Landing Stabilisation Speed Function.
-Calculate_Landing_Stabilisation_Speed <- function(ORD_Aircraft_Profile, LPID_Var){
-  for (i in 0:12){
-    Type_Profiles <- filter(ORD_Aircraft_Profile, Landing_Stabilisation_Speed_Type == i)
-    Type_Profiles <- eval(parse(text = paste0("Calculate_LSS_Type_", i, "(Type_Profiles)")))
-    if (i == 0){Full_Profile <- Type_Profiles} else {Full_Profile <- rbind(Full_Profile, Type_Profiles)}
+Calculate_Landing_Stabilisation_Speed <- function(ORD_Aircraft_Profile, LPID_Var, UseLSSModel){
+  
+  # Temp Switch for using LSS Linear Model instead of Types. (Will make parsed argument)
+  #UseLSSModel <- F
+
+  if (UseLSSModel){
+    Full_Profile <- ORD_Aircraft_Profile %>%
+      mutate(Landing_Stabilisation_Speed = VRef +
+               LSS_Gust_Coeff * Gust_Adjustment + 
+               LSS_Headwind_Coeff * Surface_Headwind +
+               LSS_QNH_Coeff * Baro_Pressure_Diff)
+  } else {
+    for (i in 0:12){
+      Type_Profiles <- filter(ORD_Aircraft_Profile, Landing_Stabilisation_Speed_Type == i)
+      Type_Profiles <- eval(parse(text = paste0("Calculate_LSS_Type_", i, "(Type_Profiles)")))
+      if (i == 0){Full_Profile <- Type_Profiles} else {Full_Profile <- rbind(Full_Profile, Type_Profiles)}
+    }
   }
+  
   Full_Profile <- arrange(Full_Profile, !!sym(LPID_Var))
   return(Full_Profile)
 }
