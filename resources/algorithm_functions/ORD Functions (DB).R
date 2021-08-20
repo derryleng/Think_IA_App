@@ -826,7 +826,7 @@ Load_Gust_Data <- function(con, PROC_Period, PROC_Criteria){
                          Runway,
                          Gust_Date,
                          Gust_Time,
-                         Gust * dbo.fnc_GI_Kts_To_M_Per_Sec() AS Gust
+                         (Gust - Wind_Speed) * dbo.fnc_GI_Kts_To_M_Per_Sec() AS Gust
                        FROM tbl_Gusting"
   
   # Edit Based on Data Loading Criteria
